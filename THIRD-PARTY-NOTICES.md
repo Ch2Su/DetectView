@@ -6,7 +6,7 @@ DetectView 는 [GNU AGPL-3.0](LICENSE) 으로 공개합니다. 이 저장소에 
 |---|---|---|
 | `best.onnx` · `best.npu.onnx` | Ultralytics YOLO26s 를 파인튜닝한 모델과 그 NPU 양자화본 | AGPL-3.0 |
 | `WindowsMlExecutionProvider.cs` | YoloDotNet 의 DirectML 실행 공급자 | MIT |
-| `.claude/helpers/graft-hooks.cjs` · `.claude/helpers/graft-statusline.cjs` · `.claude/skills/graft/SKILL.md` | graft(코드 인덱스 도구)가 만든 Claude Code 연동 파일 | MIT |
+| `.claude/helpers/graft-statusline.cjs` · `.claude/skills/graft/SKILL.md` | graft(코드 인덱스 도구)가 만든 Claude Code 연동 파일 | MIT |
 
 빌드할 때 NuGet 이 내려받는 패키지(OpenCvSharp4 · SkiaSharp · Vortice · DirectShowLib.Standard · Windows ML 등)는 저장소에 들어 있지 않습니다.
 목록과 라이선스는 [README 의 라이선스 절](README.md#라이선스)에 있습니다. 빌드한 실행 파일을 배포할 땐 그 패키지들의 고지도 함께 넣어야 합니다.
@@ -51,9 +51,9 @@ SOFTWARE.
 
 ## graft — MIT
 
-`.claude/helpers/graft-hooks.cjs` · `.claude/helpers/graft-statusline.cjs` · `.claude/skills/graft/SKILL.md` 는
+`.claude/helpers/graft-statusline.cjs` · `.claude/skills/graft/SKILL.md` 는
 [graft](https://github.com/NanoNets/context-graph-engine)(`@nanonets/graft` 0.18.0)가 이 저장소에 만들어 넣은 Claude Code 연동 파일입니다.
-두 `.cjs` 파일은 graft 설치 경로를 찾는 줄 하나만 고쳤습니다(설치 때 박힌 사용자 폴더 경로 대신 `%APPDATA%` 로 계산).
+`graft-statusline.cjs` 는 graft 설치 경로를 찾는 줄 하나만 고쳤습니다(설치 때 박힌 사용자 폴더 경로 대신 `%APPDATA%` 로 계산).
 
 ```text
 MIT License
