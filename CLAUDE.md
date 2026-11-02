@@ -71,10 +71,10 @@ dotnet publish YOLO11_Test.csproj -c Release -r win-x64 --self-contained true -p
 | `Ui.cs` | 스타일이 읽는 첨부 속성 — 버튼 아이콘(`Glyph`·`GlyphBrush`)·`HoverBackground`·`IconOnly`·지금 소스 버튼(`IsActive`) |
 | `TestFaults.cs` | Debug 빌드 전용 결함 주입 — 환경 변수 `DETECTVIEW_TEST_FAULTS`(쉼표 구분): `hud-create-fail` · `hud-capture-lost` · `hud-detect-fail`. 훅은 `[Conditional("DEBUG")]` 라 Release 엔 호출 자체가 없다(Release DLL 에 결함 이름 문자열 없음 확인). `Test-ScreenHud.ps1` 이 쓴다 |
 | `Directory.Build.props` | OpenCvSharp 판(`OpenCvSharpVersion`)을 두는 한 곳 — 본 앱·실험 프로젝트 넷이 같이 읽는다 ("절대 건드리면 안 되는 것들" 1번, 이슈 #9) |
-| `old/` | 이전 CPU 버전 전체 보관본 + 최적화 전 백업(`backup_20260911_before_opt/`, `backup_20260911_after_step1/`). **빌드 대상에서 제외됨**. `old/docs/` 에 SRS·아키텍처 설계서(.md/.pdf) |
+| `old/` | 이전 CPU 버전 전체 보관본 + 최적화 전 백업(`backup_20260911_before_opt/`, `backup_20260911_after_step1/`). **빌드 대상에서 제외됨**. `old/docs/` 에 SRS·아키텍처 설계서(.md/.pdf). `old/DetectView-history-2026-11-02.bundle` = 공개 전 git 기록(커밋 75개) 백업 — 아래 '도구 사용 주의'의 원격 항목 |
 | `publish_gpu_ver/` | 배포 산출물 + 테스트 영상(`test1~4.mp4`, 1280×720 30fps · `test5.mp4`, 아래 "테스트 영상 내용"). 원래의 VFR 테스트 파일 `recording.webm` 은 없어졌고, 대신 합성 파일 `tests/ui/media/vfr60_nodur.webm` 을 쓴다 |
 | `tests/ui/` | UI 자동화 회귀 테스트 (PowerShell + UI Automation). 아래 "테스트" 참고 |
-| `README.md` | GitHub 첫 화면 (2026-11-02 작성 — 기능·빌드·사용법·테스트·라이선스). 화면이 크게 바뀌면 같이 고칠 것. 스크린샷(test4 3초 장면, 실제 도로 CCTV 프레임)은 같은 날 넣었다가 영상 사용 권리를 확인하지 못해 뺐다(`docs/screenshot.png` 삭제 — 비공개 옛 기록 `DetectView-history` 의 `10e65db` 에만 남음). 다시 넣으려면 권리가 분명한 영상으로 |
+| `README.md` | GitHub 첫 화면 (2026-11-02 작성 — 기능·빌드·사용법·테스트·라이선스). 화면이 크게 바뀌면 같이 고칠 것. 스크린샷(test4 3초 장면, 실제 도로 CCTV 프레임)은 같은 날 넣었다가 영상 사용 권리를 확인하지 못해 뺐다(`docs/screenshot.png` 삭제 — 이 PC 의 옛 기록 `old-history` 의 `10e65db` 에만 남음). 다시 넣으려면 권리가 분명한 영상으로 |
 | `LICENSE` · `THIRD-PARTY-NOTICES.md` | 저장소 라이선스 GNU AGPL-3.0 (2026-11-02 — 들어 있는 `best.onnx` 가 Ultralytics YOLO26 파인튜닝이라 Ultralytics 가 프로젝트 전체에 AGPL-3.0 을 요구)과 저장소 안 남의 저작물 고지(모델 AGPL-3.0 · `WindowsMlExecutionProvider.cs` 의 바탕 YoloDotNet MIT · `.claude/` 의 graft 연동 파일 MIT — 각 전문). 남의 코드·파일을 가져오면 여기에 더한다 |
 | `tools/` | `Make-NpuModel.ps1`(+ `npu_quantize.py`): YOLO 모델의 NPU 용 짝 `<이름>.npu.onnx` 만들기 (아래 "NPU") |
 | `best.npu.onnx` | 루트 `best.onnx` 의 NPU 짝 (A16W8·가중치 채널별 QDQ, 10.4 MB, git 추적). 원본을 바꾸면 다시 만든다 |
@@ -872,22 +872,25 @@ LLM 개념 맵(`graft build --deep`)은 API 키가 필요해서 돌리지 않았
 - **`python` 은 PATH 에 없다** (WindowsApps 스텁만 있음). `uv` 로 격리 실행한다: `uv run --no-project --python 3.12 --with <패키지> <스크립트>.py`
   (한 줄 명령은 `uv run --no-project --python 3.12 python -c "..."`). 다른 프로젝트의 가상 환경(같은 PC 의 다른 저장소 `.venv` 등)은 건드리지 않는다
 - **git 저장소다** (2026-09-21 `git init`, 브랜치 `main`). 되돌리기 안전망이 생겼으니 `old/` 에 새 백업을 쌓을 필요는 없다 — 기존 `old/` 는 git 이전 기록이라 그대로 둔다
-- **원격은 둘 — 2026-11-02 공개 때 나눴다** (사용자 결정: 옛 기록은 공개하지 않고 기록 없는 새 저장소로 공개):
-  - **`origin` = 공개 저장소 GitHub `chisu0208/DetectView`**. 옛 기록의 마지막 상태(`f8d66f4`)를 그대로 담은 기록 없는 첫 커밋부터 시작했다. 올리는 건 `main` 하나다.
-  - **`history` = 비공개 보관 저장소 `chisu0208/DetectView-history`** — 원래의 `DetectView`(2026-10-30 연결)를 이름만 바꾼 것. 2026-09-21~11-02 개발 기록(커밋 75개)과 이슈 #1~#11 이 있다.
-    **이 문서·메모의 커밋 해시(`6d1f61a` 등)와 이슈 번호 #1~#11 은 모두 그 기록의 것**이다. 옛 커밋 객체는 로컬에도 있어 `git show <해시>`·`git log history/main` 으로 본다.
-    (거기 이슈 본문의 링크 `github.com/chisu0208/DetectView/blob/<해시>/…` 는 이제 공개 저장소를 가리켜 안 열린다 — 주소의 저장소 이름을 `DetectView-history` 로 바꿔 열 것)
-  - **옛 기록이 든 브랜치를 `origin` 에 올리지 말 것** — `history/main`·`claude/*`·`spike/*`·옛 worktree 가 다 그렇다. 올리면 옛 커밋 75개(실제 이메일이 작성자인 72개와 뺀 CCTV 스크린샷 포함)가 공개된다.
-    로컬 `.git/hooks/pre-push`(git 이 추적하지 않음 — 지우면 보호가 사라진다)가 옛 기록의 뿌리 커밋 둘을 조상으로 가진 커밋을 공개 저장소로 올리면 거부한다.
+  (예외: 2026-11-02 공개 때 GitHub 에서 지운 옛 git 기록의 백업 `old/DetectView-history-2026-11-02.bundle` — 아래 원격 항목)
+- **원격은 `origin` 하나 = 공개 저장소 GitHub `chisu0208/DetectView`** (2026-11-02 공개 — 사용자 결정: 옛 기록은 공개하지 않는다).
+  옛 기록의 마지막 상태(`f8d66f4`)를 그대로 담은 기록 없는 첫 커밋(`6c43790`)부터 시작했다. 올리는 건 `main` 하나다.
+  - **옛 개발 기록(2026-09-21~11-02, 커밋 75개)은 이 PC 에만 있다** — 로컬 태그 `old-history`(`f8d66f4`)와 백업 파일 `old/DetectView-history-2026-11-02.bundle`
+    (44.9 MB, `git clone <파일>` 로 되살아난다 — 복원 확인함). 그 기록을 담았던 비공개 저장소(`DetectView` → `DetectView-history` 로 이름 바꿈)는 같은 날 사용자가 지웠고 이슈 #1~#11 도 함께 없어졌다.
+    **이 문서·메모의 커밋 해시(`6d1f61a` 등)와 이슈 번호 #1~#11 은 모두 그 옛 기록의 것**이다 — 해시는 `git show <해시>`·`git log old-history` 로 이 PC 에서 본다.
+    이슈 본문은 남아 있지 않지만 내용은 이 문서의 해당 서술(번호 옆)에 있다. 태그와 bundle 을 둘 다 지우면 옛 기록이 사라진다(`git gc` 는 태그가 가리키는 커밋은 지우지 않는다).
+  - **옛 기록을 `origin` 에 올리지 말 것** — `old-history` 태그·`claude/*`·`spike/*` 브랜치·옛 worktree 가 다 그렇다. 올리면 옛 커밋 75개(실제 이메일이 작성자인 72개와 뺀 CCTV 스크린샷 포함)가 공개된다.
+    로컬 `.git/hooks/pre-push`(git 이 추적하지 않음 — 지우면 보호가 사라진다)가 옛 기록의 뿌리 커밋 둘을 조상으로 가진 커밋·태그를 공개 저장소로 올리면 push 전체를 거부한다(그래서 `git push --tags` 도 막힌다).
     옛 기록의 커밋을 `main` 에 merge·cherry-pick 하지도 말 것 — merge 는 옛 기록 전체를, cherry-pick 은 옛 작성자(실제 이메일)를 끌고 온다. 필요한 건 파일 내용만 옮긴다.
-  - **rebase·amend·force push 로 올린 기록을 고쳐 쓰지 말 것** (두 저장소 모두. 옛 기록에서도 웹에서 생긴 첫 커밋을 force push 로 지우지 않고 합쳤다 — `f7646a6`).
+  - **rebase·amend·force push 로 올린 기록을 고쳐 쓰지 말 것** (옛 기록 때도 웹에서 생긴 첫 커밋을 force push 로 지우지 않고 합쳤다 — `f7646a6`).
   - 공개 정리 (2026-11-02 점검 — 비밀값은 옛 기록 전체에 없었다): 저장소 전체 GNU AGPL-3.0(`LICENSE`), 남의 저작물 고지 `THIRD-PARTY-NOTICES.md`(README 라이선스 절엔 NuGet 외부 구성요소 표).
     커밋 작성자 이메일은 이 저장소 설정(`.git/config` 의 `user.email` — worktree 도 같이 쓴다)만 GitHub noreply `42445310+chisu0208@users.noreply.github.com` 이다(전역 `~/.gitconfig` 는 실제 주소 그대로).
-    README 스크린샷(test4 3초 장면, 실제 도로 CCTV 프레임 — 출처 기록 없음)은 영상 사용 권리를 확인하지 못해 뺐다(옛 기록에만 있다). 남은 것: GitHub 계정의 이메일 비공개 설정(사용자가 직접).
+    README 스크린샷(test4 3초 장면, 실제 도로 CCTV 프레임 — 출처 기록 없음)은 영상 사용 권리를 확인하지 못해 뺐다(옛 기록에만 있다).
+    GitHub 계정은 'Keep my email addresses private'·'Block command line pushes that expose my email' 을 켰다(11-02 사용자) — 실제 주소가 작성자인 커밋을 push 하면 GitHub 가 막는다(GH007).
     모델 메타데이터 `description` 에 학습 데이터 폴더 경로가 들어 있지만 그대로 뒀다 — 모델 파일을 바꾸면 MD5 가 바뀌어 NPU 짝·컴파일 캐시를 다시 만들어야 한다
 - GitHub CLI `gh` 2.103.3 은 2026-10-30 winget 으로 설치했다(`C:\Program Files\GitHub CLI\gh.exe`). 설치 전에 뜬 앱·셸에선 PATH 에 없으니 전체 경로로 부른다
 - **남은 버그·개선 거리는 GitHub 이슈로 관리한다** — 2026-10-30 분석에서 남은 낮은 버그 11건을 #1~#11 로 등록했고, 2026-10-31~11-01 모두 고쳤다
-  (이 문서의 해당 서술 옆에 그 번호가 남아 있다 — **그 이슈들은 비공개 `DetectView-history` 에 있다**. 공개 저장소의 이슈는 #1 부터 다시 매겨지니
-  옛 이슈는 `DetectView-history#7` 처럼 저장소 이름을 붙여 가리킨다). 고칠 땐 커밋 메시지에 `Fixes #N` 을 넣는다(`main` 에 push 되면 공개 저장소의 그 이슈가 닫힌다). 이 문서의 서술도 같이 고친다.
+  (이 문서의 해당 서술 옆에 그 번호가 남아 있다 — **그 이슈들은 옛 비공개 저장소와 함께 지워졌다**. 공개 저장소의 이슈는 #1 부터 다시 매겨지니
+  옛 번호는 '옛 이슈 #7' 처럼 구분해 가리킨다). 고칠 땐 커밋 메시지에 `Fixes #N` 을 넣는다(`main` 에 push 되면 공개 저장소의 그 이슈가 닫힌다). 이 문서의 서술도 같이 고친다.
   여러 이슈를 한꺼번에 고칠 땐 이슈 묶음마다 worktree 를 따로 두고 고친 뒤 검토를 거쳐 `main` 에 cherry-pick 했다 — UI 테스트는 합친 뒤 한 번에 돌린다
 - 추적 대상은 소스, `best.onnx`·`best.npu.onnx`, UI 테스트(`tests/ui/`, 합성 테스트 영상 `media/vfr60_nodur.webm` 포함), 도구(`tools/`), 실험 프로젝트 소스(`experiments/*/`), `README.md`(GitHub 첫 화면), `LICENSE`·`THIRD-PARTY-NOTICES.md` 다. `bin/`·`obj/`·`old/`·`publish_gpu_ver/`·`graft/` 는 `.gitignore` 로 제외 — **`old/` 를 커밋하면 안 된다** (아래 graft 항목 참고)
