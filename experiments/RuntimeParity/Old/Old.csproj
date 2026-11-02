@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 옛 런타임 쪽: ONNX 패키지는 교체 전 본 앱(main 2026-10-24 이전)과 같은 조합.
+       OpenCvSharp 은 비교가 런타임 차이만 보도록 WinML 쪽·본 앱과 같은 판(저장소 루트 Directory.Build.props)이다 -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- GpuAdapters.cs 의 DXCore 호출(vtable 함수 포인터) -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <DefineConstants>$(DefineConstants);OLD_RUNTIME</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Program.cs" />
+    <!-- GPU 선택은 본 앱과 같은 판정 (런타임과 무관해 옛 쪽에도 그대로 쓴다) -->
+    <Compile Include="..\..\..\GpuAdapters.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Vortice.DXGI" Version="3.8.3" />
+    <PackageReference Include="OpenCvSharp4" Version="$(OpenCvSharpVersion)" />
+    <PackageReference Include="OpenCvSharp4.runtime.win" Version="$(OpenCvSharpVersion)" />
+    <PackageReference Include="SkiaSharp" Version="3.119.2" />
+    <PackageReference Include="YoloDotNet" Version="4.2.0" />
+    <PackageReference Include="YoloDotNet.ExecutionProvider.DirectML" Version="1.0.0" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime.DirectML" Version="1.23.0" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime.Managed" Version="1.23.0" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.23.0" ExcludeAssets="all" />
+  </ItemGroup>
+
+</Project>

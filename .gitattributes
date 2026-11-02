@@ -1,0 +1,9 @@
+# 줄바꿈은 LF 로 고정한다 (저장소·작업 트리 모두).
+# 전역 core.autocrlf=true 를 그대로 두면 git 이 checkout 때 CRLF 로 바꿔,
+# LF 로 쓰는 편집 도구와 섞여 파일 전체가 바뀐 것처럼 보이는 diff 가 생긴다.
+* text=auto eol=lf
+
+# 모델·영상은 절대 변환하지 않는다
+*.onnx binary
+*.mp4  binary
+*.webm binary

@@ -1,0 +1,191 @@
+using OpenCvSharp;
+using SkiaSharp;
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Text.RegularExpressions;
+using System.Threading;
+using System.Windows;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using Vortice.DXGI;
+using YoloDotNet;
+using YoloDotNet.Extensions;
+using YoloDotNet.Models;
+
+namespace YOLO11_Test
+{
+    /// <summary>모델 로드(DirectML·GPU 자동 선택)와 프레임 검출.</summary>
+    public partial class MainWindow
+    {
+        // 검출 임계값
+        private const double ConfidenceThreshold = 0.3;
+        private const double IouThreshold = 0.7;
+
+        // 관심 클래스 (현재 모델의 7클래스와 동일 — 모델 교체 대비 안전장치)
+        private static readonly HashSet<string> TargetClasses =
+            ["person", "car", "motorcycle", "truck", "bus", "scooter", "bicycle"];
+
+        private const string ModelFileName = "best.onnx";
+
+        private Yolo? _yolo;
+        private readonly Lock _yoloLock = new();   // 재생 루프와 SAHI의 동시 추론 직렬화
+
+        private void InitializeYoloModel()
+        {
+            // 모델은 exe 와 같은 폴더에서 찾는다. 상대 경로("best.onnx")는 작업 디렉터리 기준이라,
+            // 바로가기의 "시작 위치"나 다른 폴더에서 실행하면 exe 옆에 있어도 못 찾는다(실측 확인).
+            // 단일 파일 배포에서도 AppContext.BaseDirectory 는 exe 가 있는 폴더다
+            string modelPath = System.IO.Path.Combine(AppContext.BaseDirectory, ModelFileName);
+            if (!System.IO.File.Exists(modelPath))
+            {
+                // GPU 오류 안내로 넘어가면 원인을 오해하게 되므로 따로 알린다
+                MessageBox.Show($"모델 파일을 찾을 수 없습니다:\n{modelPath}\n\n" +
+                                $"{ModelFileName} 을 DetectView.exe 와 같은 폴더에 두세요.");
+                return;
+            }
+
+            try
+            {
+                (_yolo, _gpuName) = CreateGpuYolo(modelPath);
+                Title = GpuTitle(_yolo);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"YOLO 모델 로드(GPU/DirectML) 중 오류가 발생했습니다:\n{ex.Message}\n\n" +
+                                "GPU 드라이버와 DirectX 12 지원 여부를 확인하세요.");
+            }
+        }
+
+        // GPU 로 돌 때의 창 제목. 테스트가 "(DirectML)" 로 GPU 초기화 성공을 확인하므로 형식을 바꾸지 말 것
+        private string GpuTitle(Yolo yolo) => $"DetectView — {DescribeModel(yolo)} — {_gpuName} (DirectML)";
+
+        // DirectML(GPU) 추론 — 외장 GPU 를(가릴 수 없으면 전용 VRAM 이 가장 큰 GPU) 골라, Windows ML 의 DirectML 장치와 PCI ID 로 맞춘다
+        private static (Yolo Yolo, string GpuName) CreateGpuYolo(string modelPath)
+        {
+            var (gpuName, vendorId, deviceId) = SelectBestGpu();
+            var device = WindowsMlExecutionProvider.FindDmlDevice(vendorId, deviceId);
+            if (device == null)
+            {
+                device = WindowsMlExecutionProvider.FirstDmlDevice()
+                         ?? throw new InvalidOperationException("DirectML 장치를 찾지 못했습니다.");
+                gpuName = $"{device.HardwareDevice.Vendor} GPU";   // 고른 것과 다른 장치로 돈다는 걸 제목에 드러낸다
+            }
+            var yolo = new Yolo(new YoloOptions
+            {
+                ExecutionProvider = new WindowsMlExecutionProvider(modelPath, device)
+            });
+            return (yolo, gpuName);
+        }
+
+        // 제목에 표시할 모델 이름. 배포 폴더의 best.onnx 를 수시로 바꿔 쓰므로(YOLO26s ↔ YOLO26x 등)
+        // 제목만 보고도 지금 어느 모델로 도는지 알 수 있어야 한다 (모르고 잰 속도를 엉뚱한 모델 탓으로 돌린 적이 있음).
+        // YoloDotNet 이 이미 읽어 둔 ONNX 메타데이터를 쓰므로 모델을 다시 읽지 않는다
+        private static string DescribeModel(Yolo yolo)
+        {
+            var meta = yolo.OnnxModel?.CustomMetaData;
+
+            // Ultralytics 내보내기: description = "Ultralytics YOLO26s model trained on .../data.yaml".
+            // ModelInfo("ObjectDetection (yolo v26)")에는 s/x 같은 크기가 없어서 이쪽을 쓴다
+            string name = meta != null && meta.TryGetValue("description", out var desc)
+                          && Regex.Match(desc, @"Ultralytics\s+(\S+)\s+model") is { Success: true } m
+                ? m.Groups[1].Value
+                : yolo.ModelInfo;   // 메타데이터가 없는 모델
+
+            // 크기가 같은 모델이 여럿이라(데이터셋만 다른 YOLO26s 등) 학습일로 구분한다
+            if (meta != null && meta.TryGetValue("date", out var date)
+                && DateTime.TryParse(date, CultureInfo.InvariantCulture, DateTimeStyles.None, out var trained))
+                name += $" ({trained:yyyy-MM-dd} 학습)";
+            return name;
+        }
+
+        // 추론 GPU: 내장이 아닌 GPU 중 전용 VRAM 이 가장 큰 것 (GpuAdapters.Best — HUD 안내의 고성능/저전력과 같은 판정).
+        // 전용 VRAM 만 보던 예전엔 내장 GPU 의 전용 메모리를 외장 이상으로 잡은 PC(AMD VGM·BIOS UMA)에서 내장 GPU 로 옮겨 갔다 (이슈 #3).
+        // 순번이 아니라 PCI 벤더·장치 ID 를 돌려준다 — Windows ML 의 EP 장치 목록은 DXGI 와 순서가 같다는 보장이 없다
+        private static (string name, uint vendorId, uint deviceId) SelectBestGpu()
+        {
+            try
+            {
+                if (GpuAdapters.Best(GpuAdapters.Enumerate()) is { } best)
+                    return (best.Name, best.VendorId, best.DeviceId);
+            }
+            catch { /* 실패하면 ID 0 → 호출 측이 첫 DirectML 장치로 대체 */ }
+            return ("GPU", 0, 0);
+        }
+
+        // ---------- 프레임 처리 (BGR Mat → 검출 → BitmapSource + 박스) ----------
+        // 박스는 영상에 그리지 않고 돌려준다 — 화면에선 영상 위 BoxLayer(FrameBoxes)가 HUD 와 같은 모양으로 그린다
+        private BitmapSource ProcessFrame(Mat frame, out List<Det> dets)
+        {
+            int width = frame.Width;
+            int height = frame.Height;
+
+            // 1) BGR → BGRA (Skia 입력 포맷에 맞춤)
+            using var bgra = new Mat();
+            Cv2.CvtColor(frame, bgra, ColorConversionCodes.BGR2BGRA);
+            int stride = (int)bgra.Step();
+
+            // 2) SKBitmap이 Mat의 메모리를 직접 사용 (복사 없음)
+            var info = new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul);
+            using var skBitmap = new SKBitmap();
+            skBitmap.InstallPixels(info, bgra.Data, stride);
+
+            // 3) YOLO 추론
+            List<ObjectDetection> rawResults;
+            lock (_yoloLock)
+            {
+                rawResults = _yolo!.RunObjectDetection(
+                    skBitmap, confidence: ConfidenceThreshold, iou: IouThreshold);
+            }
+
+            // 관심 클래스만 남기고 같은 자리 중복 박스를 뺀다. 모델이 end-to-end NMS 라 일반 NMS 는 다시 돌리지 않지만,
+            // 같은 물체에 박스를 둘 이상 내는 일이 잦아(DuplicateBoxes) 그대로 두면 겹쳐 그려지고 검출 수가 부푼다
+            var targets = rawResults.Where(r => TargetClasses.Contains(r.Label.Name)).Select(r => ToDet(r, 0, 0)).ToList();
+            dets = DuplicateBoxes.Remove(targets);
+
+            // 4) Mat 메모리 → BitmapSource (네이티브 메모리에서 바로 1회 복사).
+            //    중간 byte[] 를 두면 프레임마다 수 MB 가 LOH 에 할당돼 Gen2 GC 가 잦아진다
+            var bs = BitmapSource.Create(
+                width, height, 96, 96, PixelFormats.Pbgra32, null, bgra.Data, height * stride, stride);
+            bs.Freeze();
+            return bs;
+        }
+
+        private List<Det> DetectTile(Mat tileBgr, int offsetX, int offsetY)
+        {
+            using var bgra = new Mat();
+            Cv2.CvtColor(tileBgr, bgra, ColorConversionCodes.BGR2BGRA);
+            return DetectBgra(bgra, offsetX, offsetY);
+        }
+
+        // BGRA(4채널) 이미지를 변환 없이 바로 검출한다 (화면 캡처 버퍼가 이미 BGRA).
+        // 알파는 Opaque 로 선언해 무시 — 캡처 버퍼의 알파 값과 무관하게 결과가 같다(실측 확인)
+        private List<Det> DetectBgra(Mat bgra, int offsetX, int offsetY)
+        {
+            var info = new SKImageInfo(bgra.Width, bgra.Height, SKColorType.Bgra8888, SKAlphaType.Opaque);
+            using var sk = new SKBitmap();
+            sk.InstallPixels(info, bgra.Data, (int)bgra.Step());
+
+            List<ObjectDetection> results;
+            lock (_yoloLock)
+            {
+                results = _yolo!.RunObjectDetection(sk, confidence: ConfidenceThreshold, iou: IouThreshold);
+            }
+
+            // 같은 자리 중복 박스는 여기서 빼지 않는다 — HUD 는 받자마자, SAHI 는 타일 병합(MergeCutPieces) 뒤에 뺀다.
+            // SAHI 타일마다 먼저 빼면 병합 입력이 바뀌어, 중복이 아닌 박스가 빠지거나 병합이 지웠던 박스가 되살아났다
+            // (test4·test5 실측 각 1건씩. experiments/TrackerCheck dedup)
+            var list = new List<Det>();
+            foreach (var r in results)
+                if (TargetClasses.Contains(r.Label.Name)) list.Add(ToDet(r, offsetX, offsetY));
+            return list;
+        }
+
+        private static Det ToDet(ObjectDetection r, int offsetX, int offsetY)
+        {
+            var b = r.BoundingBox;
+            return new Det(b.Left + offsetX, b.Top + offsetY, b.Width, b.Height, r.Label.Name, r.Confidence);
+        }
+    }
+}

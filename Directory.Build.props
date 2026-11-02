@@ -1,0 +1,20 @@
+﻿<Project>
+
+  <!-- OpenCvSharp 판은 이 한 곳에서 정한다 (이슈 #9). 본 앱(YOLO11_Test.csproj)과 experiments/ 의 실험 프로젝트 넷
+       (NpuBench · TrackerCheck · RuntimeParity/Old · RuntimeParity/WinML)이 두 패키지 모두 이 값을 쓴다.
+       관리 패키지(OpenCvSharp4)와 네이티브 패키지(OpenCvSharp4.runtime.win)는 반드시 같은 날짜 판이어야 한다.
+       예전 짝(관리 20260526 + 네이티브 20260302)은 관리 DLL 의 P/Invoke 진입점 2879개 중 117개(aruco·saliency·shape·ximgproc 등)가
+       네이티브 DLL 에 없었고, 이름은 같은데 인자·반환형이 바뀐 함수도 10개(LineSegmentDetector·MergeDebevec·MergeMertens) 있었다.
+       빌드는 되고, 그 함수를 부르는 순간 EntryPointNotFoundException 이 나거나 반환값을 엉뚱하게 읽는다.
+       20260302 는 두 패키지를 같은 원본 커밋(shimat/opencvsharp 4f66185)으로 만든 짝이다. 관리 쪽을 네이티브에 맞춰 내렸으므로
+       OpenCvSharpExtern.dll · opencv_videoio_ffmpeg4130_64.dll(영상 디코딩)은 예전과 바이트 단위로 같다.
+       판을 바꿀 땐 ① NuGet 에 그 날짜의 OpenCvSharp4.runtime.win 이 있는지 먼저 본다(20260526 은 관리 쪽만 나왔다)
+       ② 네이티브 DLL 이 바뀌면 디코딩·시크 동작(CLAUDE.md "파일 재생 · 시크")과 검출 결과를 다시 확인한다.
+       판은 여기서만 바꾼다: dotnet add package 로 한 패키지를 올리면 그 줄의 Version 이 숫자로 덮여 다시 어긋난다(2026-10-31 확인).
+       MSBuild 는 프로젝트 폴더에서 위로 올라가며 처음 찾은 Directory.Build.props 하나만 읽는다. 하위 폴더에 새로 두면
+       거기서 이 파일을 Import 할 것 (안 하면 Version 이 비어 복원이 NU1015 로 실패한다) -->
+  <PropertyGroup>
+    <OpenCvSharpVersion>4.13.0.20260302</OpenCvSharpVersion>
+  </PropertyGroup>
+
+</Project>

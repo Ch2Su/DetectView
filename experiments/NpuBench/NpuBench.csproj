@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- best.onnx 를 AMD NPU(Windows ML · VitisAI EP)로 돌려 GPU·CPU 와 비교하는 실험. 본 앱과 따로 빌드한다.
+       (처음엔 본 앱이 DirectML 1.23 조합이라 Windows ML 의 onnxruntime.dll(1.27)과 섞을 수 없어서였다 —
+       본 앱도 2026-10-24 Windows ML 로 바꿨다, CLAUDE.md 1번) -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- Windows ML 의 WinRT API(ExecutionProviderCatalog)는 Windows 10 SDK 버전이 붙은 TFM 이 필요하다 -->
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <!-- MSIX 없이 실행 (Windows ML 런타임은 self-contained 로 exe 옆에 복사된다) -->
+    <WindowsPackageType>None</WindowsPackageType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.AI.MachineLearning" Version="2.4.89" />
+    <!-- 본 앱과 같은 판 (테스트 영상 디코딩). 판은 저장소 루트 Directory.Build.props 의 OpenCvSharpVersion -->
+    <PackageReference Include="OpenCvSharp4" Version="$(OpenCvSharpVersion)" />
+    <PackageReference Include="OpenCvSharp4.runtime.win" Version="$(OpenCvSharpVersion)" />
+  </ItemGroup>
+
+</Project>

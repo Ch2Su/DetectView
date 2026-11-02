@@ -1,0 +1,225 @@
+<Window x:Class="YOLO11_Test.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:YOLO11_Test"
+        Title="DetectView — 실시간 객체 검출"
+        Height="820" Width="1200"
+        MinHeight="600" MinWidth="900"
+        Background="{StaticResource BaseBrush}"
+        Foreground="{StaticResource TextBrush}"
+        FontFamily="{StaticResource UiFont}"
+        FontSize="{StaticResource UiFontSize}"
+        TextOptions.TextFormattingMode="Display"
+        UseLayoutRounding="True"
+        Deactivated="Window_Deactivated">
+
+    <!-- 시안 B '관제 콘솔' (2026-11-01): 왼쪽 패널(소스·분석·추론 장치·정지) | 영상과 재생 줄, 맨 아래 창 전체 폭 상태바.
+         색·글꼴·컨트롤 모양은 App.xaml 한 곳에 있다. UI 테스트가 x:Name·버튼 글자·상태 문구로 요소를 찾으므로 바꾸면 테스트도 고칠 것 -->
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="232" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- ===== 왼쪽 패널 ===== -->
+            <!-- 최소 폭(900)에서도 모든 조작이 한눈에 보인다 (예전 가로 툴바는 두 줄로 넘어갔다). 낮은 창에선 위쪽만 스크롤되고 정지는 늘 아래에 -->
+            <Border Grid.Column="0" Background="{StaticResource SideBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,1,0">
+                <DockPanel Margin="14,16,14,14">
+                    <Button x:Name="Btn_Stop"
+                            DockPanel.Dock="Bottom" Margin="0,12,0,0"
+                            Content="정지" local:Ui.Glyph="&#xE71A;"
+                            Style="{StaticResource DangerButton}"
+                            IsEnabled="False"
+                            Click="Btn_Stop_Click"/>
+
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
+                        <StackPanel>
+                            <TextBlock Text="소스" Style="{StaticResource SectionLabel}"/>
+
+                            <!-- 지금 소스 버튼(파일·카메라·HUD)은 강조 바탕으로 켜진다 (ApplyModeToUi 의 Ui.IsActive) -->
+                            <Button x:Name="Btn_LoadVideo"
+                                    Content="파일 열기" local:Ui.Glyph="&#xED25;"
+                                    Style="{StaticResource SideButton}"
+                                    Click="Btn_LoadVideo_Click"/>
+
+                            <TextBlock Text="카메라" Style="{StaticResource FieldLabel}"/>
+                            <ComboBox x:Name="CameraSelector"/>
+                            <Grid Margin="0,6,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Button x:Name="Btn_RefreshCameras"
+                                        Content="새로고침" local:Ui.Glyph="&#xE72C;" local:Ui.IconOnly="True"
+                                        Width="34" Margin="0,0,6,0"
+                                        Style="{StaticResource SideButton}"
+                                        ToolTip="카메라·모니터 목록 새로고침"
+                                        Click="Btn_RefreshCameras_Click"/>
+                                <Button x:Name="Btn_StartCamera" Grid.Column="1"
+                                        Content="카메라 시작" local:Ui.Glyph="&#xE714;"
+                                        Style="{StaticResource SideButton}"
+                                        Click="Btn_StartCamera_Click"/>
+                            </Grid>
+
+                            <TextBlock Text="모니터" Style="{StaticResource FieldLabel}"/>
+                            <ComboBox x:Name="MonitorSelector"/>
+                            <Button x:Name="Btn_Screen" Margin="0,6,0,0"
+                                    Content="화면 HUD" local:Ui.Glyph="&#xE9A6;"
+                                    Style="{StaticResource SideButton}"
+                                    ToolTip="바탕화면을 실시간 캡처해, 화면 위에 투명 오버레이로 검출 박스를 표시합니다"
+                                    Click="Btn_Screen_Click"/>
+
+                            <TextBlock Text="분석" Style="{StaticResource SectionLabel}" Margin="0,22,0,8"/>
+                            <Button x:Name="Btn_Sahi"
+                                    Content="정밀 분석(SAHI)" local:Ui.Glyph="&#xE8A3;"
+                                    Style="{StaticResource SideButton}"
+                                    IsEnabled="False"
+                                    ToolTip="현재 프레임을 타일로 나눠 정밀 검출합니다 (작은 객체에 유리, 다소 느림)"
+                                    Click="Btn_Sahi_Click"/>
+
+                            <!-- 추론 장치. NPU 를 쓸 수 없으면 항목을 막고 사유를 툴팁에 둔다 (막힌 항목도 툴팁이 뜨게 ShowOnDisabled).
+                                 준비 진행은 상태바 오른쪽 Txt_Device 에 — 상태바는 HUD 캡처의 무시 영역이라 매초 바뀌어도 새 화면으로 치지 않는다 -->
+                            <TextBlock Text="추론 장치" Style="{StaticResource SectionLabel}" Margin="0,22,0,8"/>
+                            <ComboBox x:Name="InferenceSelector"
+                                      local:Ui.Glyph="&#xE950;"
+                                      ToolTipService.ShowDuration="60000"
+                                      SelectionChanged="InferenceSelector_SelectionChanged">
+                                <ComboBoxItem x:Name="Item_Gpu" Content="GPU" IsSelected="True"/>
+                                <ComboBoxItem x:Name="Item_Npu" Content="NPU" IsEnabled="False"
+                                              ToolTipService.ShowOnDisabled="True"
+                                              ToolTipService.ShowDuration="60000"/>
+                            </ComboBox>
+                        </StackPanel>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+
+            <!-- ===== 영상 + 재생 줄 ===== -->
+            <Grid Grid.Column="1" Margin="12">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Border Grid.Row="0" Background="Black" BorderBrush="{StaticResource LineBrush}" BorderThickness="1">
+                    <Grid ClipToBounds="True">
+                        <!-- 모서리 눈금은 영상 뒤에 — 영상이 채우면 가려지고 레터박스·빈 화면에서만 보인다 -->
+                        <Border Style="{StaticResource CornerTick}" HorizontalAlignment="Left" VerticalAlignment="Top" BorderThickness="2,2,0,0"/>
+                        <Border Style="{StaticResource CornerTick}" HorizontalAlignment="Right" VerticalAlignment="Top" BorderThickness="0,2,2,0"/>
+                        <Border Style="{StaticResource CornerTick}" HorizontalAlignment="Left" VerticalAlignment="Bottom" BorderThickness="2,0,0,2"/>
+                        <Border Style="{StaticResource CornerTick}" HorizontalAlignment="Right" VerticalAlignment="Bottom" BorderThickness="0,0,2,2"/>
+
+                        <Image x:Name="MainImage" Stretch="Uniform" />
+                        <!-- 검출 박스는 영상에 굽지 않고 그 위에 벡터로 그린다 — HUD 오버레이와 같은 BoxLayer 라 모양이 같고,
+                             창·영상 크기와 상관없이 선 굵기·라벨 글자 크기가 일정하다. 클래스별 개수 범례도 이 칸의 왼쪽 위 모서리에 같이 그린다
+                             (레터박스가 있으면 그 검은 띠 위라 영상을 안 가린다). 범례 글자는 Txt_DetectionCount 의 UIA ItemStatus 로 나간다 -->
+                        <local:BoxLayer x:Name="FrameBoxes" />
+
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" IsHitTestVisible="False">
+                            <TextBlock Text="&#xE9A6;" FontFamily="{StaticResource IconFont}" FontSize="40"
+                                       Foreground="{StaticResource EdgeBrush}" HorizontalAlignment="Center" Margin="0,0,0,14"
+                                       Visibility="{Binding Visibility, ElementName=PlaceholderText}"/>
+                            <TextBlock x:Name="PlaceholderText"
+                                       Text="파일을 열거나 카메라를 시작하세요"
+                                       Foreground="{StaticResource SubTextBrush}"
+                                       FontSize="15"
+                                       HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- ===== 재생 줄 ===== -->
+                <Grid Grid.Row="1" Margin="0,10,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Button x:Name="Btn_PlayPause"
+                            Grid.Column="0"
+                            Content="재생"
+                            Width="100"
+                            Style="{StaticResource PlayButton}"
+                            IsEnabled="False"
+                            Click="Btn_PlayPause_Click"/>
+
+                    <!-- 드래그 중 표시는 썸의 드래그 시작·끝으로 (MainWindow.xaml.cs — 캡처를 잃어도 DragCompleted 가 온다) -->
+                    <Slider x:Name="VideoSlider"
+                            Grid.Column="1"
+                            VerticalAlignment="Center" Margin="14,0"
+                            IsEnabled="False"
+                            IsMoveToPointEnabled="True"
+                            Thumb.DragStarted="VideoSlider_DragStarted"
+                            Thumb.DragCompleted="VideoSlider_DragCompleted"
+                            ValueChanged="VideoSlider_ValueChanged"/>
+
+                    <TextBlock x:Name="Txt_Time"
+                               Grid.Column="2"
+                               Text="00:00 / 00:00"
+                               FontFamily="{StaticResource MonoFont}"
+                               VerticalAlignment="Center"
+                               MinWidth="110" TextAlignment="Right"/>
+                </Grid>
+            </Grid>
+        </Grid>
+
+        <!-- ===== 상태바 (창 전체 폭) ===== -->
+        <!-- HUD 캡처의 무시 영역(_hudIgnoreRegion)이다 — 자주 바뀌는 표시(FPS·검출 수·NPU 진행)는 이 안에만 둔다. 밖에서 바뀌면 DXGI 가
+             새 화면을 줘 정지 화면에서도 추론이 돈다. 숫자 칸도 UI 글꼴인 이유: 고정폭 글꼴이면 최소 폭(900)에서 HUD 상태 문구 칸이 16px 좁아졌다 -->
+        <Border x:Name="StatusBarPanel" Grid.Row="1" Height="28" Padding="12,0"
+                Background="{StaticResource StatusBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0"
+                TextElement.FontSize="{StaticResource StatusFontSize}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <!-- 소스가 켜져 있으면 초록 (ApplyModeToUi) -->
+                <TextBlock x:Name="StatusDot" Grid.Column="0" Text="●"
+                           Foreground="{StaticResource MutedTextBrush}"
+                           Margin="0,0,8,0" VerticalAlignment="Center"/>
+
+                <!-- 폭을 넘으면 "…" 로 줄인다 (그냥 잘리면 잘린 줄도 모름). 긴 안내는 툴팁(코드에서 설정)으로,
+                     여러 줄이라 기본 5초로는 다 못 읽어 1분까지 띄운다 -->
+                <TextBlock x:Name="Txt_Status"
+                           Grid.Column="1"
+                           Text="준비"
+                           TextTrimming="CharacterEllipsis"
+                           ToolTipService.ShowDuration="60000"
+                           VerticalAlignment="Center"/>
+
+                <!-- 오른쪽 칸들 (오른쪽 끝에 붙은 StackPanel — 한 칸이 넓어지면 그 왼쪽 칸이 모두 밀린다).
+                     FPS·검출 수 칸은 폭을 고정한다(MinWidth): 예전엔 내용 폭이라 값이 바뀔 때마다(87.3 → 102.1 FPS, 검출 9 → 15) 해상도·NPU 진행 글자가 밀렸다.
+                     숫자는 같은 폭으로(Typography.NumeralAlignment=Tabular) — 이 글꼴은 12px Display 에서 '1' 이 '8' 보다 1px 좁아 자릿수가 같아도 FPS 글자 폭이 흔들렸다
+                     ('검출 N' 처럼 한글 뒤 숫자는 맑은 고딕으로 그려져 듣지 않는다 — 칸 폭 고정으로 충분).
+                     고정 폭(App.xaml 의 Status…Width)은 상태바 글꼴로 잰 가장 넓은 평소 글자: FPS 칸은 파일·카메라에선 숫자 '999.9 FPS', HUD 에선 그 자리에 숫자와
+                     번갈아 뜨는 '대기 (화면 변화 없음)' — HUD 에서 FPS ↔ 대기가 자주 바뀌어도 안 밀리게, 평소엔 FPS 앞이 비지 않게 ApplyModeToUi 가 모드에 따라 고른다
+                     (숫자는 오른쪽 맞춤). 검출 칸은 '검출 999'. 더 넓은 글자('검출 N (SAHI)')가 올 때만 칸이 넓어진다.
+                     최소 창 폭(900)에서 상태 문구 칸은 HUD(FPS 칸이 가장 넓음)일 때도 가장 긴 HUD 문구(568px)가 들어간다 (2026-11-02 잼 — CLAUDE.md '화면 HUD') -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal">
+                    <!-- NPU 준비·되돌리기 진행(경고 색)과 실패(위험 색)만 잠깐 보인다 (평소엔 숨김 — 상태바 폭을 Txt_Status 에 남긴다) -->
+                    <TextBlock x:Name="Txt_Device"
+                               Foreground="{StaticResource WarnBrush}"
+                               Margin="18,0,0,0" VerticalAlignment="Center"
+                               Typography.NumeralAlignment="Tabular"
+                               ToolTipService.ShowDuration="60000"
+                               Visibility="Collapsed"/>
+                    <TextBlock x:Name="Txt_Resolution" Margin="18,0,0,0" VerticalAlignment="Center" Typography.NumeralAlignment="Tabular"/>
+                    <TextBlock x:Name="Txt_InferenceFps" Margin="18,0,0,0" VerticalAlignment="Center" Typography.NumeralAlignment="Tabular"
+                               MinWidth="{DynamicResource StatusFpsWidth}" TextAlignment="Right"/>
+                    <TextBlock x:Name="Txt_DetectionCount" Margin="18,0,0,0" VerticalAlignment="Center" Typography.NumeralAlignment="Tabular"
+                               MinWidth="{StaticResource StatusCountWidth}"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

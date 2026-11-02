@@ -1,0 +1,24 @@
+# ── 빌드 산출물 ────────────────────────────────────────────────
+/bin/
+/obj/
+/publish_gpu_ver/
+/.vs/
+*.user
+# 실험 프로젝트 산출물 (NPU 컴파일 캐시·프로파일·로그 포함)
+/experiments/**/bin/
+/experiments/**/obj/
+/experiments/*/out/
+/experiments/*/.venv/
+# Test-NpuSwitch.ps1 가 exe 폴더를 하드 링크로 본뜨는 임시 폴더 (테스트가 끝나면 지운다)
+*.npu-test/
+
+# ── 이전 버전 보관본 ───────────────────────────────────────────
+# .csproj 에서도 컴파일 제외 대상이고, graft 인덱스에서도 빼야 한다
+# (백업본의 InitializeYoloModel 등이 검색 결과를 차지하기 때문).
+# graft 는 `git ls-files --exclude-standard` 로만 무시 규칙을 적용하므로,
+# 추적(tracked)되면 여기 적어도 인덱싱된다 → 절대 커밋하지 말 것.
+/old/
+
+# ── graft 로컬 캐시 ────────────────────────────────────────────
+# 재생성 가능한 그래프. `graft build` 로 다시 만든다.
+/graft/

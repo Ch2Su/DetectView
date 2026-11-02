@@ -1,0 +1,77 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <!-- Windows ML(ExecutionProviderCatalog 등 WinRT API)은 Windows SDK 버전이 붙은 TFM(18362 이상)이 필요하다.
+         22621 미만으로 둔다: Vortice.DXGI 는 net10.0-windows10.0.22621 전용 빌드가 따로 있어, 그 이상이면 다른 어셈블리로 바뀐다 -->
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>DetectView</AssemblyName>
+    <Product>DetectView</Product>
+    <!-- MSIX 없이 실행. Windows ML 런타임(onnxruntime·DirectML)은 self-contained 로 exe 옆(단일 파일이면 안)에 들어간다 -->
+    <WindowsPackageType>None</WindowsPackageType>
+  </PropertyGroup>
+
+  <!-- 보관용 old/ 와 배포 산출물 publish*/ (publish_gpu_ver 등) 는 빌드 대상에서 제외.
+       experiments/ 는 따로 빌드하는 실험 프로젝트들(자기 .csproj 가 있음)이라 여기 섞이면 안 된다 -->
+  <ItemGroup>
+    <Compile Remove="old\**" />
+    <Page Remove="old\**" />
+    <ApplicationDefinition Remove="old\**" />
+    <Resource Remove="old\**" />
+    <None Remove="old\**" />
+    <Compile Remove="publish*\**" />
+    <Page Remove="publish*\**" />
+    <None Remove="publish*\**" />
+    <Compile Remove="experiments\**" />
+    <Page Remove="experiments\**" />
+    <None Remove="experiments\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- MainWindow 의 partial 파일들을 솔루션 탐색기에서 MainWindow.xaml 아래에 묶어 표시 -->
+    <Compile Update="MainWindow.*.cs" DependentUpon="MainWindow.xaml" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- YOLO ONNX 모델을 빌드 출력 폴더로 복사 (실행 시 실행 파일과 같은 위치 필요) -->
+    <None Include="best.onnx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <!-- NPU 짝 모델 (tools\Make-NpuModel.ps1). 빌드 출력에는 루트 best.onnx 와 같이 복사돼 짝이 맞는다.
+         publish 에는 복사하지 않는다: 배포 폴더는 best.onnx 를 따로 바꿔 쓰므로 루트 짝을 덮어쓰면 짝이 어긋난다
+         → 배포 폴더의 짝은 그 모델로 도구를 돌려 만든다 (-Model publish_gpu_ver\best.onnx) -->
+    <None Include="best.npu.onnx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="DirectShowLib.Standard" Version="2.1.0" />
+    <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
+    <PackageReference Include="Vortice.DXGI" Version="3.8.3" />
+    <!-- OpenCvSharp 관리·네이티브 두 패키지는 같은 날짜 판이어야 한다 → 판은 Directory.Build.props 의 OpenCvSharpVersion 한 곳에 (이슈 #9) -->
+    <PackageReference Include="OpenCvSharp4" Version="$(OpenCvSharpVersion)" />
+    <PackageReference Include="OpenCvSharp4.runtime.win" Version="$(OpenCvSharpVersion)" />
+    <PackageReference Include="SkiaSharp" Version="3.119.2" />
+    <PackageReference Include="YoloDotNet" Version="4.2.0" />
+
+    <!-- ONNX Runtime 은 Windows ML 것 하나만 쓴다 (onnxruntime 1.27 + DirectML 포함, 나중에 NPU EP 도 같은 런타임에 붙는다).
+         Microsoft.ML.OnnxRuntime.* 나 YoloDotNet.ExecutionProvider.* 패키지를 다시 넣지 말 것 — 같은 이름의
+         Microsoft.ML.OnnxRuntime 어셈블리·onnxruntime.dll 이 겹친다. 실행 공급자는 WindowsMlExecutionProvider.cs -->
+    <PackageReference Include="Microsoft.Windows.AI.MachineLearning" Version="2.4.89" />
+  </ItemGroup>
+
+  <!-- publish 출력에서 디버그 심볼(pdb, 약 92 MB: libSkiaSharp·DirectML)과 import lib 를 뺀다.
+       실행에는 필요 없고, exe 옆에 흩어져 배포 폴더만 키운다 -->
+  <Target Name="ExcludeSymbolsFromPublish" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Extension)' == '.pdb' Or '%(Extension)' == '.lib'" />
+    </ItemGroup>
+  </Target>
+
+</Project>
