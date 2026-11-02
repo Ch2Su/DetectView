@@ -52,6 +52,7 @@ namespace YOLO11_Test
             _playSignal.Set();
             _isPlaying = true;
             Btn_PlayPause.Content = "일시정지";
+            UpdateRoiUi();
 
             var token = _cts.Token;
             _playbackTask = Task.Run(() => PlaybackLoop(token), token);
@@ -477,6 +478,7 @@ namespace YOLO11_Test
             VideoSlider.Value = VideoSlider.Maximum;
             _isPlaybackUpdatingSlider = false;
             Txt_Status.Text = "재생 완료";
+            UpdateRoiUi();   // 끝까지 재생했으면 멈춘 것 — 구역을 편집할 수 있다
         }
 
         private void OnCameraLost()

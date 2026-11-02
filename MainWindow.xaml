@@ -83,6 +83,53 @@
                                     ToolTip="현재 프레임을 타일로 나눠 정밀 검출합니다 (작은 객체에 유리, 다소 느림)"
                                     Click="Btn_Sahi_Click"/>
 
+                            <!-- 관심 구역(ROI): 파일 재생을 멈춘 채 영상 위에서 그린다 (RoiLayer.cs · MainWindow.Roi.cs). 구역은 영상 파일 옆
+                                 <이름>.roi.json 에 바뀔 때마다 바로 저장된다. 편집할 수 없을 땐(재생 중·파일이 아님) 막고 사유를 툴팁에 (ShowOnDisabled) -->
+                            <Grid Margin="0,22,0,8">
+                                <TextBlock Text="구역" Style="{StaticResource SectionLabel}" Margin="0"/>
+                                <!-- 개수. 툴팁에 구역 파일 경로 (예전엔 목록 아래 줄로 보였지만, 그 한 줄 때문에 기본 창 높이에서 '추론 장치' 콤보가 스크롤 아래로 밀렸다) -->
+                                <TextBlock x:Name="Txt_ZoneCount" HorizontalAlignment="Right"
+                                           FontSize="{StaticResource LabelFontSize}" Foreground="{StaticResource SubTextBrush}"
+                                           ToolTipService.ShowDuration="60000"/>
+                            </Grid>
+                            <!-- 3줄까지 보이고 그 위로는 목록 안에서 스크롤 — 기본 창 높이(820)에서 패널 전체가 스크롤 없이 보이게 -->
+                            <ListBox x:Name="ZoneList" Style="{StaticResource ZoneListBox}" MaxHeight="99"
+                                     ToolTipService.ShowOnDisabled="True"
+                                     SelectionChanged="ZoneList_SelectionChanged">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal">
+                                            <Border Width="10" Height="10" Margin="0,0,8,0" VerticalAlignment="Center"
+                                                    Background="{Binding FillBrush}" BorderBrush="{Binding Brush}" BorderThickness="1"/>
+                                            <TextBlock Text="{Binding Label}" Width="26" VerticalAlignment="Center"
+                                                       FontFamily="{StaticResource MonoFont}" FontSize="11" Foreground="{Binding Brush}"/>
+                                            <TextBlock Text="{Binding KindName}" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <Grid Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="6" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Button x:Name="Btn_ZoneAdd"
+                                        Content="추가" local:Ui.Glyph="&#xE710;"
+                                        Height="30" Style="{StaticResource SideButton}"
+                                        ToolTipService.ShowOnDisabled="True"
+                                        Click="Btn_ZoneAdd_Click"/>
+                                <Button x:Name="Btn_ZoneDelete" Grid.Column="2"
+                                        Content="지우기" local:Ui.Glyph="&#xE74D;" local:Ui.GlyphBrush="{StaticResource DangerBrush}"
+                                        Height="30" Style="{StaticResource SideButton}"
+                                        ToolTipService.ShowOnDisabled="True"
+                                        Click="Btn_ZoneDelete_Click"/>
+                            </Grid>
+                            <TextBlock Text="선택한 구역 유형" Style="{StaticResource FieldLabel}"/>
+                            <ComboBox x:Name="ZoneKindSelector"
+                                      ToolTipService.ShowOnDisabled="True"
+                                      SelectionChanged="ZoneKindSelector_SelectionChanged"/>
+
                             <!-- 추론 장치. NPU 를 쓸 수 없으면 항목을 막고 사유를 툴팁에 둔다 (막힌 항목도 툴팁이 뜨게 ShowOnDisabled).
                                  준비 진행은 상태바 오른쪽 Txt_Device 에 — 상태바는 HUD 캡처의 무시 영역이라 매초 바뀌어도 새 화면으로 치지 않는다 -->
                             <TextBlock Text="추론 장치" Style="{StaticResource SectionLabel}" Margin="0,22,0,8"/>
@@ -116,6 +163,8 @@
                         <Border Style="{StaticResource CornerTick}" HorizontalAlignment="Right" VerticalAlignment="Bottom" BorderThickness="0,0,2,2"/>
 
                         <Image x:Name="MainImage" Stretch="Uniform" />
+                        <!-- 관심 구역(ROI): 박스 밑에 깐다 — 박스·라벨이 구역 위에 보이고, 편집 중(멈춘 파일)에만 마우스를 받는다 (BoxLayer 는 마우스를 통과시킨다) -->
+                        <local:RoiLayer x:Name="ZoneLayer" />
                         <!-- 검출 박스는 영상에 굽지 않고 그 위에 벡터로 그린다 — HUD 오버레이와 같은 BoxLayer 라 모양이 같고,
                              창·영상 크기와 상관없이 선 굵기·라벨 글자 크기가 일정하다. 클래스별 개수 범례도 이 칸의 왼쪽 위 모서리에 같이 그린다
                              (레터박스가 있으면 그 검은 띠 위라 영상을 안 가린다). 범례 글자는 Txt_DetectionCount 의 UIA ItemStatus 로 나간다 -->

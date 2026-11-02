@@ -116,6 +116,11 @@ namespace YOLO11_Test
                 // 이전 파일의 시크 요청, 위의 슬라이더 초기화(Value=0)가 남긴 요청을 버린다
                 _pendingSeekMs = double.NaN;
                 _atEof = false;
+
+                // 영상 옆 구역 파일(<영상>.roi.json)을 읽는다 (재생 시작 전에 — 시작하면 편집이 꺼진다). 못 읽으면 사유를 상태바에
+                string? roiWarning = LoadRoi(path, cap.Get(VideoCaptureProperties.FrameWidth), cap.Get(VideoCaptureProperties.FrameHeight));
+                if (roiWarning != null) Txt_Status.Text = roiWarning;
+
                 StartPlayback();
             }
             catch (Exception ex)

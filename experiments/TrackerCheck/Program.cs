@@ -471,6 +471,116 @@ int SelfTest()
         Check(raw.Ids == 60 && !raw.Last, $"  └ 시계를 안 자르면 프레임마다 트랙이 만료돼 새 번호 {raw.Ids}개 · 끝 상태 {(raw.Last ? "정지" : "움직임")} — 장면이 문제를 건드림");
     }
 
+    // ⑧ 관심 구역(ROI, 2026-11-03): Roi.cs — 순수 모델·기하·파일. 앱의 편집 화면(RoiLayer)은 UI 테스트 Test-Roi.ps1 이 본다
+    {
+        // 사다리꼴 차로(아래가 넓고 위로 좁아짐) · 갓길 · 차로 안의 작은 정지선·대기 구역 · 맨 위 무시 띠 (프레임 0~1 좌표)
+        RoiPoint[] lane = [new(0.40, 1.0), new(0.64, 1.0), new(0.52, 0.30), new(0.48, 0.30)];
+        var set = new RoiSet();
+        var z1 = set.Add(RoiKind.Lane, lane);
+        var z2 = set.Add(RoiKind.Shoulder, [new(0.80, 1.0), new(1.0, 1.0), new(1.0, 0.40), new(0.85, 0.40)]);
+        var z3 = set.Add(RoiKind.Stopline, [new(0.46, 0.90), new(0.58, 0.90), new(0.58, 0.95), new(0.46, 0.95)]);
+        var z4 = set.Add(RoiKind.Ignore, [new(0, 0), new(1, 0), new(1, 0.10), new(0, 0.10)]);
+
+        Check(z1.Contains(0.5, 0.8) && !z1.Contains(0.2, 0.8) && !z1.Contains(0.5, 0.2) && !z1.Contains(0.9, 0.8),
+              "구역 안·밖 판정 (사다리꼴 차로)");
+        double area = RoiGeometry.Area(lane);
+        Check(Math.Abs(area - 0.098) < 1e-9, $"넓이: 사다리꼴 {area:0.#####} (손계산 0.098)");
+        var cen = RoiGeometry.Centroid(lane);
+        Check(z1.Contains(cen.X, cen.Y), $"무게중심 ({cen.X:0.###}, {cen.Y:0.###}) 이 구역 안 — 라벨이 구역 밖에 놓이지 않는다");
+        Check(RoiGeometry.Area([new(0, 0), new(0.5, 0.5), new(1, 1)]) < 1e-9, "한 줄로 놓인 점은 넓이 0 (닫을 수 없는 구역을 거른다)");
+
+        Check(set.ZoneAt(0.5, 0.92)?.Id == z3.Id && set.ZoneAt(0.5, 0.70)?.Id == z1.Id && set.ZoneAt(0.9, 0.7)?.Id == z2.Id
+              && set.ZoneAt(0.5, 0.05)?.Id == z4.Id && set.ZoneAt(0.1, 0.5) == null,
+              "점이 놓인 구역 고르기: 겹치면 가장 작은 것 (차로 안 정지선·대기), 빈 곳은 없음");
+        Check(set.ZoneAt(-0.1, 0.5) == null && set.ZoneAt(0.5, 1.2) == null, "프레임 밖(0~1 밖)은 구역이 없음 — 레터박스를 눌러도 고르지 않는다");
+
+        // 화면 DIP 에서 점·변 가운데 ○ 를 집는 판정 (RoiLayer 가 같은 함수를 쓴다)
+        List<(double X, double Y)> dip = [(100, 100), (300, 100), (300, 200), (100, 200)];
+        Check(RoiGeometry.NearestVertex(dip, 104, 97, 9) == 0 && RoiGeometry.NearestVertex(dip, 299, 201, 9) == 2
+              && RoiGeometry.NearestVertex(dip, 150, 150, 9) == -1 && RoiGeometry.NearestVertex(dip, 112, 100, 9) == -1,
+              "점 집기: 반경 안의 가장 가까운 점, 밖이면 없음");
+        Check(RoiGeometry.NearestEdgeMidpoint(dip, 202, 103, 8, 28) == 0 && RoiGeometry.NearestEdgeMidpoint(dip, 300, 152, 8, 28) == 1
+              && RoiGeometry.NearestEdgeMidpoint(dip, 200, 200, 8, 28) == 2 && RoiGeometry.NearestEdgeMidpoint(dip, 100, 150, 8, 28) == 3
+              && RoiGeometry.NearestEdgeMidpoint(dip, 150, 150, 8, 28) == -1,
+              "변 가운데 ○ 집기: 변 번호(점 i → i+1), 밖이면 없음");
+        List<(double X, double Y)> tiny = [(0, 0), (10, 0), (10, 10), (0, 10)];
+        Check(RoiGeometry.NearestEdgeMidpoint(tiny, 5, 0, 8, 28) == -1, "짧은 변(28 미만)엔 ○ 가 없어 집히지 않는다");
+
+        // 번호: 지운 번호를 다시 쓰지 않고, 파일에 적어 다시 읽어도 이어진다
+        Check(z1.Id == 1 && z2.Id == 2 && z3.Id == 3 && z4.Id == 4 && set.NextId == 5, "구역 번호는 1 부터 차례로");
+        set.Remove(z2.Id);
+        var z5 = set.Add(RoiKind.Lane, [new(0.1, 0.5), new(0.3, 0.5), new(0.2, 0.7)]);
+        Check(z5.Id == 5 && set.Find(2) == null, $"지운 번호(2)를 다시 쓰지 않음: 새 구역 Z{z5.Id}");
+        bool threw = false;
+        try { set.Add(RoiKind.Lane, [new(0, 0), new(1, 1)]); } catch (ArgumentException) { threw = true; }
+        Check(threw && set.Zones.Count == 4, "점이 3개 미만인 구역은 만들 수 없음");
+
+        // JSON 왕복
+        set.Remove(z5.Id);   // 가장 큰 번호를 지워도 nextId(6)가 파일에 남아야 한다
+        string json = set.ToJson();
+        var back = RoiSet.FromJson(json);
+        bool same = back.Zones.Count == set.Zones.Count && back.NextId == set.NextId;
+        for (int i = 0; same && i < set.Zones.Count; i++)
+        {
+            var a = set.Zones[i];
+            var b = back.Zones[i];
+            same = a.Id == b.Id && a.Kind == b.Kind && a.Points.Count == b.Points.Count
+                   && a.Points.Zip(b.Points).All(p => Math.Abs(p.First.X - p.Second.X) < 1e-5 && Math.Abs(p.First.Y - p.Second.Y) < 1e-5);
+        }
+        Check(same && back.NextId == 6, $"JSON 왕복: 번호·유형·점이 그대로, nextId {back.NextId} 도 이어짐");
+        Check(json.Contains("\"kind\": \"stopline\"") && json.Contains("\"version\": 1"), "파일에 적히는 이름: version·kind(lane·shoulder·stopline·ignore)");
+
+        // 읽지 못하는 파일은 모두 FormatException (사유가 메시지에) — 앱은 이걸 받아 .bad 로 복사하고 빈 구역으로 시작한다
+        string[] bad =
+        [
+            "", "not json", "[]", "{}",
+            "{\"version\": 2, \"zones\": []}",
+            "{\"version\": 1}",
+            "{\"version\": 1, \"zones\": {}}",
+            "{\"version\": 1, \"nextId\": 0, \"zones\": []}",
+            "{\"version\": 1, \"zones\": [{\"id\": 0, \"kind\": \"lane\", \"points\": [[0,0],[1,0],[1,1]]}]}",
+            "{\"version\": 1, \"zones\": [{\"id\": 1, \"kind\": \"road\", \"points\": [[0,0],[1,0],[1,1]]}]}",
+            "{\"version\": 1, \"zones\": [{\"id\": 1, \"kind\": \"lane\", \"points\": [[0,0],[1,0]]}]}",
+            "{\"version\": 1, \"zones\": [{\"id\": 1, \"kind\": \"lane\", \"points\": [[0,0],[1,0],[1,1,1]]}]}",
+            "{\"version\": 1, \"zones\": [{\"id\": 1, \"kind\": \"lane\", \"points\": [[0,0],[1,0],[1,\"a\"]]}]}",
+            "{\"version\": 1, \"zones\": [{\"id\": 1, \"kind\": \"lane\", \"points\": [[0,0],[1,0],[1,1]]}, {\"id\": 1, \"kind\": \"lane\", \"points\": [[0,0],[1,0],[1,1]]}]}",
+        ];
+        int notRejected = 0;
+        string first = "";
+        foreach (var b in bad)
+        {
+            try { RoiSet.FromJson(b); notRejected++; first = first == "" ? b : first; }
+            catch (FormatException) { }
+            catch (Exception ex) { notRejected++; first = first == "" ? $"{b} → {ex.GetType().Name}" : first; }
+        }
+        Check(notRejected == 0, $"잘못된 구역 파일 {bad.Length}가지가 모두 FormatException 으로 거부됨 {(notRejected == 0 ? "" : $"(통과해 버린 것: {first})")}");
+        var clamped = RoiSet.FromJson("{\"version\": 1, \"zones\": [{\"id\": 3, \"kind\": \"ignore\", \"points\": [[-0.5,0],[2,0],[1,1]]}]}");
+        Check(clamped.Zones[0].Points.All(p => p.X is >= 0 and <= 1 && p.Y is >= 0 and <= 1) && clamped.NextId == 4,
+              "손으로 고친 0~1 밖 좌표는 안으로 맞추고, nextId 가 없으면 가장 큰 번호 + 1");
+
+        // 파일 입출력 (임시 폴더)
+        string dir = Path.Combine(Path.GetTempPath(), "roi-selftest-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            string path = RoiSet.PathFor(Path.Combine(dir, "clip.mp4"));
+            Check(Path.GetFileName(path) == "clip.mp4.roi.json", $"파일 이름: {Path.GetFileName(path)}");
+            Check(RoiSet.Load(path).Zones.Count == 0, "구역 파일이 없으면 빈 구역들");
+            set.Save(path);
+            byte[] head = File.ReadAllBytes(path).Take(3).ToArray();
+            Check(File.Exists(path) && !File.Exists(path + ".tmp") && !(head.Length == 3 && head[0] == 0xEF && head[1] == 0xBB && head[2] == 0xBF),
+                  "저장: 파일이 생기고 임시 파일은 남지 않으며 UTF-8 BOM 이 없음");
+            Check(RoiSet.Load(path).Zones.Count == set.Zones.Count, "저장한 파일을 다시 읽음");
+            File.WriteAllText(path, "{ 깨진 파일");
+            bool broke = false;
+            try { RoiSet.Load(path); } catch (FormatException) { broke = true; }
+            Check(broke, "깨진 파일을 읽으면 FormatException");
+            new RoiSet().Save(path);
+            Check(!File.Exists(path), "구역이 하나도 없으면 저장이 파일을 지움 (빈 파일을 영상 옆에 남기지 않는다)");
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
     // 한계 (통과·실패 없이 보이기만): 박스만으로는 움직임을 잴 수 없거나 나가는 차와 구분되지 않는 경우
     {
         var scene = NewScene(3000);

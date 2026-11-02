@@ -92,6 +92,14 @@
         <sys:Double x:Key="Box.FullSizeFrom">48</sys:Double>
         <sys:Double x:Key="Box.MinScale">0.6</sys:Double>
 
+        <!-- ===== 관심 구역 (RoiLayer·왼쪽 패널 '구역' 목록 — 처음 쓸 때 한 번 읽는다) =====
+             키 = "Roi." + 구역 유형(RoiKinds.Key). 색은 박스 클래스 색과 겹치지 않는 계열 — 차로 = 강조색, 갓길 = 호박, 정지선·대기 = 보라, 무시 = 회청(점선) -->
+        <Color x:Key="Roi.lane">#6CB2FF</Color>
+        <Color x:Key="Roi.shoulder">#F5B94A</Color>
+        <Color x:Key="Roi.stopline">#B9A2FF</Color>
+        <Color x:Key="Roi.ignore">#94A3B8</Color>
+        <sys:Double x:Key="Roi.FillOpacity">0.16</sys:Double>    <!-- 구역 안쪽 칠의 불투명도 — 영상이 비쳐 보이게 -->
+
         <!-- ===== 글꼴 =====
              UI: 라틴은 Segoe UI Variable, 한글은 맑은 고딕으로 넘어간다 (WPF 가 글자마다 목록 순서대로 찾는다).
              상태바 크기를 바꾸면 최소 폭(900)에서 HUD 상태 문구가 말줄임되지 않는지 다시 잴 것 (CLAUDE.md '상태바') -->
@@ -346,6 +354,60 @@
                                 <Setter Property="Foreground" Value="{StaticResource DisabledTextBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ===== 구역 목록 (왼쪽 패널 '구역') — 항목은 RoiListItem (MainWindow.Roi.cs). 고른 항목은 '지금 소스 버튼'과 같은 강조 바탕.
+             UIA 이름은 "Z1 차로" (AutomationProperties.Name 을 DisplayName 에 묶는다) ===== -->
+        <Style x:Key="ZoneListItem" TargetType="ListBoxItem">
+            <Setter Property="Height" Value="30"/>
+            <Setter Property="Margin" Value="0,0,0,3"/>
+            <Setter Property="Padding" Value="8,0"/>
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="AutomationProperties.Name" Value="{Binding DisplayName}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="bd" Background="{StaticResource RaisedBrush}" BorderBrush="{StaticResource EdgeBrush}" BorderThickness="1"
+                                CornerRadius="3" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{StaticResource RaisedHoverBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{StaticResource AccentBackBrush}"/>
+                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                                <Setter Property="Foreground" Value="{StaticResource BrightTextBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="bd" Property="Background" Value="{StaticResource SideBrush}"/>
+                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource LineBrush}"/>
+                                <Setter Property="Foreground" Value="{StaticResource DisabledTextBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="ZoneListBox" TargetType="ListBox">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="ItemContainerStyle" Value="{StaticResource ZoneListItem}"/>
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
+            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBox">
+                        <ScrollViewer Focusable="False" Padding="{TemplateBinding Padding}">
+                            <ItemsPresenter/>
+                        </ScrollViewer>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>

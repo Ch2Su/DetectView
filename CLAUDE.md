@@ -55,10 +55,13 @@ dotnet publish YOLO11_Test.csproj -c Release -r win-x64 --self-contained true -p
 | `MainWindow.Screen.cs` | 화면 HUD: 모니터 선택, 캡처 루프(`ScreenLoop` — 첫 캡처 결과 보고·캡처 복구·모니터 배치 감시·추적기), 오버레이 갱신, 상태바 무시 영역, FPS 칸 문제 표시, UIA 진단 값 |
 | `MainWindow.Inference.cs` | 모델 로드, GPU 선택(`SelectBestGpu`·`CreateGpuYolo` — 판정은 `GpuAdapters`), `ProcessFrame`, `DetectTile`/`DetectBgra` |
 | `MainWindow.Npu.cs` | 추론 장치 GPU ↔ NPU: 왼쪽 패널 "추론 장치" 선택, 짝 모델 확인 → VitisAI EP 준비 → 백그라운드 컴파일 → `_yolo` 교체 (아래 "NPU") |
+| `MainWindow.Roi.cs` | 왼쪽 패널 '구역' 절(목록·추가/지우기·유형)과 `RoiLayer` 를 잇고 구역 파일에 바로 저장. 편집 가능 여부는 `UpdateRoiUi` 한 곳 (파일 + 멈춤 + SAHI 아님) |
 | `WindowsMlExecutionProvider.cs` | YoloDotNet 실행 공급자 — Windows ML 의 ONNX Runtime 으로 DirectML(나중에 NPU) 세션을 돌린다. `FindDmlDevice` 로 PCI ID 매칭 |
 | `MainWindow.Sahi.cs` | SAHI 버튼·실행·결과 그리기 |
 | `Sahi.cs` | SAHI 순수 알고리즘 (`TileOrigins`, 앱이 쓰는 `TouchesInnerEdge`·`MergeCutPieces`, 비교용 `MergeNms`·`MergeNmm`, IoU/IoS) |
 | `Tracker.cs` | 객체 추적기 (시각 기반 탐욕적 IoU, 순수 알고리즘). 프레임 크기를 받으면(`Update(dets, ms, 폭, 높이)`) 테두리에 걸친 박스의 멈춤 판정을 바로잡는다. `UpdateTagged` 는 번호·정지 여부를 `Det` 에 붙여 돌려준다. 파일·카메라·화면 HUD 에 연결돼 있다(2026-11-02) — 아래 "추적기" |
+| `Roi.cs` | 관심 구역(ROI) 순수 모델·기하·파일 — 구역(`RoiZone`, 프레임 0~1 좌표 점들 + 유형 `RoiKind`)·`RoiSet`(번호·`<영상>.roi.json` 읽기/쓰기)·`RoiGeometry`(안·밖·넓이·점 집기). WPF 없음 — experiments 가 소스로 링크 (2026-11-03, 아래 "관심 구역") |
+| `RoiLayer.cs` | 영상 위 구역 그리기·편집 요소(`RoiLayer`)와 유형별 색(`RoiTheme` — App.xaml 의 `Roi.*`). 앱 안 영상(파일)에서만, 편집 중에만 마우스를 받는다 |
 | `GpuAdapters.cs` | GPU 어댑터 목록(DXGI 하드웨어)과 고성능/저전력 판정 — **내장 여부(DXCore `IsIntegrated`)** 로 가르고 못 읽으면 전용 VRAM. 추론 GPU 선택(`SelectBestGpu`)과 HUD 안내(`DisplayTopology.FindMonitorGpu`)가 같은 함수(`IsHighPerformance`·`Best`)를 쓴다. WPF 없음 — experiments 가 소스로 링크 |
 | `DisplayTopology.cs` | 모니터가 실제로 붙은 GPU(`QueryDisplayConfig`)와 이 exe 의 Windows 그래픽 설정(레지스트리 읽기) — GDI 대체 안내용. 저전력/고성능은 `GpuAdapters` 판정 |
 | `ScreenCapture.cs` | `MonitorInfo`, `PixelRect`, `IScreenCapture` 인터페이스(`Interruption`·`Redelivered` 포함), `ScreenCaptureLostException`, `ScreenCapture.Create()`(DXGI 우선·GDI 대체)·`Fallback()`(사유 붙은 GDI)·`GetMonitors()` |
@@ -78,7 +81,7 @@ dotnet publish YOLO11_Test.csproj -c Release -r win-x64 --self-contained true -p
 | `LICENSE` · `THIRD-PARTY-NOTICES.md` | 저장소 라이선스 GNU AGPL-3.0 (2026-11-02 — 들어 있는 `best.onnx` 가 Ultralytics YOLO26 파인튜닝이라 Ultralytics 가 프로젝트 전체에 AGPL-3.0 을 요구)과 저장소 안 남의 저작물 고지(모델 AGPL-3.0 · `WindowsMlExecutionProvider.cs` 의 바탕 YoloDotNet MIT · `.claude/` 의 graft 연동 파일 MIT — 각 전문). 남의 코드·파일을 가져오면 여기에 더한다 |
 | `tools/` | `Make-NpuModel.ps1`(+ `npu_quantize.py`): YOLO 모델의 NPU 용 짝 `<이름>.npu.onnx` 만들기 (아래 "NPU") |
 | `best.npu.onnx` | 루트 `best.onnx` 의 NPU 짝 (A16W8·가중치 채널별 QDQ, 10.4 MB, git 추적). 원본을 바꾸면 다시 만든다 |
-| `experiments/` | 따로 빌드하는 실험 프로젝트(각자 `.csproj`). 본 `.csproj` 의 `Compile/Page/None Remove` 로 빠져 있다. `NpuBench/`: AMD NPU 실험 — 짝 확인(`npu_quant`·`npu_source_md5`) 뒤에만 NPU 에 넣는다 (아래 "NPU"). `RuntimeParity/`: 런타임 교체 전후 검출 결과 비교 (1번 항목, GPU 선택은 두 빌드 모두 `GpuAdapters.cs` 링크). `TrackerCheck/`: 추적기 검증 (아래 "추적기")·테두리 멈춤 판정 합성 장면(`selftest`)·GPU 고성능/저전력 판정(`gpu`)·중복 박스 필터 전후 비교 (3번 항목). 산출물 `*/out/`·`*/bin/`·`*/obj/`·`*/.venv/` 는 gitignore |
+| `experiments/` | 따로 빌드하는 실험 프로젝트(각자 `.csproj`). 본 `.csproj` 의 `Compile/Page/None Remove` 로 빠져 있다. `NpuBench/`: AMD NPU 실험 — 짝 확인(`npu_quant`·`npu_source_md5`) 뒤에만 NPU 에 넣는다 (아래 "NPU"). `RuntimeParity/`: 런타임 교체 전후 검출 결과 비교 (1번 항목, GPU 선택은 두 빌드 모두 `GpuAdapters.cs` 링크). `TrackerCheck/`: 추적기 검증 (아래 "추적기")·테두리 멈춤 판정 합성 장면(`selftest` — 관심 구역 `Roi.cs` 의 판정·파일 검사 ⑧도 여기)·GPU 고성능/저전력 판정(`gpu`)·중복 박스 필터 전후 비교 (3번 항목). 산출물 `*/out/`·`*/bin/`·`*/obj/`·`*/.venv/` 는 gitignore |
 | `graft/` · `.claude/` | 코드 인덱스(graft)와 그 에이전트 연동. graft 는 CLI 로만 쓴다 — MCP 서버 등록은 2026-11-02 사용자 결정으로 전역(`~/.claude.json`)과 이 저장소(`.mcp.json` 삭제) 모두 뺐다. `graft/` 는 재생성 가능한 캐시라 커밋하지 않는다. `.claude/helpers/graft-statusline.cjs`(상태줄)는 graft 설치 경로를 `%APPDATA%\npm` 에서 계산한다(2026-11-02 — graft 가 박아 넣은 `C:\Users\<이름>\…` 경로를 저장소에서 뺌. graft 를 다시 설치해 박힌 경로로 돌아오면 다시 고칠 것). graft 훅은 전역 `~/.claude/settings.json` 에만 둔다 — 프로젝트에도 있으면 둘 다 돌아 세션마다 graft 안내문이 두 번 들어가고 도구마다 훅이 두 번 돈다(2026-11-02 프로젝트 쪽 훅과 `graft-hooks.cjs` 를 뺌. graft 를 이 저장소에 다시 설치해 돌아오면 다시 뺄 것) |
 
 ## 절대 건드리면 안 되는 것들 (실제로 한 번씩 터졌던 부분)
@@ -404,7 +407,7 @@ DXGI 와 GDI 캡처는 같은 영역에서 **픽셀이 완전히 동일**했고 
 | `DuplicateIos` / `DuplicateMinAreaRatio` | 0.8 / 0.5 | IoU>0.7 쌍은 IoS>0.82 라 함께 잡힌다 |
 
 **검증** (`experiments/TrackerCheck` — 모든 프레임 검출을 CSV 로 남기고 추적만 다시 돌린다. 자세한 건 그 README).
-루트 `Detection.cs`·`Tracker.cs`·`Sahi.cs`·`WindowsMlExecutionProvider.cs`·`GpuAdapters.cs` 를 소스로 링크해 WPF 없이 빌드하므로 이 다섯에 WPF 의존을 넣으면 빌드가 깨진다.
+루트 `Detection.cs`·`Tracker.cs`·`Sahi.cs`·`WindowsMlExecutionProvider.cs`·`GpuAdapters.cs`·`Roi.cs` 를 소스로 링크해 WPF 없이 빌드하므로 이 여섯에 WPF 의존을 넣으면 빌드가 깨진다.
 앱 상수(신뢰도 0.3·IoU 0.7·`TargetClasses`·타일 640·겹침 0.3·병합 0.45/0.6)와 `DetectTile` 은 **복사본**이라(`SelectBestGpu` 는 `GpuAdapters.cs` 를 링크해 앱과 같은 판정) 앱 쪽을 바꾸면 같이 맞춰야
 비교가 조용히 어긋나지 않는다. 검출 CSV 는 `DuplicateBoxes` **전** 결과다(앱의 '검출 N' 보다 많다):
 - 정지 판정(`IsStationary`)도 보고한다 — `tracks.csv` 마지막 열 `stationary`, `render` 는 정지면 ID 뒤 `*`, 보고서의 '테두리 멈춤 판정' 절(관측마다 판정과 따로 잰 중심 이동을 맞댐)
@@ -446,7 +449,32 @@ HUD 는 캡처 크기 — 크기 없는 판은 아래 '화면 가장자리' 문�
 한 축의 두 변이 다 닿으면 그 축은 잴 수 없어 판정을 그대로 두고, 잘린 변으로 잰 값(실제보다 작은 아래 한계)만으로 허용치를 넘을 때만 정지를 푼다.
 크기 없는 `Update(dets, ms)` 는 예전 판정 그대로다(옛 코드와 프레임마다 추적기 상태가 바이트 단위로 같음). 여유 1·2·4·8px 는 결과가 같고 0px 이면 1~2px 안에서 끝나는 박스가 빠진다.
 남은 한계: 한 축을 가로지른 채 처음부터 멈춘 박스는 정지로 판정되지 않고, 테두리에 걸쳐 멈춘 차가 안쪽부터 가려지면 가려진 동안 움직임으로 본다(박스만으로는 나가는 차와 같음).
-고정 가림(기둥)·레터박스 경계는 추적기가 모른다 — ROI 단계에서 다룰 것. 확인: `TrackerCheck track`(보고서의 테두리 멈춤 절, `noframe` 이면 예전 판정)·`TrackerCheck selftest`(합성 장면, 종료 코드 = 실패 수)
+고정 가림(기둥)·레터박스 경계는 추적기가 모른다 — ROI 단계에서 다룰 것(구역 편집은 11-03 에 생겼고, 무시 구역을 규칙이 쓰는 건 다음 단계). 확인: `TrackerCheck track`(보고서의 테두리 멈춤 절, `noframe` 이면 예전 판정)·`TrackerCheck selftest`(합성 장면, 종료 코드 = 실패 수)
+
+## 도메인 지식 — 관심 구역 (ROI, 유고 감지 2단계 — 2026-11-03)
+
+영상 위에 구역(다각형)을 그리고 유형을 붙인다. 지금은 **편집·표시·저장까지**이고, 구역을 쓰는 규칙(진입 이벤트·유고)은 다음 단계다. 화면 배치는 사용자가 시안 셋(편집 모드 + 영상 위 도구 막대 ·
+**왼쪽 패널 목록** · 별도 편집 창, 시안 캔버스 'ROI 편집' 줄) 중 패널 목록을 골랐다.
+- **데이터**(`Roi.cs`): 구역 = 번호 `Z1`… + 유형 + 점 3개 이상. 유형 넷 — 차로(`lane`)·갓길(`shoulder`)·정지선·대기(`stopline`)·무시(`ignore`, 규칙에서 빼는 자리 — 방향 안내 글자·기둥·레터박스). 점은 **프레임 크기를 1 로 본 0~1 좌표**라 해상도·창 크기와 무관하다
+  (나중에 같은 뷰의 영상이 해상도가 달라도 그대로 쓴다). 번호는 **지운 것을 다시 쓰지 않는다**(나중에 이벤트 로그가 번호로 구역을 가리킨다 — 파일의 `nextId` 에도 적혀 다시 열어도 이어지고,
+  구역이 하나도 없어 파일을 지우면 번호도 처음부터). 겹친 자리를 고를 땐 가장 작은 구역(차로 안의 정지선·대기 구역도 고를 수 있게).
+- **파일**: 영상 옆 `<영상>.roi.json`(`{"version":1,"nextId":N,"zones":[{"id","kind","points":[[x,y],…]}]}`, UTF-8 BOM 없음, 임시 파일에 쓴 뒤 바꿔 끊겨도 옛 파일이 상하지 않는다). **바뀔 때마다 바로 저장**한다
+  (점 끌기는 마우스를 놓을 때, 새 구역·지우기·유형 바꿈은 즉시). 구역이 하나도 없으면 파일을 지운다(빈 파일을 영상 옆에 남기지 않음). 영상을 열 때 읽고 소스를 내리면 비운다.
+  읽지 못하면(깨짐·버전 모름·점 3개 미만·번호 겹침 등 `FormatException`) 상태바에 사유를 띄우고 빈 구역으로 시작하며 옛 파일을 `.bad` 로 복사해 둔다 — 이어서 편집하면 저장이 그 파일을 덮어쓰기 때문.
+  읽기 전용 폴더 등 저장 실패는 상태바 '구역 저장 실패' (화면의 구역은 그대로). 0~1 밖 좌표는 안으로 맞춰 읽는다. `.gitignore` 에 `*.roi.json.bad`·`*.roi.json.tmp`
+- **편집은 파일 재생을 멈춘 채일 때만**(`UpdateRoiUi`): `_mode == File && !_isPlaying && !_sahiBusy` — 재생 중엔 프레임이 계속 바뀌고 SAHI 중엔 화면이 정해져 있다. 켜고 끄는 곳은 `ApplyModeToUi`·`Btn_PlayPause_Click`·`StartPlayback`·`OnVideoEnded`
+  (재생 상태가 바뀌는 곳마다 부른다). 막힌 동안 [추가]·목록·유형 콤보는 꺼지고 사유가 툴팁(UIA HelpText)에 있다(`ShowOnDisabled`). 켜졌다 꺼질 때 그리던 점·끌기는 버린다.
+  패널은 '구역' 절: 헤더 `구역  N개`(툴팁에 구역 파일 경로) · 목록(`ZoneList`, 항목 UIA 이름 `Z1 차로`) · [추가]·[지우기] · '선택한 구역 유형' 콤보(`ZoneKindSelector`). [추가]가 만드는 구역의 유형은 마지막으로 고르거나 선택한 유형
+- **마우스·키보드**(`RoiLayer`): [추가] → 클릭으로 점 → 첫 점을 누르거나 Enter 로 닫기(점 3개 이상·넓이가 거의 0 이 아닐 때만), 우클릭으로 마지막 점 되돌리기, Esc 로 그만두기. 구역을 누르면 선택, 선택한 구역의 점을 끌면 이동,
+  변 가운데 ○ 를 끌면 그 자리에 점이 생겨 바로 끌린다(28 DIP 보다 짧은 변엔 ○ 없음), 점을 고른 뒤 Delete 로 점 지우기(3개 밑으론 못 지움 — 점을 안 고르고 Delete 는 아무 일도 없다, 구역은 [지우기]로만).
+  손잡이·반경은 DIP 단위(점 9 · ○ 8 · 닫기 10). 프레임 밖(레터박스)을 누르면 아무 구역도 안 고른다.
+- **그리기**: `MainWindow.xaml` 의 영상 칸에서 Image 와 BoxLayer **사이**(박스·라벨이 구역 위에 보인다). 편집 중에만 마우스를 받고(`IsHitTestVisible`) 나머지엔 통과시킨다. 구역 칠은 불투명도 16%·테두리 2px(고른 구역 3px),
+  무시 구역은 점선. 색·불투명도는 App.xaml `Roi.*`(차로 = 강조색, 갓길 = 호박, 정지선·대기 = 보라, 무시 = 회청). 프레임 크기는 영상을 열 때 `VideoCapture` 의 `FrameWidth/Height` — 못 읽으면(0) 구역이 안 보이고 편집도 막힌다.
+  구역은 정적 그림이라 BoxLayer 와 달리 프레임마다 다시 그리지 않고, 편집이 바뀔 때만 다시 그린다 → HUD 의 '새 화면 고리'를 만들 일이 없다. **HUD·카메라에는 아직 연결하지 않았다**
+  (구역은 영상 파일의 것 — 카메라 뷰마다 두려면 화면 전환 감지로 뷰를 식별하는 일이 먼저다)
+- **UIA**: `RoiLayer` 에 자동화 피어를 달았다(`ZoneLayer`, 이름 '구역 편집 영역') — 그리는 요소엔 기본 피어가 없고 같은 칸의 `Image` 는 UIA 영역이 비어 있어서, 테스트가 이 영역으로 화면 좌표를 프레임 좌표로 옮긴다
+- **확인**: `TrackerCheck selftest` ⑧(안·밖·넓이·무게중심·점 집기·번호·JSON 왕복·잘못된 파일 14가지·파일 입출력, 영상·GPU 없이) + `tests/ui/Test-Roi.ps1`(실제 마우스로 그리고 끌고 지우고 파일의 좌표까지 확인 — 아래 '테스트').
+  남은 것: 구역을 통째로 끌어 옮기기(지금은 점 하나씩), 구역 겹침 경고, 구역을 쓰는 규칙(진입 이벤트 → 유고), HUD·카메라 연결
 
 ## 도메인 지식 — NPU (AMD Ryzen AI — 왼쪽 패널 "추론 장치"에서 GPU/NPU 선택)
 
@@ -519,7 +547,7 @@ HUD 는 캡처 크기 — 크기 없는 판은 아래 '화면 가장자리' 문�
 ## 화면 디자인 (2026-11-01 개편 — 시안 B '관제 콘솔' · 색 조합 B2 '스틸 블루')
 
 사용자가 시안 셋(A Fluent · B 관제 콘솔 · C 미니멀) 중 B 를, B 의 색 조합 다섯 중 B2 를 골랐다 (시안 캔버스는 claude.ai 비공개 아티팩트 `SvZFt9Tv6q79nAoze7c1es`).
-- **배치**: 왼쪽 패널 232px(소스: 파일 열기 · 카메라 콤보 + 새로고침(아이콘만) + 카메라 시작 · 모니터 콤보 + 화면 HUD / 분석: SAHI / 추론 장치 / 맨 아래 정지)
+- **배치**: 왼쪽 패널 232px(소스: 파일 열기 · 카메라 콤보 + 새로고침(아이콘만) + 카메라 시작 · 모니터 콤보 + 화면 HUD / 분석: SAHI / 구역: 목록 · 추가·지우기 · 선택한 구역 유형 (2026-11-03 — 아래 "관심 구역") / 추론 장치 / 맨 아래 정지). 기본 창 높이 820 에서 패널 전체가 스크롤 없이 보인다(구역 목록은 3줄까지, 그 위로는 목록 안에서 스크롤 — 목록 아래에 파일 이름 줄을 두면 '추론 장치' 콤보가 스크롤 아래로 밀려 개수 칸 툴팁으로 옮겼다)
   | 영상 칸(모서리 눈금은 영상 뒤 장식) + 재생 줄(재생/일시정지 · 슬라이더 · 시간), 맨 아래 창 전체 폭 상태바(상태 점 · 문구 · NPU 진행 · 해상도 · FPS · 검출 수 —
   FPS·검출 칸은 폭 고정, 값이 바뀌어도 다른 글자가 안 밀린다: '화면 HUD' 절의 상태바 항목).
   예전 가로 툴바는 최소 폭(900)에서 두 줄로 넘어갔다. 낮은 창(최소 높이 600)에선 패널 위쪽만 스크롤되고 정지는 늘 아래
@@ -627,6 +655,11 @@ pwsh tests/ui/Run-All.ps1
   일시정지 → **앞으로 시크(8초) 뒤 번호가 모두 새로 매겨진다**(그때까지 본 번호보다 큼 — 시크할 때 추적기를 비우지 않으면 정지 트랙의 번호가 그대로 남아 작다) →
   재개하면 시크 프레임에서 시작한 번호가 이어져 1초 뒤 정지로 나온다 → 정지하면 번호가 빈다. 항목 수 9.
   **판별 확인(A/B)**: 시크 처리 프레임의 `Reset()` 만 뺀 변종 빌드는 '앞으로 시크 → 번호를 새로 매김' 하나만 실패한다(시크 뒤 번호 `#14 정지 · #31 …` — 멈춘 트럭이 시크 앞뒤로 #14 를 그대로 가졌다), 나머지 8개는 통과
+- `Test-Roi.ps1`(2026-11-03): 관심 구역 편집(위 "관심 구역"). test4.mp4 로 **실제 마우스 입력**(`SetCursorPos`+`mouse_event` — 이 테스트 동안 포인터가 움직인다)과 키(Delete·Esc·Enter)로 조작하고, 바뀔 때마다 영상 옆
+  `test4.mp4.roi.json` 을 읽어 점 좌표(±0.012)까지 본다 — 소스 없음·재생 중엔 편집이 막히고 사유가 툴팁에 → 일시정지 → [추가] → 점 4개 + 첫 점 클릭으로 닫기(`Z1 차로`, 파일 lane · 점 4개가 찍은 자리) →
+  점 끌기 → 변 가운데 ○ 끌기(점 5개) → Delete(4개) → 점을 안 고르고 Delete(그대로) → 유형 갓길(파일·목록 이름) → 그리다가 Esc · 그리다가 재생(편집이 막히고 그리던 점 버림) → 구역 지우기(목록·파일이 빔, 파일 삭제) →
+  다시 그리면 번호 Z2(지운 번호를 안 씀 · 유형은 마지막에 쓴 갓길 · nextId 3)·Enter 로 닫기(점 3개) → 정지(패널이 비고 편집이 막힘, 파일은 남음) → 같은 영상을 다시 열면 구역이 돌아옴 → 깨진 파일(상태바 사유·빈 구역·`.bad`).
+  끝나면 영상 옆 구역 파일을 지운다(`publish_gpu_ver` 는 gitignore). 그림(색·모양)은 UIA 로 안 보여 보지 않는다 — 스크린샷으로 손으로 봤다. 점 끌기는 `ZoneLayer` 의 UIA 영역(영상 칸)으로 좌표를 옮긴다. 항목 수 30
 - `Test-VfrPlayback.ps1`: 길이 정보 없는 60fps webm(`media/vfr60_nodur.webm`, 0.9 MB, 저장소에 포함)으로 VFR 경로 전체 —
   백그라운드 길이 분석, 재생 속도, 앞·뒤 시크(grab·다시 열기), **재생 중 뒤로 시크 직후 SAHI → 그 위치 분석**(2026-10-30 추가 — 14초를 넘긴 뒤 12.5초로 되감고 35ms 뒤에 누른다), EOF 뒤 처음부터. 이 파일은 OpenCV 로 만든 60fps VP8 webm 의
   Segment Info `Duration`(0x4489) 요소를 같은 길이의 `Void`(0xEC)로 덮은 것이다 (필요하면 같은 방법으로 다시 만든다).
@@ -667,7 +700,13 @@ pwsh tests/ui/Run-All.ps1
   옛 판 `UiLatency` 형식이 남은 PowerShell 세션에선 분명한 메시지로 멈춘다(Add-Type 형식은 못 바꿈 — 새 pwsh 에서 돌릴 것)
 - 종료 코드 = 실패 건수(`Run-All` 은 0/1). 파일 열기 대화상자 자동화 요령 등은 `Common.ps1` 머리말에 정리해 두었다.
   `Run-All` 은 테스트 파일이 try 밖에서 throw 해도(영상·빌드 없음) 그 파일만 실패로 세고 다음 파일을 돈다(2026-10-30 — 예전엔 거기서 통째로 멈췄다)
-- 마지막 전체 통과: 2026-11-02 오후, **배포본 `publish_gpu_ver`** — `main`(`3939f40`, 추적기 연결 · 박스·라벨 투명도와 작은 물체 라벨·꺾쇠 축소 · 상태바 칸 고정)으로 다시 배포
+- 마지막 전체 통과: 2026-11-03, Debug — 관심 구역(ROI) 편집을 더한 뒤(위 "관심 구역"). 사용자가 PC 를 쓰는 중에 돌렸다(`Test-Roi` 는 실제 마우스를 움직인다). `Run-All` 한 번에
+  `Test-FilePlayback` 34 · `Test-Tracking` 9 · **`Test-Roi` 30(새 파일)** · `Test-VfrPlayback` 26 · `Test-ScreenHud` 39(DXGI, 박스 없음, 결함 주입 포함) · `Test-NpuSwitch` 28 항목 = 166
+  (NPU 전환 7.2초(캐시), 다시 고르면 5.5초, ①② 창 응답 WM_NULL 최대 1 ms · UIA 최대 20 ms). `TrackerCheck selftest` 통과(새 ⑧ 관심 구역 22개 포함).
+  이어서 구역 읽기·저장의 예외 처리를 넓힌 최종 빌드(구역은 부가 기능이라 어떤 이유로든 영상 열기를 막지 않게)로 `Test-Roi` 30 · `Test-FilePlayback` 34 를 다시 돌려 통과. Debug 빌드 경고 0.
+  스크린샷(구역 4개 · 하나 선택 · 새 구역 그리는 중)으로 모양을 봤다 — 시안 그대로이고 기본 창 높이 820 에서 패널 전체('추론 장치' 콤보까지)가 스크롤 없이 보인다
+  (처음엔 목록 아래 파일 이름 줄 때문에 그 콤보가 스크롤 아래로 밀려 줄였다). **배포본은 아직 `3939f40` 그대로**(다시 배포는 요청할 때만).
+- 그 전(배포본): 2026-11-02 오후, **배포본 `publish_gpu_ver`** — `main`(`3939f40`, 추적기 연결 · 박스·라벨 투명도와 작은 물체 라벨·꺾쇠 축소 · 상태바 칸 고정)으로 다시 배포
   (exe 126.4 MB, pdb·lib·dll 없음, 배포 폴더 `best.onnx`(09-17 visible, MD5 `87D0E1CB…`)·`best.npu.onnx`(`5CE87F90…`) 그대로, 그래픽 설정 `GpuPreference=0` 그대로.
   Release DLL 에 새 코드(`UpdateTagged`·`CornerPens`·`StatusFpsHudWidth`)가 있고 결함 이름 문자열은 없음).
   `Run-All -ExeDir publish_gpu_ver` 한 번에 `Test-FilePlayback` 34 · `Test-Tracking` 9(배포 모델로도 2초 정지 번호 → 5초 같은 번호 → 시크 뒤 새 번호 → 재개 뒤 정지) ·
@@ -817,6 +856,10 @@ pwsh tests/ui/Run-All.ps1
   100% 가 아닌 배율에서 긴 라벨, 모니터 가장자리에서 라벨이 잘리는지.
   같은 날 투명도·작은 물체 라벨·꺾쇠 축소에선 이것들을 확인하지 않았다: HUD 오버레이에서의 모습(캡처 제외 — 같은 `BoxLayer` 인 앱 안 영상으로만 봤다), 아주 밝은 배경(흰 차·하늘)에서
   옅어지고 가늘어진(1px) 꺾쇠·라벨 바탕이 잘 보이는지, 100% 가 아닌 배율에서 0.6배 라벨(글자 6.6 DIP)이 읽히는지·꺾쇠 굵기(125% 면 큰 물체 3px → 작은 물체 2px)
+  2026-11-03 관심 구역에선 이것들을 확인하지 않았다: 100% 가 아닌 화면 배율(노트북 화면 125% 등)에서의 점 손잡이·집기 반경·힌트 글자, 사람 손의 끌기 감각(테스트는 8걸음으로 끌고 손잡이는 8px 정사각형 —
+  너무 작거나 크게 느껴질 수 있다), 키보드 포커스 표시, 우클릭으로 한 점 되돌리기·점이 한 줄이라 닫히지 않는 경우(넓이만 selftest 로 봤다), 점 3개 구역에서 점 지우기가 막히는지, SAHI 중 편집이 막히는지(코드로만),
+  `FrameWidth/Height` 가 0 으로 읽히는 파일(구역이 안 보이고 편집이 막힌다 — 길이 없는 webm 도 test 에선 열어 본 적 없다), 읽기 전용 폴더의 '구역 저장 실패' 문구, 구역이 많을 때(목록 3줄 넘김) 스크롤 모양,
+  다른 PC·Windows 10. HUD·카메라에는 구역을 연결하지 않았다(없는 기능)
 - 스크립트는 UTF-8 **BOM** 으로 저장한다 (Windows PowerShell 5.1 이 한국어 문자열을 깨뜨리지 않게). PowerShell 7 에서 확인
 
 ### 테스트 영상 내용 (유고 감지 구상용 기준 사례, 2026-10-23 분석)

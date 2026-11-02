@@ -41,6 +41,7 @@ namespace YOLO11_Test
             InitializeComponent();
             InitializeYoloModel();
             InitHudTracking();
+            InitRoi();
             FrameBoxes.LegendTextChanged += ShowClassCounts;   // HUD 오버레이의 범례는 StartHud 에서 잇는다
             FrameBoxes.TrackTextChanged += ShowTrackMarks;
             Loaded += (_, _) => { RefreshCameras(); RefreshMonitors(); };
@@ -70,6 +71,7 @@ namespace YOLO11_Test
             await StopPlaybackAsync();
             DisposeCapture();
             CloseOverlay();
+            ClearRoi();   // 구역은 열려 있던 영상의 것
         }
 
         // 소스 없음 상태로. 정지뿐 아니라 새 소스를 못 열었을 때도 쓴다 — 예전엔 이전 루프를 이미 내린 뒤 열기에 실패하면
@@ -82,6 +84,7 @@ namespace YOLO11_Test
             _loadGeneration++;
             MainImage.Source = null;
             FrameBoxes.Clear();
+            ClearRoi();   // 열기에 실패한 경우(구역을 읽은 뒤 실패)에도 구역이 남지 않게
             PlaceholderText.Text = "파일을 열거나 카메라를 시작하세요";
 
             ApplyModeToUi();
@@ -143,6 +146,7 @@ namespace YOLO11_Test
                 _isPlaying = true;
                 Btn_PlayPause.Content = "일시정지";
             }
+            UpdateRoiUi();   // 구역 편집은 멈춘 파일에서만
         }
 
         // ---------- 모드에 따른 UI 상태 ----------
@@ -188,6 +192,8 @@ namespace YOLO11_Test
                 Txt_Time.ClearValue(TextBlock.ForegroundProperty);   // 창 글자색으로
                 if (!file) Txt_Time.Text = "00:00 / 00:00";
             }
+
+            UpdateRoiUi();   // 구역 편집 가능 여부는 모드·SAHI 중 여부를 따른다
         }
 
         // ---------- 제목 표시줄 ----------

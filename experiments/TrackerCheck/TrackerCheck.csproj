@@ -16,6 +16,7 @@
     <Compile Include="..\..\Tracker.cs" />
     <Compile Include="..\..\Sahi.cs" />
     <Compile Include="..\..\GpuAdapters.cs" />
+    <Compile Include="..\..\Roi.cs" />
   </ItemGroup>
 
   <ItemGroup>
