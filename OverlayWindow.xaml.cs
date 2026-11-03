@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 
-namespace YOLO11_Test
+namespace DetectView
 {
     /// <summary>
     /// 바탕화면 위에 검출 박스만 그리는 투명 HUD 창.

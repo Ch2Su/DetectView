@@ -14,7 +14,7 @@ Windows ML(자체 `onnxruntime.dll` 1.27)과 한 프로세스에 섞을 수 없�
 | 런타임 | Windows ML `Microsoft.Windows.AI.MachineLearning` 2.4.89 (ONNX Runtime 1.27.1, self-contained) |
 | NPU EP | VitisAI EP 1.8.75 (`Microsoft.WinML.AMD.NPU.EP.Framework.2`, EP 카탈로그가 내려받음). 2026-10-30 에 1.8.80 으로 바뀌었다 — 이 문서의 수치는 1.8.75 기준 |
 | 모델 | 루트 `best.onnx` — YOLO26s 7클래스, 2026-09-11 학습, 입력 `[1,3,640,640]`, 출력 `[1,300,6]` |
-| 프레임 | `publish_gpu_ver/test1~5.mp4` 각 20장 = 100장 (영상 안 (i+0.5)/20 위치). 양자화 보정은 i/20 위치 100장 — 서로 겹치지 않음 |
+| 프레임 | `publish/test1~5.mp4` 각 20장 = 100장 (영상 안 (i+0.5)/20 위치). 양자화 보정은 i/20 위치 100장 — 서로 겹치지 않음 |
 
 모든 백엔드에 **같은 입력 텐서**를 넣고 `session.Run` 시간만 잰다. 전처리·후처리는 빼고 잰다.
 일치도는 GPU 결과를 기준으로 한다: 신뢰도 ≥ 0.3(본 앱 `ConfidenceThreshold`), 같은 클래스, IoU ≥ 0.5 를 IoU 큰 순으로 1:1 로 짝짓는다.
@@ -99,13 +99,13 @@ Windows ML(자체 `onnxruntime.dll` 1.27)과 한 프로세스에 섞을 수 없�
 ```powershell
 # 1) 짝 모델 만들기 (python 은 PATH 에 없다 → uv 가 격리 환경을 만든다. 약 30~40초)
 pwsh tools\Make-NpuModel.ps1                                    # 루트 best.onnx → best.npu.onnx
-pwsh tools\Make-NpuModel.ps1 -Model publish_gpu_ver\best.onnx   # 배포 폴더 모델 → 그 옆 best.npu.onnx
+pwsh tools\Make-NpuModel.ps1 -Model publish\best.onnx   # 배포 폴더 모델 → 그 옆 best.npu.onnx
 # 2) 측정까지 한 번에 (GPU → CPU → NPU 순. NPU 첫 컴파일 약 1분)
-pwsh tools\Make-NpuModel.ps1 -Model publish_gpu_ver\best.onnx -Bench
+pwsh tools\Make-NpuModel.ps1 -Model publish\best.onnx -Bench
 # (선택) 방식 변형을 CPU 에서 먼저 걸러 보기 — 기준 FP32(CPU) 대비. 기준은 --ref (기본: 루트 best.onnx)
 uv run --no-project --python 3.12 --with onnxruntime==1.23.2 --with onnx --with numpy --with opencv-python-headless tools\npu_quantize.py --model best.onnx --out experiments\NpuBench\out\best.a8w8.onnx --mode a8w8
 uv run --no-project --python 3.12 --with onnxruntime==1.23.2 --with onnx --with numpy --with opencv-python-headless experiments\NpuBench\screen.py best.npu.onnx experiments\NpuBench\out\best.a8w8.onnx
-uv run --no-project --python 3.12 --with onnxruntime==1.23.2 --with onnx --with numpy --with opencv-python-headless experiments\NpuBench\screen.py --ref publish_gpu_ver\best.onnx publish_gpu_ver\best.npu.onnx
+uv run --no-project --python 3.12 --with onnxruntime==1.23.2 --with onnx --with numpy --with opencv-python-headless experiments\NpuBench\screen.py --ref publish\best.onnx publish\best.npu.onnx
 ```
 
 `screen.py` 는 변형마다 원본 MD5(`npu_source_md5`)를 `--ref` 파일의 MD5 와 맞대어 보고, 다르거나 없으면 그 변형을 **건너뛴다**(종료 코드 1).

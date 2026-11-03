@@ -9,7 +9,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Interop;
 using System.Windows.Media;
 
-namespace YOLO11_Test
+namespace DetectView
 {
     /// <summary>
     /// 메인 창 — 공용 상태와 모드 공통 UI(정지·재생/일시정지·슬라이더·모드별 표시).

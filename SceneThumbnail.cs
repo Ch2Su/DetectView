@@ -1,7 +1,7 @@
 using System;
 using OpenCvSharp;
 
-namespace YOLO11_Test
+namespace DetectView
 {
     /// <summary>
     /// 화면 전환 감지(SceneChange.cs)에 넣는 작은 흑백 그림 — 프레임을 면적 평균으로 64×36 으로 줄인다.

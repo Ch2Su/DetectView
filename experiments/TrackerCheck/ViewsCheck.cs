@@ -1,5 +1,5 @@
 using OpenCvSharp;
-using YOLO11_Test;
+using DetectView;
 
 // views: 화면 식별(2b)의 ORB + 호모그래피 맞춤을 실제 영상에서 재 본다 — 같은 화면은 인라이어가 많고 다른 화면은 거의 없어야 한다.
 // 사용: views  → test4 의 세 화면(0~10.5·11.5~20.4·21.3~30.5초)에서 프레임들을 뽑아 서로 맞춰 보고, 같은 화면에 억지로 흔들림을 줘 본다
@@ -224,7 +224,7 @@ internal static class ViewsCheck
 
         // 8) 실제 영상 (있을 때만): test4 의 세 화면은 각각 새 뷰, 같은 화면의 다른 장면은 그 뷰, 다른 영상(test1~3·5)은 모두 새 뷰
         string t4 = Path.Combine(videoDir, "test4.mp4");
-        if (!File.Exists(t4)) { Console.WriteLine("[INFO] 실제 영상 화면 식별 건너뜀 — publish_gpu_ver\\test4.mp4 없음"); return; }
+        if (!File.Exists(t4)) { Console.WriteLine("[INFO] 실제 영상 화면 식별 건너뜀 — publish\\test4.mp4 없음"); return; }
         using var real = new ViewRegistry();
         var results = new List<(string, ViewIdentification)>();
         foreach (var (name, video, sec) in new (string, string, double)[]

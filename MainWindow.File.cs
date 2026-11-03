@@ -5,7 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 
-namespace YOLO11_Test
+namespace DetectView
 {
     /// <summary>
     /// 동영상 파일 열기. 화면녹화 webm 처럼 메타데이터(FPS·프레임 수)가 거짓인 VFR 파일은

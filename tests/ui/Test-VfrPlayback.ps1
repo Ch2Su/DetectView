@@ -20,7 +20,7 @@
 #   — 아래 검사는 이 파일의 프레임 시각(9,015·9,490·13,024·13,521·16,009 ms)에 기대므로 다시 만들면 그 스크립트가 찍는 시각과 맞춰 볼 것
 #
 #   pwsh tests\ui\Test-VfrPlayback.ps1
-#   pwsh tests\ui\Test-VfrPlayback.ps1 -ExeDir publish_gpu_ver
+#   pwsh tests\ui\Test-VfrPlayback.ps1 -ExeDir publish
 param([string]$ExeDir)
 . (Join-Path $PSScriptRoot 'Common.ps1')
 

@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace YOLO11_Test
+namespace DetectView
 {
     /// <summary>트랙 ID 가 붙은 검출 1건. Stationary: 그 트랙이 이 프레임까지 반영해 멈춘 물체로 판정됐는지 (<see cref="Track.IsStationary"/>).</summary>
     internal readonly record struct TrackedDet(int TrackId, Det Det)

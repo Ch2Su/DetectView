@@ -8,7 +8,7 @@ using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 
-namespace YOLO11_Test
+namespace DetectView
 {
     /// <summary>
     /// DXGI Desktop Duplication 기반 화면 캡처.

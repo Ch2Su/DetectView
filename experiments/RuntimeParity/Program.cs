@@ -7,7 +7,7 @@
 using System.Globalization;
 using OpenCvSharp;
 using SkiaSharp;
-using YOLO11_Test;   // GpuAdapters (두 빌드 모두), WindowsMlExecutionProvider (WinML 만)
+using DetectView;   // GpuAdapters (두 빌드 모두), WindowsMlExecutionProvider (WinML 만)
 using YoloDotNet;
 using YoloDotNet.Extensions;
 using YoloDotNet.Models;
@@ -41,7 +41,7 @@ writer.WriteLine("frame,label,conf,x,y,w,h");
 int frameNo = 0, total = 0;
 foreach (var v in new[] { "test1.mp4", "test2.mp4", "test3.mp4", "test4.mp4", "test5.mp4" })
 {
-    string path = Path.Combine(repo, "publish_gpu_ver", v);
+    string path = Path.Combine(repo, "publish", v);
     if (!File.Exists(path)) { Console.WriteLine($"  {v} 없음 — 건너뜀"); continue; }
     using var cap = new VideoCapture(path);
     int count = (int)cap.Get(VideoCaptureProperties.FrameCount);
@@ -143,6 +143,6 @@ static double IoU((string Label, double Conf, int X, int Y, int W, int H) a, (st
 static string FindRepoRoot()
 {
     for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
-        if (File.Exists(Path.Combine(dir.FullName, "YOLO11_Test.csproj"))) return dir.FullName;
-    throw new DirectoryNotFoundException("저장소 루트(YOLO11_Test.csproj)를 찾지 못했습니다.");
+        if (File.Exists(Path.Combine(dir.FullName, "DetectView.csproj"))) return dir.FullName;
+    throw new DirectoryNotFoundException("저장소 루트(DetectView.csproj)를 찾지 못했습니다.");
 }

@@ -10,15 +10,15 @@
 #     새로 매겨지는지는 test4 로 Test-Tracking.ps1 이 본다
 #
 #   pwsh tests\ui\Test-FilePlayback.ps1                              # bin\Debug 빌드
-#   pwsh tests\ui\Test-FilePlayback.ps1 -ExeDir publish_gpu_ver      # 배포본
+#   pwsh tests\ui\Test-FilePlayback.ps1 -ExeDir publish      # 배포본
 param(
     [string]$ExeDir,
-    [string]$Video   # 생략 시 publish_gpu_ver\test1.mp4 (30초 이상인 CFR 영상이어야 EOF 단계가 의미 있다)
+    [string]$Video   # 생략 시 publish\test1.mp4 (30초 이상인 CFR 영상이어야 EOF 단계가 의미 있다)
 )
 . (Join-Path $PSScriptRoot 'Common.ps1')
 
 $ExeDir = Resolve-ExeDir $ExeDir
-if (-not $Video) { $Video = Join-Path $RepoRoot 'publish_gpu_ver\test1.mp4' }
+if (-not $Video) { $Video = Join-Path $RepoRoot 'publish\test1.mp4' }
 if (-not (Test-Path $Video)) { throw "테스트 영상이 없습니다: $Video" }
 
 $proc = $null

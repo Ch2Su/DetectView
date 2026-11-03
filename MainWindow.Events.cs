@@ -9,7 +9,7 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Media;
 
-namespace YOLO11_Test
+namespace DetectView
 {
     /// <summary>이벤트 로그 목록의 한 줄 — 구역 이벤트(ZoneEvent)에 목록이 쓰는 글자·색을 붙인 것</summary>
     internal sealed class EventListItem

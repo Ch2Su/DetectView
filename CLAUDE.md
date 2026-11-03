@@ -3,15 +3,19 @@
 WPF(.NET 10) 실시간 객체 검출 애플리케이션. YOLO ONNX 모델을 **DirectML(GPU)** 로 추론해
 ① 동영상 파일 ② 웹캠 ③ 바탕화면 실시간 캡처(투명 HUD 오버레이) 세 가지 소스를 처리한다.
 
-## 이름에 관한 주의 (의도된 불일치 — 리팩터링하지 말 것)
+## 이름 (2026-11-03 정리 — 이제 모두 `DetectView`)
 
 | 항목 | 값 | 비고 |
 |---|---|---|
-| 폴더 / .csproj / 네임스페이스 | `YOLO11_Test` | 과거 이름. **그대로 둔다** |
-| `AssemblyName` / 제품명 / 창 제목 | `DetectView` | 실제 제품명 |
+| 폴더 | `E:\DetectView` | 예전 `E:\VS_E\YOLO11_Test` — 2026-11-03 옮김 (옛 폴더는 사용자가 확인한 뒤 직접 지운다) |
+| 프로젝트·솔루션 / 네임스페이스 / `AssemblyName` / 제품명 / 창 제목 | `DetectView` (`DetectView.csproj`·`DetectView.slnx`·`namespace DetectView`) | 예전엔 `YOLO11_Test` 였다 — 옛 이름은 `old/`·git 기록·`old-history` 태그 안에만 남는다 |
+| 배포 폴더 | `publish` | 예전 `publish_gpu_ver` |
 | 모델 | YOLO**26s** 파인튜닝 ONNX (`best.onnx`, 36 MB, **7클래스**) | YOLO11 아님. 2026-09-11 교체 (이전: 9.5 MB 모델) |
 
 원래 학교 과제로 시작해(제출 완료) 지금은 개인 취미 프로젝트다. CPU 추론 → GPU(DirectML) 전환이 끝난 상태.
+**이 문서·메모의 옛 서술(날짜가 붙은 기록)에는 `YOLO11_Test`·`publish_gpu_ver` 대신 새 이름이 들어가 있다** — 이름만 일괄로 바꿨고 그때 폴더가 달랐다는 건 위 표가 말해 준다.
+Windows 그래픽 설정(`HKCU\…\UserGpuPreferences`)은 exe 경로별이라 옛 `publish_gpu_ver\DetectView.exe` 의 `GpuPreference=0` 은 새 `E:\DetectView\publish\DetectView.exe` 에 없다 —
+없으면 'Windows에서 결정'(0 과 같은 동작)이다. 필요하면 설정 → 디스플레이 → 그래픽에서 새 exe 를 다시 지정한다 (이 도구로는 건드리지 않는다).
 
 ## 빌드 · 배포
 
@@ -20,18 +24,18 @@ dotnet build
 ```
 
 ```bash
-dotnet publish YOLO11_Test.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o publish_gpu_ver
+dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o publish
 ```
 
-- 프로젝트 파일(`YOLO11_Test.csproj`)을 꼭 지정한다. 생략하면 폴더의 `.slnx` 가 잡혀 `NETSDK1194`(솔루션 + `--output`) 경고가 난다
-- 결과: `DetectView.exe` 126.4 MB (2026-10-24, Windows ML 런타임. 이전 DirectML 1.23 은 119.4 MB. 2026-10-30·10-31·11-01 다시 배포도 같은 크기 — 11-01 은 세 번: 이슈 수정판 `53db7ed`, 화면 개편판 `c274575`, 클래스별 검출 수 범례판 `fb06cf9` · 11-02 추적기 연결·라벨/꺾쇠·상태바판 `3939f40` · 11-03 관심 구역·화면 전환 감지·구역 이벤트 로그·유고 규칙·화면 식별판 `10f7b31`). 테스트 영상(`test1~4.mp4`)은 같은 폴더에 있어도 덮어쓰지 않는다
-- publish 뒤에는 배포본으로 UI 테스트를 돌린다: `pwsh tests\ui\Run-All.ps1 -ExeDir publish_gpu_ver`
-- **`publish_gpu_ver\best.onnx` 는 루트의 것과 다를 수 있고, 사용자가 수시로 바꾼다** (YOLO26s ↔ YOLO26x(COCO 80클래스),
+- 프로젝트 파일(`DetectView.csproj`)을 꼭 지정한다. 생략하면 폴더의 `.slnx` 가 잡혀 `NETSDK1194`(솔루션 + `--output`) 경고가 난다
+- 결과: `DetectView.exe` 126.4 MB (2026-10-24, Windows ML 런타임. 이전 DirectML 1.23 은 119.4 MB. 2026-10-30·10-31·11-01 다시 배포도 같은 크기 — 11-01 은 세 번: 이슈 수정판 `53db7ed`, 화면 개편판 `c274575`, 클래스별 검출 수 범례판 `fb06cf9` · 11-02 추적기 연결·라벨/꺾쇠·상태바판 `3939f40` · 11-03 관심 구역·화면 전환 감지·구역 이벤트 로그·유고 규칙·화면 식별판 `10f7b31` · 같은 날 폴더 이전·이름 정리판 — 위 '이름'). 테스트 영상(`test1~4.mp4`)은 같은 폴더에 있어도 덮어쓰지 않는다
+- publish 뒤에는 배포본으로 UI 테스트를 돌린다: `pwsh tests\ui\Run-All.ps1 -ExeDir publish`
+- **`publish\best.onnx` 는 루트의 것과 다를 수 있고, 사용자가 수시로 바꾼다** (YOLO26s ↔ YOLO26x(COCO 80클래스),
   데이터셋이 다른 7클래스 모델 등 — 2026-09-23 한 세션 안에서도 바뀌었다). 건드리지 말 것.
   **성능을 재거나 비교하기 전엔 그 순간 어떤 모델인지 확인한다** — 앱이 떠 있으면 창 제목에 보이고(아래),
   아니면 파일 끝의 Ultralytics 메타데이터를 읽는다:
-  `uv run --no-project --python 3.12 python -c "import re,sys;f=open(sys.argv[1],'rb');f.seek(-65536,2);t=f.read().decode('utf-8','ignore');[print(k,'=',v.strip()[:80]) for k,v in re.findall(r'(description|names|date)\x12.?([^\x00-\x08\x0e-\x1f]+)',t)]" publish_gpu_ver/best.onnx`
-- 배포 폴더 모델을 바꾸면 NPU 짝도 다시 만든다: `pwsh tools\Make-NpuModel.ps1 -Model publish_gpu_ver\best.onnx` (→ 그 옆 `best.npu.onnx`, 아래 "NPU")
+  `uv run --no-project --python 3.12 python -c "import re,sys;f=open(sys.argv[1],'rb');f.seek(-65536,2);t=f.read().decode('utf-8','ignore');[print(k,'=',v.strip()[:80]) for k,v in re.findall(r'(description|names|date)\x12.?([^\x00-\x08\x0e-\x1f]+)',t)]" publish/best.onnx`
+- 배포 폴더 모델을 바꾸면 NPU 짝도 다시 만든다: `pwsh tools\Make-NpuModel.ps1 -Model publish\best.onnx` (→ 그 옆 `best.npu.onnx`, 아래 "NPU")
 - publish 는 `best.onnx` 를 `PreserveNewest` 로 복사한다 → **루트 `best.onnx` 가 배포 폴더의 것보다 새로우면 덮어쓴다**
 - `best.onnx` 는 단일 파일 exe에 포함되지 않는다. **exe 옆에 같이 놓아야** 실행된다.
   경로는 작업 디렉터리가 아니라 `AppContext.BaseDirectory`(exe 폴더) 기준이다. 예전엔 상대 경로라 바로가기의 "시작 위치"나
@@ -82,7 +86,7 @@ dotnet publish YOLO11_Test.csproj -c Release -r win-x64 --self-contained true -p
 | `TestFaults.cs` | Debug 빌드 전용 결함 주입 — 환경 변수 `DETECTVIEW_TEST_FAULTS`(쉼표 구분): `hud-create-fail` · `hud-capture-lost` · `hud-detect-fail`. 훅은 `[Conditional("DEBUG")]` 라 Release 엔 호출 자체가 없다(Release DLL 에 결함 이름 문자열 없음 확인). `Test-ScreenHud.ps1` 이 쓴다 |
 | `Directory.Build.props` | OpenCvSharp 판(`OpenCvSharpVersion`)을 두는 한 곳 — 본 앱·실험 프로젝트 넷이 같이 읽는다 ("절대 건드리면 안 되는 것들" 1번, 이슈 #9) |
 | `old/` | 이전 CPU 버전 전체 보관본 + 최적화 전 백업(`backup_20260911_before_opt/`, `backup_20260911_after_step1/`). **빌드 대상에서 제외됨**. `old/docs/` 에 SRS·아키텍처 설계서(.md/.pdf). `old/DetectView-history-2026-11-02.bundle` = 공개 전 git 기록(커밋 75개) 백업 — 아래 '도구 사용 주의'의 원격 항목 |
-| `publish_gpu_ver/` | 배포 산출물 + 테스트 영상(`test1~4.mp4`, 1280×720 30fps · `test5.mp4`, 아래 "테스트 영상 내용"). 원래의 VFR 테스트 파일 `recording.webm` 은 없어졌고, 대신 합성 파일 `tests/ui/media/vfr60_nodur.webm` 을 쓴다 |
+| `publish/` | 배포 산출물 + 테스트 영상(`test1~4.mp4`, 1280×720 30fps · `test5.mp4`, 아래 "테스트 영상 내용"). 원래의 VFR 테스트 파일 `recording.webm` 은 없어졌고, 대신 합성 파일 `tests/ui/media/vfr60_nodur.webm` 을 쓴다 |
 | `tests/ui/` | UI 자동화 회귀 테스트 (PowerShell + UI Automation). 아래 "테스트" 참고 |
 | `README.md` | GitHub 첫 화면 (2026-11-02 작성 — 기능·빌드·사용법·테스트·라이선스). 화면이 크게 바뀌면 같이 고칠 것. 스크린샷(test4 3초 장면, 실제 도로 CCTV 프레임)은 같은 날 넣었다가 영상 사용 권리를 확인하지 못해 뺐다(`docs/screenshot.png` 삭제 — 이 PC 의 옛 기록 `old-history` 의 `10e65db` 에만 남음). 다시 넣으려면 권리가 분명한 영상으로 |
 | `LICENSE` · `THIRD-PARTY-NOTICES.md` | 저장소 라이선스 GNU AGPL-3.0 (2026-11-02 — 들어 있는 `best.onnx` 가 Ultralytics YOLO26 파인튜닝이라 Ultralytics 가 프로젝트 전체에 AGPL-3.0 을 요구)과 저장소 안 남의 저작물 고지(모델 AGPL-3.0 · `WindowsMlExecutionProvider.cs` 의 바탕 YoloDotNet MIT · `.claude/` 의 graft 연동 파일 MIT — 각 전문). 남의 코드·파일을 가져오면 여기에 더한다 |
@@ -257,11 +261,11 @@ EOF 로 멈춘 뒤 재생을 누르면 **처음부터** 다시 튼다(`_atEof` �
     (9/23 엔 어댑터 번호로 골랐고, 10/24 Windows ML 교체 뒤엔 PCI 벤더·장치 ID 로 DirectML 장치를 맞춘다 — 1번 항목)
     (성능 카운터: NVIDIA 11% · AMD 1.7% 는 UI 렌더링뿐, YOLO26s 파일 재생 ~98 FPS)
   - 이 설정은 **실행 파일 경로별**이다(`HKCU\Software\Microsoft\DirectX\UserGpuPreferences`, `GpuPreference=1` 절전 · `2` 고성능 · `0` Windows에서 결정).
-    `publish_gpu_ver\DetectView.exe` 는 9/23 부터 '절전'이었다가 **2026-10-24 저녁 사용자가 'Windows에서 결정'(`0`)으로 바꿨다**
+    `publish\DetectView.exe` 는 9/23 부터 '절전'이었다가 **2026-10-24 저녁 사용자가 'Windows에서 결정'(`0`)으로 바꿨다**
     (외부 모니터 HUD 가 '절전'에서 GDI 로 떨어져서). exe 를 다른 폴더·PC 로 옮기면 다시 설정해야 한다
   - 설정이 없는 실행 파일이 9/11 엔 내장 GPU 모드(DXGI 정상), 9/23 엔 외장 GPU 모드로 떴다 — 기본 동작이 바뀐 이유는 미확인
   - **반대 사례 (2026-10-24 실측): HUD 대상이 NVIDIA 쪽 외부 모니터면 '절전'이 오히려 DXGI 를 깨뜨린다.**
-    모니터 0 = 주 모니터 `DISPLAY6`(2560×1440, 외부)일 때 `publish_gpu_ver`('절전')에서는 옛 런타임 exe·새 런타임 exe **둘 다** GDI(HUD 33 FPS).
+    모니터 0 = 주 모니터 `DISPLAY6`(2560×1440, 외부)일 때 `publish`('절전')에서는 옛 런타임 exe·새 런타임 exe **둘 다** GDI(HUD 33 FPS).
     설정이 없는 exe(`bin\Debug`·scratchpad 배포본, 두 런타임 모두)는 같은 모니터에서 DXGI 였다 → 런타임과 무관하고 GPU 모드 탓이다.
     즉 '절전'은 노트북 화면(AMD)을 HUD 할 때의 해결책이고, '고성능'은 반대로 노트북 화면을 깨뜨린다(9/23).
     **설정이 없으면(Windows에서 결정) 10/24 엔 모니터마다 자기 GPU 아래로 열거돼 두 모니터 모두 DXGI 였다.**
@@ -625,14 +629,14 @@ HUD 는 캡처 크기 — 크기 없는 판은 아래 '화면 가장자리' 문�
   어긋난 박스는 거의 전부 신뢰도 0.3 경계 근처. 가중치 텐서별이면 92.0% / 96.5%, A8W8 은 보정 방법에 따라 14~80%
 - **짝 모델 `best.npu.onnx`**: `pwsh tools\Make-NpuModel.ps1 [-Model <경로>] [-Bench]` 로 원본 옆에 만든다(약 30~40초, uv 로 `tools/npu_quantize.py` 실행).
   메타데이터 `npu_source_md5`(원본 파일 MD5)·`npu_quant`·`npu_calib` 이 들어간다 — 앱은 이걸로 원본과 짝인지 확인한다(`CheckNpuModel`).
-  **루트 `best.npu.onnx` 는 git 으로 추적한다**(루트 `best.onnx` 의 짝). `publish_gpu_ver\best.onnx` 를 바꾸면 **그 짝도 다시 만든다**
-  (`-Model publish_gpu_ver\best.onnx`, gitignore 쪽이라 커밋 안 됨). 양자화는 결정적이라 같은 입력이면 바이트 단위로 같은 파일이 나온다
+  **루트 `best.npu.onnx` 는 git 으로 추적한다**(루트 `best.onnx` 의 짝). `publish\best.onnx` 를 바꾸면 **그 짝도 다시 만든다**
+  (`-Model publish\best.onnx`, gitignore 쪽이라 커밋 안 됨). 양자화는 결정적이라 같은 입력이면 바이트 단위로 같은 파일이 나온다
 - **실험 도구도 짝을 확인한다** (이슈 #6, 2026-10-31): `NpuBench.exe [기준] [NPU 모델] [영상당 프레임 수] [--allow-fp32-npu] [--allow-mismatch]` 의 NPU 모델 기본값은
   기준 옆 `<이름>.npu.onnx`(없으면 NPU 단계를 건너뛰고 GPU·CPU 만). 벤치 전에(EP 준비보다도 먼저) 앱의 `CheckNpuModel` 과 같은 규칙으로 본다 —
   `npu_quant` 가 없으면(FP32) NPU 단계만 건너뛰고, `npu_source_md5` 가 기준 MD5 와 다르거나 없으면 아무것도 재지 않고 종료 코드 1.
   예전엔 NPU 모델 기본값이 기준 FP32 자체라 생략하면 FP32 가 NPU 로 가서 1.5시간 뒤 프로세스가 끝났다. `screen.py` 는 `--ref`(기본 루트 `best.onnx`)와 원본이 다른 변형을 건너뛴다.
   NpuBench 의 `cache_key` 는 `{NPU 모델 MD5}_{EP 패키지 버전}_{ORT 의미 버전}` — 앱과 달리 의미 버전이지만 캐시가 자기 `out/vaip_cache` 라 섞이지 않는다
-- 보정 전처리는 앱 YoloDotNet 과 같게(비율 유지·가운데·Nearest·검은 여백) — 앱이 NPU 모델에 넣을 입력이 그것이라서. 보정 기본값은 `publish_gpu_ver\test1~5.mp4` 각 20장,
+- 보정 전처리는 앱 YoloDotNet 과 같게(비율 유지·가운데·Nearest·검은 여백) — 앱이 NPU 모델에 넣을 입력이 그것이라서. 보정 기본값은 `publish\test1~5.mp4` 각 20장,
   다른 현장 영상을 쓸 모델이면 `-Calib` 로 그 영상·이미지 폴더를 준다
 - **FP32 를 그대로 넣으면 안 된다** — EP 의 BF16 자동 변환이 NPU 커널 빌드에서 잘린 경로(`C:\PROGRA~1\WindowsApps\`)로 실패하고 1.5시간 뒤 프로세스를 끝낸다
 - **VitisAI `cache_key` 는 모델 파일 해시로 직접 줄 것.** 기본 키는 가중치·스케일이 달라도 같아서 옛 컴파일 결과를 재사용한다(틀린 결과·크래시 실측). 앱·NpuBench 는 여기에 EP·ORT 버전도 붙인다(위)
@@ -723,7 +727,7 @@ HUD 는 캡처 크기 — 크기 없는 판은 아래 '화면 가장자리' 문�
 - 열거형 이름은 `VideoCaptureAPIs` (`VideoCaptureApis` 아님)
 - WPF 프로젝트의 암시적 using 에는 `System.IO` 가 없다 → `System.IO.Path` 처럼 전체 이름으로
 - `Vortice.DXGI` 와 `Vortice.Direct3D11` 을 함께 쓰면 `MapFlags` 등이 모호하다 → 전체 이름으로
-- WPF 의 `Track`(`System.Windows.Controls.Primitives`)은 추적기의 `Track`(`Tracker.cs`, 같은 네임스페이스 `YOLO11_Test`)과 이름이 겹쳐 using 보다 추적기 쪽이 먼저 잡힌다 → 전체 이름으로
+- WPF 의 `Track`(`System.Windows.Controls.Primitives`)은 추적기의 `Track`(`Tracker.cs`, 같은 네임스페이스 `DetectView`)과 이름이 겹쳐 using 보다 추적기 쪽이 먼저 잡힌다 → 전체 이름으로
 - C# 14(.NET 10)에선 배열의 `.Reverse()` 가 LINQ 가 아니라 제자리 `MemoryExtensions.Reverse(Span)` 로 잡힌다(반환값 없음 — 문장으로 쓰면 원본을 뒤집는다) → 새 순서가 필요하면 `Enumerable.Reverse(arr)`
 
 ## 테스트
@@ -734,14 +738,14 @@ HUD 는 캡처 크기 — 크기 없는 판은 아래 '화면 가장자리' 문�
 pwsh tests/ui/Run-All.ps1
 ```
 
-- 기본 대상은 `bin\Debug` 아래 **가장 최근에 빌드된** `DetectView.exe`(먼저 `dotnet build`). TFM 이 바뀌면 출력 폴더 이름도 바뀌어서 고정 경로를 쓰지 않는다. `-ExeDir publish_gpu_ver` 로 배포본도 검사한다.
-  `-ExeDir` 의 상대 경로는 저장소 루트 기준이고 `.\`·끝 `\` 는 정규화한다(2026-10-30 — 예전엔 `.\publish_gpu_ver` 에서 `Test-NpuSwitch` 미러의 파일 이름이 잘리고 `Test-ScreenHud` 의 exe 경로 비교가 틀렸다)
+- 기본 대상은 `bin\Debug` 아래 **가장 최근에 빌드된** `DetectView.exe`(먼저 `dotnet build`). TFM 이 바뀌면 출력 폴더 이름도 바뀌어서 고정 경로를 쓰지 않는다. `-ExeDir publish` 로 배포본도 검사한다.
+  `-ExeDir` 의 상대 경로는 저장소 루트 기준이고 `.\`·끝 `\` 는 정규화한다(2026-10-30 — 예전엔 `.\publish` 에서 `Test-NpuSwitch` 미러의 파일 이름이 잘리고 `Test-ScreenHud` 의 exe 경로 비교가 틀렸다)
 - 테스트는 요소를 **`x:Name`(UIA AutomationId)** 으로 찾고, [파일 열기]만 버튼 글자로 찾는다(11-01 개편부터 `Btn_LoadVideo` 이름이 있지만 테스트는 글자 그대로).
   버튼 아이콘은 `Content` 가 아니라 `Ui.Glyph` 로 그린다 — `Content` 를 문자열이 아닌 것으로 바꾸면 UIA 이름이 비어 버튼을 못 찾는다. 툴팁도 문자열로 둘 것(그래야 UIA HelpText 로 읽힌다). 상태 문구·버튼 글자·툴팁 문구·창 제목 형식도
   검사 대상이다 — 이름·문구를 바꾸면 테스트도 같이 고칠 것 (`Btn_RefreshCameras` 처럼 코드에선 안 쓰고 테스트만 쓰는 이름도 있다)
 - `Measure-Fps.ps1 -ExeDir <폴더>`: 테스트가 아니라 A/B 계측. test1.mp4 재생 중 `Txt_InferenceFps`(프레임 읽기 + 처리 시간의 역수)를 워밍업 3초 뒤 15초 동안 읽어 중앙값을 낸다. 5회 반복.
   같은 조건에서도 실행 묶음끼리 수 FPS 흔들려서(한 번은 86~93, 다음엔 96~99) **기준선을 앞뒤로 두 번** 잰다
-- 필요: GPU(DirectML), `publish_gpu_ver\test1.mp4`(gitignore 대상이라 저장소엔 없음). 실행 중 DetectView 창이 떴다 닫히고 바탕화면을 캡처한다.
+- 필요: GPU(DirectML), `publish\test1.mp4`(gitignore 대상이라 저장소엔 없음). 실행 중 DetectView 창이 떴다 닫히고 바탕화면을 캡처한다.
   NPU 전환 검사는 AMD NPU 와 exe 옆 짝 모델(`best.npu.onnx`)이 있을 때만 돈다 (Debug 는 빌드가 루트 짝을 복사, 배포 폴더는 `tools\Make-NpuModel.ps1`)
 - `Test-FilePlayback.ps1`: **일부러 exe 폴더가 아닌 작업 디렉터리로** 띄워 모델 경로 회귀를 막는다. 파일 열기 → **재생 속도(0.9~1.1배속)** → SAHI → **멈춘 채 시크 → 한 장 표시(검출 수에서 "(SAHI)" 가 빠짐) → 그 프레임으로 SAHI** → SAHI 뒤 슬라이더 활성 →
   **재생 중 시크 직후 SAHI → 그 위치를 분석했는지(완료 문구 끝 (mm:ss))**(2026-10-30 추가 — 시크 뒤 35ms 에 누른다, 아래 '테스트가 확인하지 않는 것') → EOF → 재생 시 처음부터 →
@@ -758,7 +762,7 @@ pwsh tests/ui/Run-All.ps1
   `test4.mp4.roi.json` 을 읽어 점 좌표(±0.012)까지 본다 — 소스 없음·재생 중엔 편집이 막히고 사유가 툴팁에 → 일시정지 → [추가] → 점 4개 + 첫 점 클릭으로 닫기(`Z1 차로`, 파일 lane · 점 4개가 찍은 자리) →
   점 끌기 → 변 가운데 ○ 끌기(점 5개) → Delete(4개) → 점을 안 고르고 Delete(그대로) → 유형 갓길(파일·목록 이름) → 그리다가 Esc · 그리다가 재생(편집이 막히고 그리던 점 버림) → 구역 지우기(목록·파일이 빔, 파일 삭제) →
   다시 그리면 번호 Z2(지운 번호를 안 씀 · 유형은 마지막에 쓴 갓길 · nextId 3)·Enter 로 닫기(점 3개) → 정지(패널이 비고 편집이 막힘, 파일은 남음) → 같은 영상을 다시 열면 구역이 돌아옴 → 깨진 파일(상태바 사유·빈 구역·`.bad`).
-  끝나면 영상 옆 구역 파일을 지운다(`publish_gpu_ver` 는 gitignore). 그림(색·모양)은 UIA 로 안 보여 보지 않는다 — 스크린샷으로 손으로 봤다. 점 끌기는 `ZoneLayer` 의 UIA 영역(영상 칸)으로 좌표를 옮긴다. 항목 수 30
+  끝나면 영상 옆 구역 파일을 지운다(`publish` 는 gitignore). 그림(색·모양)은 UIA 로 안 보여 보지 않는다 — 스크린샷으로 손으로 봤다. 점 끌기는 `ZoneLayer` 의 UIA 영역(영상 칸)으로 좌표를 옮긴다. 항목 수 30
 - `Test-SceneChange.ps1`(2026-11-03): 화면 전환 감지(위 "화면 전환 감지"). 재생하면서 0.03초 간격으로 배지(`Txt_SceneBadge` — 숨겨져 있으면 UIA 에서 사라짐)·위치·번호(검출 수 칸 UIA `ItemType`)를 기록해 그 열을 본다
   (두 값을 읽는 사이 프레임이 넘어갈 수 있어 배지를 번호 앞뒤로 읽어 같은 표본만 센다). **test4**(7초로 시크해 15초까지): 돌기 전(10.4초 전) 배지 없음 + 멈춘 덤프트럭에 정지 번호 → 도는 동안 `화면 이동 중` 배지
   (10.6~11.4초), 박스는 보이되 번호 없음 → 안정된 뒤 `● 새 뷰 V2 · 구역 없음` 배지(11.5~13.5초 — 2b 이후, 그전엔 `화면 전환 · 번호 새로 매김`)와 돌기 전 최대 번호보다 큰 새 번호 → 13.9초부터 배지 없음·번호 있음(13.43초의 한 프레임 튐은 전환 아님) → 정지하면 배지 사라짐.
@@ -772,7 +776,7 @@ pwsh tests/ui/Run-All.ps1
   (두 값을 읽는 사이 프레임이 넘어갈 수 있어 표시를 번호 앞뒤로 읽어 같은 표본만 센다): 5초 전 표시·강조 없음 + 멈춘 트럭엔 `정지` → 선언 뒤(7~10.3초) 헤더 `⚠ 유고 후보 1`·박스 번호 `#14 정지 유고`(같은 번호가 정지이기도 함) →
   처음 보인 위치 5.0~7.0초(실측 5.2초) → 카메라가 돈 뒤(11.7초~) 표시·강조가 사라짐 → 로그: 유고 후보 행 한 줄(5~9초)·`유고 해소 (화면 전환) · 멈춤 10.3초` 행 → CSV: `incident`(Z1 · lane · 멈춤 5000ms)·`incident_end` 각 한 행 →
   비우고 2초로 시크해 재생하면 7~9.3초(실측 7.3초)에 다시 선언 → 선언 중에 다시 2초로 시크하면 `유고 해소 (시크)` 행. 항목 수 16
-- `Test-ViewIdentity.ps1`(2026-11-03): 화면 식별(위 "화면 식별"). `TrackerCheck mkrevisit` 이 test4 조각을 이어 만든 `experiments\TrackerCheck\out\test4_revisit.mp4`(없으면 테스트가 만든다 — `publish_gpu_ver\test4.mp4` 가 필요)에 옛 형식 구역 파일(판 1, 차로 Z1 — 트럭의 발 위치)을 옆에 써 두고 30초를 재생하며
+- `Test-ViewIdentity.ps1`(2026-11-03): 화면 식별(위 "화면 식별"). `TrackerCheck mkrevisit` 이 test4 조각을 이어 만든 `experiments\TrackerCheck\out\test4_revisit.mp4`(없으면 테스트가 만든다 — `publish\test4.mp4` 가 필요)에 옛 형식 구역 파일(판 1, 차로 Z1 — 트럭의 발 위치)을 옆에 써 두고 30초를 재생하며
   0.03초 간격으로 배지·구역 헤더(`Txt_ZoneCount`)·유고 표시를 기록한다(세 값을 위치 앞뒤로 읽어 같은 표본만 쓴다): A 0~8초 헤더 `V1 · 1개`·배지 없음·유고 후보 → B 8초 컷 `● 새 뷰 V2 · 구역 없음`·헤더 `V2 · 0개`·유고 표시 없음·배지는 2초 뒤 사라짐 →
   A 14초 `● 뷰 V1 · 아는 화면`·헤더 `V1 · 1개`·유고 후보가 다시 선언 → C 22초 `● 새 뷰 V3 · 구역 없음` → B 26초 `● 뷰 V2 · 아는 화면`. [CSV 저장]으로 로그를 읽는다(UIA 목록은 오래된 행이 안 보일 수 있다): 화면 전환 표시 네 줄(8.2·14.2·22.2·26.2초)·유고 후보 둘(5.2·19.4초)·해소(화면 전환) 둘.
   이어서 멈춘 채 B 의 한 장(28초)에서 실제 마우스로 구역을 그려 파일(판 2 — 구역마다 view·뷰 목록 셋과 기준 화면 JPEG·nextView 4)을 확인하고, 정지 → 다시 열면 같은 뷰로 알아보고 구역이 그린 뷰에서만 보인다(11초 `V2 · 1개`·4초 `V1 · 1개`·24초 `V3 · 0개`). 항목 수 27
@@ -785,7 +789,7 @@ pwsh tests/ui/Run-All.ps1
 - 배속은 슬라이더(영상 시각)가 벽시계 2초 동안 나아간 양으로 잰다(`Measure-PlaybackRate`). 슬라이더는 길이를 안 뒤에만 움직인다
 - `Test-ScreenHud.ps1`: HUD 시작 → 캡처 방식 → 화면 받음 → 일시정지/재개 → 카메라 [새로고침]에도 HUD 상태 문구 유지 → 정지 → **HUD 에서 정지 없이 곧바로 파일 열기(오버레이가 닫히는지)**.
   메인 창을 주 모니터(HUD 기본 대상)로 옮겨 둔다. 오버레이는 UIA 로 믿을 만하게 안 보여서 이 프로세스의 **보이는 클릭 통과(`WS_EX_TRANSPARENT`) 최상위 창 중 제목이 `DetectView Overlay` 인 것**을
-  Win32 로 센다 — 열린 WPF 툴팁도 클릭 통과 최상위 창이라(11-01 프로브), 제목을 안 보던 때는 사용자가 PC 를 쓰는 중 포인터가 메인 창 위에 머물면 '2개'로 실패했다. 영상은 `-Video`(기본 `publish_gpu_ver\test1.mp4`).
+  Win32 로 센다 — 열린 WPF 툴팁도 클릭 통과 최상위 창이라(11-01 프로브), 제목을 안 보던 때는 사용자가 PC 를 쓰는 중 포인터가 메인 창 위에 머물면 '2개'로 실패했다. 영상은 `-Video`(기본 `publish\test1.mp4`).
   진단 값: `Txt_DetectionCount` 의 HelpText `오버레이 박스 N · 재개 재검출 M · 캡처 재연결 K · 받은 화면 F`(그리지 않는 UIA 속성이라 DXGI 새 화면을 만들지 않는다).
   일시정지 → 박스 0, 재개 → **M 증가**(DXGI 만 — 캡처가 새 화면이 아니라 마지막 화면을 다시 준 것만 세므로 재개 버튼 글자가 만든 새 화면으로는 안 늘어난다. GDI 는 [INFO])·박스 복귀
   (일시정지 전 박스가 없으면 박스 검사는 [INFO]). 다시 줄 화면이 있어야 해서 먼저 F > 0 을 확인한다(없으면 일시정지·재개로 버튼 글자를 바꿔 한 장 받게 한다).
@@ -798,8 +802,8 @@ pwsh tests/ui/Run-All.ps1
   다시 만든 캡처가 새 화면을 줌(F 증가) · hud-detect-fail → FPS 칸 `검출 오류 (재시도 중)`(툴팁에 사유) → 풀림. 환경 변수는 처음 값을 기억해 결함 없는 실행엔 지우고 띄울 때마다 되돌린다.
   GDI 대체는 환경 문제일 수 있어 실패가 아닌 [INFO] (사유가 없으면 실패).
   하이브리드 GPU 안내면 툴팁에 exe 경로·연결 GPU 가 있는지와 권한 설정이 지금 설정(레지스트리)과 맞는지, DXGI 면 툴팁이 비었는지도 본다. 툴팁은 UIA 에서 `HelpText` 로 읽힌다.
-  절전 설정이 `publish_gpu_ver` 경로에만 있어서 경로에 따라 검사되는 쪽이 다르고, 어느 쪽이 DXGI 인지는 HUD 대상 모니터에 따라 뒤집힌다(위 "반대 사례").
-  2026-10-24(모니터 0 = 외부 2560×1440)엔 Debug·scratchpad 가 DXGI, '절전'이 걸린 `publish_gpu_ver` 가 GDI 였다.
+  절전 설정이 `publish` 경로에만 있어서 경로에 따라 검사되는 쪽이 다르고, 어느 쪽이 DXGI 인지는 HUD 대상 모니터에 따라 뒤집힌다(위 "반대 사례").
+  2026-10-24(모니터 0 = 외부 2560×1440)엔 Debug·scratchpad 가 DXGI, '절전'이 걸린 `publish` 가 GDI 였다.
   같은 날 저녁 사용자가 배포본 설정을 'Windows에서 결정'(`GpuPreference=0`)으로 바꾼 뒤엔 배포본도 외부 모니터에서 DXGI(HUD 108 FPS)
 - `Test-NpuSwitch.ps1`: ① 최소 폭(900)에서 조작 요소(11-01 부터 왼쪽 패널)가 모두 창 안에 ② "추론 장치" 콤보에서 NPU 선택 → 상태바 진행 표시 → 제목 NPU →
   파일 재생(배속·검출) → 재생 중 GPU 로 → 다시 NPU(캐시) — 재생이 끊기지 않는지 ③ 실패 경로 3가지(짝 없음·다른 모델의 짝·FP32 를 짝 이름으로)에서
@@ -816,10 +820,19 @@ pwsh tests/ui/Run-All.ps1
   옛 판 `UiLatency` 형식이 남은 PowerShell 세션에선 분명한 메시지로 멈춘다(Add-Type 형식은 못 바꿈 — 새 pwsh 에서 돌릴 것)
 - 종료 코드 = 실패 건수(`Run-All` 은 0/1). 파일 열기 대화상자 자동화 요령 등은 `Common.ps1` 머리말에 정리해 두었다.
   `Run-All` 은 테스트 파일이 try 밖에서 throw 해도(영상·빌드 없음) 그 파일만 실패로 세고 다음 파일을 돈다(2026-10-30 — 예전엔 거기서 통째로 멈췄다)
-- 마지막 전체 통과: 2026-11-03 오후, **배포본 `publish_gpu_ver`** — `main`(`10f7b31`, 관심 구역·화면 전환 감지·구역 이벤트 로그·작은 물체 박스 조정·유고 규칙·화면 식별 — 앞 배포 `3939f40` 은 옛 기록의 해시라 `main` 의 조상이 아니다)으로 다시 배포
+- 마지막 전체 통과: 2026-11-03 낮, **폴더 이전·이름 정리 뒤 새 위치의 배포본 `E:\DetectView\publish`** — `E:\VS_E\YOLO11_Test` → `E:\DetectView`, `YOLO11_Test.csproj`·`.slnx` → `DetectView.csproj`·`.slnx`, 네임스페이스 `YOLO11_Test` → `DetectView`,
+  `publish_gpu_ver` → `publish`(위 '이름')로 다시 publish. 기능은 그대로고 이름·경로만 바뀌었다 (exe 126.4 MB(132,572,351 바이트), 모델 두 개 MD5 그대로(`87D0E1CB…`·`5CE87F90…`), Release DLL 에 옛 네임스페이스 문자열·결함 이름 없음).
+  `Run-All -ExeDir publish` 한 번에 `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 · `Test-SceneChange` 21 · `Test-ZoneEvents` 21 · `Test-Incident` 16 · `Test-ViewIdentity` 27 · `Test-VfrPlayback` 26 · `Test-ScreenHud` 25 · `Test-NpuSwitch` 28 항목 = 237
+  (재생 처리 GPU 99.4 · NPU 48.8 FPS·HUD 122.0 FPS 는 참고용, NPU 캐시 키 `5CE87F90…_1.8.80.0_1.27.20260711.1.7b7c0e2` — 경로와 상관없어 옛 컴파일 캐시를 그대로 썼다). 이어서 Debug `Test-ScreenHud` 39(결함 주입 포함) 통과.
+  콘솔: 앱·TrackerCheck·NpuBench·RuntimeParity(Old·WinML) 빌드 경고 0, `TrackerCheck selftest` 통과(실제 영상은 새 `RepoPaths.VideoDir` 로 저장소 루트의 `publish` 에서 읽는다 — 예전엔 절대 경로가 박혀 있었다).
+  **옮긴 것**: 소스·`.git`(기록 전체·`old-history` 태그·`pre-push` 훅·noreply 작성자 설정 — 복사 뒤 `git status` 가 옛 저장소와 같았다)·`old/`(숙제 폴더·zip·bundle·docs. bin/obj/publish 는 뺌)·배포 폴더(모델·테스트 영상 포함)·`experiments/TrackerCheck/out` 의 CSV.
+  **안 옮긴 것**: bin/obj·실험 도구 빌드 결과·`experiments/NpuBench/out`(519 MB, 다시 만들 수 있음)·`graft/` 캐시(첫 질의 때 다시 만든다)·옛 worktree 둘(`.claude/worktrees/…` 변경 없음 확인 — 브랜치는 새 저장소에도 있고 작업 폴더는 옛 폴더에만 남는다)·합성 revisit 영상(`TrackerCheck mkrevisit`).
+  옛 폴더 `E:\VS_E\YOLO11_Test` 는 그때 세션의 작업 폴더라 지우지 않았다 — 확인한 뒤 사용자가 지운다. 전역 `~/.claude/settings.json` 의 신뢰 저장소 경로 4줄과 Claude 메모리(`E--DetectView` 프로젝트 키)를 새 경로로 옮겼다(사용자 승인).
+  Windows 그래픽 설정은 새 exe 경로에 없다(위 '이름' — 'Windows에서 결정'과 같은 동작이고 새 `publish` 에서 HUD 는 DXGI 로 돌았다). 스크린샷으로 모양을 보지 않았다.
+- 그 전(배포본): 2026-11-03 오후, **배포본 `publish`** — `main`(`10f7b31`, 관심 구역·화면 전환 감지·구역 이벤트 로그·작은 물체 박스 조정·유고 규칙·화면 식별 — 앞 배포 `3939f40` 은 옛 기록의 해시라 `main` 의 조상이 아니다)으로 다시 배포
   (exe 126.4 MB(132,572,382 바이트), pdb·lib·dll 없음, 배포 폴더 `best.onnx`(09-17 visible, MD5 `87D0E1CB…` — 루트(09-11)보다 새것이라 `PreserveNewest` 가 덮어쓰지 않음)·`best.npu.onnx`(`5CE87F90…`)·테스트 영상 그대로, 그래픽 설정 `GpuPreference=0` 그대로.
   Release DLL 에 새 코드(`ViewRegistry`·`WarmUp`·`IncidentDetector`·`SceneChangeDetector`)가 있고 결함 이름(`hud-*-fail`)은 없음 — `strings` 가 없어 파이썬으로 바이트를 찾았다).
-  `Run-All -ExeDir publish_gpu_ver` 한 번에 `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 · `Test-SceneChange` 21 · `Test-ZoneEvents` 21 · `Test-Incident` 16 · `Test-ViewIdentity` 27 · `Test-VfrPlayback` 26 ·
+  `Run-All -ExeDir publish` 한 번에 `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 · `Test-SceneChange` 21 · `Test-ZoneEvents` 21 · `Test-Incident` 16 · `Test-ViewIdentity` 27 · `Test-VfrPlayback` 26 ·
   `Test-ScreenHud` 25(DXGI, 박스 없음, 결함 주입은 Release 라 빠짐) · `Test-NpuSwitch` 28 항목 = 237 (NPU 첫 전환 4.0초(캐시), ①② 창 응답 WM_NULL 최대 1 ms · UIA 최대 7~9 ms,
   캐시 키 `5CE87F90…_1.8.80.0_1.27.20260711.1.7b7c0e2` — 올라온 `onnxruntime.dll` 과 같음). 테스트가 찍은 재생 처리 GPU 95.3 · NPU 45.8 FPS, HUD 114.2 FPS(참고용).
   HUD 대상 모니터에 물체가 없어 오버레이 범례·번호는 빈 채로만 봤다(이번 변경은 HUD 를 건드리지 않아 test4 장면을 띄운 재검사는 안 했다). 테스트가 남긴 구역·이벤트 파일 없음.
@@ -850,13 +863,13 @@ pwsh tests/ui/Run-All.ps1
   이어서 구역 읽기·저장의 예외 처리를 넓힌 최종 빌드(구역은 부가 기능이라 어떤 이유로든 영상 열기를 막지 않게)로 `Test-Roi` 30 · `Test-FilePlayback` 34 를 다시 돌려 통과. Debug 빌드 경고 0.
   스크린샷(구역 4개 · 하나 선택 · 새 구역 그리는 중)으로 모양을 봤다 — 시안 그대로이고 기본 창 높이 820 에서 패널 전체('추론 장치' 콤보까지)가 스크롤 없이 보인다
   (처음엔 목록 아래 파일 이름 줄 때문에 그 콤보가 스크롤 아래로 밀려 줄였다). (배포본은 같은 날 `10f7b31` 로 다시 배포 — 위)
-- 그 전(배포본): 2026-11-02 오후, **배포본 `publish_gpu_ver`** — `main`(`3939f40`, 추적기 연결 · 박스·라벨 투명도와 작은 물체 라벨·꺾쇠 축소 · 상태바 칸 고정)으로 다시 배포
+- 그 전(배포본): 2026-11-02 오후, **배포본 `publish`** — `main`(`3939f40`, 추적기 연결 · 박스·라벨 투명도와 작은 물체 라벨·꺾쇠 축소 · 상태바 칸 고정)으로 다시 배포
   (exe 126.4 MB, pdb·lib·dll 없음, 배포 폴더 `best.onnx`(09-17 visible, MD5 `87D0E1CB…`)·`best.npu.onnx`(`5CE87F90…`) 그대로, 그래픽 설정 `GpuPreference=0` 그대로.
   Release DLL 에 새 코드(`UpdateTagged`·`CornerPens`·`StatusFpsHudWidth`)가 있고 결함 이름 문자열은 없음).
-  `Run-All -ExeDir publish_gpu_ver` 한 번에 `Test-FilePlayback` 34 · `Test-Tracking` 9(배포 모델로도 2초 정지 번호 → 5초 같은 번호 → 시크 뒤 새 번호 → 재개 뒤 정지) ·
+  `Run-All -ExeDir publish` 한 번에 `Test-FilePlayback` 34 · `Test-Tracking` 9(배포 모델로도 2초 정지 번호 → 5초 같은 번호 → 시크 뒤 새 번호 → 재개 뒤 정지) ·
   `Test-VfrPlayback` 26 · `Test-ScreenHud` 25(DXGI, 박스 없음, 결함 주입은 Release 라 [INFO]) · `Test-NpuSwitch` 28 항목 = 122
   (NPU 전환 6.1초(캐시), 다시 고르면 5.5초, ①② 창 응답 WM_NULL 최대 1 ms · UIA 최대 3 ms, 재생 중 다시 전환 3 · 21 ms, 캐시 키 `5CE87F90…_1.8.80.0_1.27.20260711.1.7b7c0e2`).
-  HUD 대상 모니터에 물체가 없어 test4 4초 장면(Debug DetectView 를 멈춰 최대화)을 띄우고 `Test-ScreenHud -ExeDir publish_gpu_ver` 를 다시 돌려 33 항목 통과
+  HUD 대상 모니터에 물체가 없어 test4 4초 장면(Debug DetectView 를 멈춰 최대화)을 띄우고 `Test-ScreenHud -ExeDir publish` 를 다시 돌려 33 항목 통과
   (오버레이 범례 `CAR 5` = 오버레이 박스 5, 번호 `#1~#5` → 일시정지에 빔 → 재개하면 `#6~#10` 으로 새로 매긴 뒤 정지 표시 → 정지에 빔).
   테스트가 찍은 재생 처리 GPU 97.1 · NPU 50.4 FPS, HUD 123.6 FPS(참고용)
 - 그 전: 2026-11-02 오후, Debug — 상태바 FPS·검출 칸 폭을 고정한 뒤(위 '화면 HUD' 절의 상태바 항목). `Run-All` 한 번에
@@ -880,23 +893,23 @@ pwsh tests/ui/Run-All.ps1
   빽빽한 장면(test4 25초 신호대기 행렬 39대)에선 라벨이 길어져 서로 겹친다 — 시안을 고를 때 예고한 대가다.
   **HUD 정지 화면 고리는 직접 못 쟀다**: 이 PC 는 화면이 늘 움직여(이전 판·새 판 모두 받은 화면이 초당 27~32장) '정지 화면에서 받은 화면이 안 느는지'로는 재지 못했다 — 위 selftest(추적기 출력 수렴)로 대신 봤다.
   (배포본은 같은 날 `3939f40` 으로 다시 배포 — 위)
-- 그 전: 2026-11-01 오후, **배포본 `publish_gpu_ver`** — `main`(`fb06cf9`, 클래스별 검출 수 범례)으로 다시 배포
+- 그 전: 2026-11-01 오후, **배포본 `publish`** — `main`(`fb06cf9`, 클래스별 검출 수 범례)으로 다시 배포
   (exe 126.4 MB, pdb·lib·dll 없음, 배포 폴더 `best.onnx`(09-17 visible, MD5 `87D0E1CB…`)·`best.npu.onnx`(`5CE87F90…`) 그대로, 그래픽 설정 `GpuPreference=0` 그대로.
   Release DLL 에 범례 코드(`LegendTextChanged`·`검출 · SAHI`)가 있고 결함 이름 문자열은 없음).
-  `Run-All -ExeDir publish_gpu_ver` 한 번에 `Test-FilePlayback` 29(범례 `CAR 2 · PERSON 15` = `검출 17 (SAHI)` 등) · `Test-VfrPlayback` 26 ·
+  `Run-All -ExeDir publish` 한 번에 `Test-FilePlayback` 29(범례 `CAR 2 · PERSON 15` = `검출 17 (SAHI)` 등) · `Test-VfrPlayback` 26 ·
   `Test-ScreenHud` 24(DXGI, 박스 없음, 결함 주입은 Release 라 [INFO]) · `Test-NpuSwitch` 28 항목(NPU 전환 4.7초(캐시), 다시 고르면 5.2초,
   ①② 창 응답 WM_NULL 최대 2 ms · UIA 최대 20 ms, 재생 중 다시 전환 2 · 20 ms, 캐시 키 `5CE87F90…_1.8.80.0_1.27.20260711.1.7b7c0e2` — 올라온 `onnxruntime.dll` 과 같음).
-  HUD 범례가 빈 채로만 보여 test4 4초 장면(Debug DetectView 를 멈춰 최대화)을 주 모니터에 띄우고 `Test-ScreenHud -ExeDir publish_gpu_ver` 를 다시 돌려 29 항목 통과
+  HUD 범례가 빈 채로만 보여 test4 4초 장면(Debug DetectView 를 멈춰 최대화)을 주 모니터에 띄우고 `Test-ScreenHud -ExeDir publish` 를 다시 돌려 29 항목 통과
   (오버레이 범례 `CAR 9 · BUS 1` = 오버레이 박스 10, 일시정지에 빔·재개에 돌아옴·정지에 빔). 테스트가 찍은 재생 처리 GPU 86.4 · NPU 49.5 FPS, HUD 102.1 FPS(참고용)
 - 그 전: 2026-11-01, Debug — 클래스별 검출 수 범례(위 "화면 디자인") 뒤. 사용자가 PC 를 쓰는 중에 돌렸다.
   `Run-All` 한 번에 `Test-FilePlayback` 29(범례 `CAR 1 · PERSON 11` = 검출 12 등) · `Test-VfrPlayback` 26 · `Test-ScreenHud` 38(DXGI, 박스 없음, 결함 주입 포함) ·
   `Test-NpuSwitch` 28 항목(NPU 전환 7.7초(캐시), 다시 고르면 6.2초, ①② 창 응답 WM_NULL 최대 1 ms · UIA 최대 25 ms, 재생 중 다시 전환 3 · 19 ms).
   HUD 대상 모니터에 물체가 없어 HUD 범례는 빈 채로만 봤기에, test4 4초에서 멈춘 DetectView 를 주 모니터에 최대화해 두고 `Test-ScreenHud` 를 다시 돌려 43 항목 통과
   (오버레이 범례 `CAR 6 · TRUCK 3` = 오버레이 박스 9, 일시정지에 빔·재개에 돌아옴·정지에 빔). (배포본은 같은 날 `fb06cf9` 로 다시 배포 — 위)
-- 그 전: 2026-11-01 아침, **배포본 `publish_gpu_ver`** — `main`(`c274575`, 화면 디자인 개편)으로 다시 배포
+- 그 전: 2026-11-01 아침, **배포본 `publish`** — `main`(`c274575`, 화면 디자인 개편)으로 다시 배포
   (exe 126.4 MB, pdb·lib·dll 없음, 배포 폴더 `best.onnx`(09-17 visible, MD5 `87D0E1CB…`)·`best.npu.onnx`(`5CE87F90…`) 그대로, 그래픽 설정 `GpuPreference=0` 그대로,
   런타임 패키지는 바뀌지 않음 — `Test-NpuSwitch` 가 올라온 `onnxruntime.dll` 1.27.20260711.1 확인). 사용자가 PC 를 쓰는 중에 돌렸다.
-  `Run-All -ExeDir publish_gpu_ver` 한 번에 `Test-FilePlayback` 24 · `Test-VfrPlayback` 26 · `Test-ScreenHud` 23(DXGI, 박스 없음, 결함 주입은 Release 라 [INFO]) ·
+  `Run-All -ExeDir publish` 한 번에 `Test-FilePlayback` 24 · `Test-VfrPlayback` 26 · `Test-ScreenHud` 23(DXGI, 박스 없음, 결함 주입은 Release 라 [INFO]) ·
   `Test-NpuSwitch` 28 항목(NPU 전환 6.9초(캐시), 다시 고르면 6.5초, ①② 창 응답 WM_NULL 최대 2 ms · UIA 최대 37 ms, 재생 중 다시 전환 2 · 26 ms).
   테스트가 찍은 재생 처리 GPU 48.3 · NPU 42.9 FPS, HUD 51.0 FPS(참고용 — PC 부하)
 - 그 전: 2026-11-01, Debug — 화면 디자인 개편(시안 B · 색 조합 B2, 위 "화면 디자인") 뒤. 사용자가 PC 를 쓰는 중에 돌렸다.
@@ -904,7 +917,7 @@ pwsh tests/ui/Run-All.ps1
   새 `BoxLayer` 로 그린 오버레이 박스 1개가 일시정지에 지워지고 재개에 돌아오는 검사 +2) · `Test-NpuSwitch` 28 항목(NPU 전환 8.4초(캐시), 다시 고르면 6.5초,
   ①② 창 응답 WM_NULL 최대 2 ms · UIA 최대 19 ms, 재생 중 다시 전환 2 · 24 ms). 같은 개편의 앞선 판(라벨 순서·HUD 아이콘 고치기 전)도 24 · 26 · 37(박스 없음) · 28 통과.
   (배포본은 같은 날 `c274575` 로 다시 배포 — 위)
-- 그 전: 2026-11-01 새벽, **배포본 `publish_gpu_ver`** — `main`(`53db7ed`, 이슈 #1~#11 수정 포함)으로 다시 배포
+- 그 전: 2026-11-01 새벽, **배포본 `publish`** — `main`(`53db7ed`, 이슈 #1~#11 수정 포함)으로 다시 배포
   (exe 126.4 MB, pdb·lib·dll 없음, 배포 폴더 `best.onnx`(09-17 visible)·`best.npu.onnx` MD5 그대로, 그래픽 설정 `GpuPreference=0` 그대로).
   `Run-All` 한 번에 `Test-FilePlayback` 24 · `Test-VfrPlayback` 26 · `Test-ScreenHud` 23(DXGI, HUD 97.9 FPS, 결함 주입은 Release 라 [INFO]) · `Test-NpuSwitch` 28 항목.
   NPU 첫 전환은 배포 짝의 세 조각 새 키(`5CE87F905F2828DB87035570DC8B2220_1.8.80.0_1.27.20260711.1.7b7c0e2`)로 컴파일해 97.9초, 다시 고르면 7.8초.
@@ -918,7 +931,7 @@ pwsh tests/ui/Run-All.ps1
   fps1000 위치 검사 4건(16초 → 18.11 · 13초 → 15.81 · 9초 → 12.54 · 멈춘 채 13.5초 → SAHI `(00:16)`)과 `Test-NpuSwitch` 의 ①② 창 응답 2건(WM_NULL 최대 874·768 ms,
   UIA 최대 4,297·3,885 ms)·캐시 키(툴팁에 키 없음)가 실패했다. 콘솔: `TrackerCheck selftest`·`gpu` 통과, Debug·Release 빌드 경고 0.
   (배포본은 같은 날 `53db7ed` 로 다시 배포 — 위)
-- 그 전: 2026-10-31 낮, **배포본 `publish_gpu_ver`** — `main`(`9158b2b`, `6d1f61a` 시크·SAHI 정합과 SAHI 경계 조각 병합 · Gemini 교차 검증 반영 포함)으로 다시 배포
+- 그 전: 2026-10-31 낮, **배포본 `publish`** — `main`(`9158b2b`, `6d1f61a` 시크·SAHI 정합과 SAHI 경계 조각 병합 · Gemini 교차 검증 반영 포함)으로 다시 배포
   (exe 126.4 MB, pdb·lib·dll 없음, 배포 폴더 `best.onnx`(09-17 visible)·`best.npu.onnx` MD5 그대로, 그래픽 설정 `GpuPreference=0` 그대로).
   `Run-All` 한 번에 `Test-FilePlayback` 24 · `Test-VfrPlayback` 13 · `Test-ScreenHud` 20(DXGI, HUD 104.9 FPS) · `Test-NpuSwitch` 25 항목(캐시 있는 NPU 전환 7.3초, 다시 고르면 5.5초).
   실행 중 모듈 `onnxruntime.dll` 22.0 MB(1.27) · `DirectML.dll` 17.8 MB(1.15.4) 확인. 테스트가 찍은 재생 처리 NPU 45.6 · GPU 80.3 FPS(참고용 — 벤치마크는 `Measure-Fps`)
@@ -929,7 +942,7 @@ pwsh tests/ui/Run-All.ps1
 - 그 전: 2026-10-30 밤, Debug — 재생 중 시크·SAHI 정합과 SAHI 경계 조각 병합 뒤. `Run-All` 한 번에 `Test-FilePlayback` 24(새 'SAHI 후 슬라이더 활성'·
   '재생 중 시크 직후 SAHI → 그 위치 분석' — 7,742 ms 시크 → `(00:07)`) · `Test-VfrPlayback` 13(새 '뒤로 시크 직후 SAHI → 그 위치 분석' — 1,500 ms → `(00:01)`) ·
   `Test-ScreenHud` 20(DXGI) · `Test-NpuSwitch` 25 항목. **배포본은 이 변경 전(`7e7b697`) 그대로**다
-- 그 전: 2026-10-30 저녁, **배포본 `publish_gpu_ver`** — `main`(`7e7b697`, 작은 버그 수정 `6691ffd` 포함)으로 다시 배포
+- 그 전: 2026-10-30 저녁, **배포본 `publish`** — `main`(`7e7b697`, 작은 버그 수정 `6691ffd` 포함)으로 다시 배포
   (exe 126.4 MB, pdb·lib·dll 없음, 배포 폴더 `best.onnx`(09-17 visible)·`best.npu.onnx` MD5 그대로, 그래픽 설정 `GpuPreference=0` 그대로).
   `Run-All` 한 번에 `Test-FilePlayback` 22 · `Test-VfrPlayback` 12 · `Test-ScreenHud` 20(DXGI, HUD 107.6 FPS) · `Test-NpuSwitch` 25 항목.
   실행 중 모듈 `onnxruntime.dll` 22.0 MB(1.27) · `DirectML.dll` 17.8 MB(1.15.4) 확인. NPU 첫 전환은 10:40 에 빈 채 남았던 배포 짝의 1.8.80 키 폴더에
@@ -944,7 +957,7 @@ pwsh tests/ui/Run-All.ps1
   → 이 빌드로 4종 모두 통과(NpuSwitch 는 따로 돌림). 18:24 실패는 EP 업데이트 직후 첫 컴파일(106초)·PC 부하와 겹친 일시적 현상으로 본다(원인은 못 밝힘).
   다시 나면 `Process.Responding` 으로 창이 묶였는지부터 볼 것 — 11-01 부터는 `Test-NpuSwitch` 의 '창 응답' 검사·참고 줄이 그걸 잰다
   (이슈 #4 — 그때 ② 가 UI 스레드에서 EP 카탈로그를 조회했다)
-- 그 전: 2026-10-25 오후, **배포본 `publish_gpu_ver`** — `main`(`82afb2d`, 리뷰 수정 + 중복 박스 필터)으로 다시 배포(exe 126.4 MB, pdb·lib·dll 없음,
+- 그 전: 2026-10-25 오후, **배포본 `publish`** — `main`(`82afb2d`, 리뷰 수정 + 중복 박스 필터)으로 다시 배포(exe 126.4 MB, pdb·lib·dll 없음,
   배포 폴더 `best.onnx`(09-17 visible)·`best.npu.onnx` 는 MD5 그대로). `Test-FilePlayback` 20 · `Test-VfrPlayback` 12 · `Test-ScreenHud` 20(DXGI, HUD 105 FPS) · `Test-NpuSwitch` 25 항목.
   이번엔 사용자가 **자기 터미널에서 직접** 돌렸는데(Claude 도구의 자동 모드 확인이 고장 나서) NPU 첫 전환이 **87.8초(컴파일)** 였다 — 같은 모델·EP 로 전날 Claude 도구에서 컴파일해 둔
   캐시를 못 쓴 것이라, 위 NPU 절의 "`%LOCALAPPDATA%` 가 돌려져 직접 실행 때 다시 컴파일" 가설과 맞는다(캐시 경로는 확인 안 함). 다시 고르면 4.8초.
@@ -954,7 +967,7 @@ pwsh tests/ui/Run-All.ps1
 - 그 전: 2026-10-25, Debug(HUD 는 DXGI) — 중복 박스 필터(3번 항목)를 리뷰 수정 위에 합친 뒤. `Test-FilePlayback` 20 · `Test-VfrPlayback` 12 · `Test-ScreenHud` 20(DXGI) · `Test-NpuSwitch` 25 항목.
   (필터만 넣은 리뷰 수정 전 판도 17 · 12 · 10 · 25 통과.)
 - 그 전: 2026-10-25, Debug(HUD 는 DXGI) — 리뷰 수정(소스 전환·멈춘 채 시크·GDI·공급자) 뒤. `Test-FilePlayback` 20 · `Test-VfrPlayback` 12 · `Test-ScreenHud` 20(DXGI) · `Test-NpuSwitch` 25 항목
-- 그 전: 2026-10-24 저녁, **배포본 `publish_gpu_ver`**(NPU UI 포함으로 다시 배포, exe 126.4 MB — `best.onnx`·`best.npu.onnx`·영상은 그대로)와 Debug 둘 다 —
+- 그 전: 2026-10-24 저녁, **배포본 `publish`**(NPU UI 포함으로 다시 배포, exe 126.4 MB — `best.onnx`·`best.npu.onnx`·영상은 그대로)와 Debug 둘 다 —
   `Test-FilePlayback` 17 · `Test-VfrPlayback` 12 · `Test-ScreenHud` 10(DXGI) · `Test-NpuSwitch` 25 항목. 배포본의 NPU 첫 전환은 이 앱에서 처음 컴파일이라 56.6초, 다시 고르면 4.8초.
   `Test-NpuSwitch -ColdCancel` 도 통과(Debug, 취소 뒤 GPU 유지, 다시 고르면 4.8초)
 - `Test-ScreenHud` 항목 수(PASS/FAIL 줄, 2026-11-02 추적 번호 검사 추가 뒤): 결함 없는 실행 DXGI 25 · GDI(그래픽 설정 안내 — 하이브리드 안내 검사 2개, DXGI 툴팁 검사 빠짐) 24 ·
@@ -963,7 +976,7 @@ pwsh tests/ui/Run-All.ps1
   예: Debug·DXGI·박스 없음 = **39**, 박스 있음 = **47**(둘 다 11-02 실측). 배포본은 결함 주입이 빠진 25 · 33.
   HUD 대상은 기본 선택인 **주 모니터**다(이 PC 에선 모니터 0). (추적 번호 검사 전엔 DXGI 24 · GDI 23 · 21, 박스 있으면 +4, 정지 전 범례 +1 — Debug·DXGI 박스 없음 38·있음 43, 배포본 24·29(11-01). 범례 검사 전 11-01 엔 DXGI 23 · GDI 22 · 20 에 박스 있으면 +2 — Debug·DXGI·박스 없음 37. 10-25~10-31 엔 DXGI·GDI 20, 원인 미상 GDI 18)
 - 그 전: 2026-10-24, Windows ML 런타임(`spike/windows-ml-runtime`) — Debug 와 단일 파일 배포본(scratchpad 경로) 모두. `Test-FilePlayback` 17 · `Test-VfrPlayback` 12 · `Test-ScreenHud` 통과.
-  같은 날 main 에 합친 뒤 `publish_gpu_ver` 에 다시 배포(exe 126.4 MB, `best.onnx`·테스트 영상은 그대로)하고 배포본으로 17 · 12 · 9(GDI 경로) 항목 통과.
+  같은 날 main 에 합친 뒤 `publish` 에 다시 배포(exe 126.4 MB, `best.onnx`·테스트 영상은 그대로)하고 배포본으로 17 · 12 · 9(GDI 경로) 항목 통과.
   HUD 안내를 모니터별로 고른 뒤 다시 배포해 배포본 3종 실패 0 (`Test-ScreenHud` 는 GDI 경로에 "권하는 설정이 지금 설정과 맞음" 검사가 하나 늘었다). Debug HUD 는 DXGI.
   배포본으로 노트북 화면(모니터 1)을 고르면 '절전' 그대로 DXGI 인 것도 손으로 확인 (테스트는 모니터 0 만 본다)
   같은 날 교체 전(`main`) Debug 에서 `Test-VfrPlayback` 의 시크 후 배속이 0.90·0.81 로 한 번 떨어졌다가 다시 돌리니 통과 — 부하에 흔들리는 항목이다
@@ -1093,4 +1106,4 @@ LLM 개념 맵(`graft build --deep`)은 API 키가 필요해서 돌리지 않았
   (이 문서의 해당 서술 옆에 그 번호가 남아 있다 — **그 이슈들은 옛 비공개 저장소와 함께 지워졌다**. 공개 저장소의 이슈는 #1 부터 다시 매겨지니
   옛 번호는 '옛 이슈 #7' 처럼 구분해 가리킨다). 고칠 땐 커밋 메시지에 `Fixes #N` 을 넣는다(`main` 에 push 되면 공개 저장소의 그 이슈가 닫힌다). 이 문서의 서술도 같이 고친다.
   여러 이슈를 한꺼번에 고칠 땐 이슈 묶음마다 worktree 를 따로 두고 고친 뒤 검토를 거쳐 `main` 에 cherry-pick 했다 — UI 테스트는 합친 뒤 한 번에 돌린다
-- 추적 대상은 소스, `best.onnx`·`best.npu.onnx`, UI 테스트(`tests/ui/`, 합성 테스트 영상 `media/vfr60_nodur.webm` 포함), 도구(`tools/`), 실험 프로젝트 소스(`experiments/*/`), `README.md`(GitHub 첫 화면), `LICENSE`·`THIRD-PARTY-NOTICES.md` 다. `bin/`·`obj/`·`old/`·`publish_gpu_ver/`·`graft/` 는 `.gitignore` 로 제외 — **`old/` 를 커밋하면 안 된다** (아래 graft 항목 참고)
+- 추적 대상은 소스, `best.onnx`·`best.npu.onnx`, UI 테스트(`tests/ui/`, 합성 테스트 영상 `media/vfr60_nodur.webm` 포함), 도구(`tools/`), 실험 프로젝트 소스(`experiments/*/`), `README.md`(GitHub 첫 화면), `LICENSE`·`THIRD-PARTY-NOTICES.md` 다. `bin/`·`obj/`·`old/`·`publish/`·`graft/` 는 `.gitignore` 로 제외 — **`old/` 를 커밋하면 안 된다** (아래 graft 항목 참고)

@@ -7,7 +7,7 @@ using System.Windows.Automation.Peers;
 using System.Windows.Input;
 using System.Windows.Media;
 
-namespace YOLO11_Test
+namespace DetectView
 {
     /// <summary>구역 유형별 색 — App.xaml 의 Roi.* 키 (처음 쓸 때 한 번 읽는다). 목록 항목과 RoiLayer 가 같이 쓴다</summary>
     internal static class RoiTheme

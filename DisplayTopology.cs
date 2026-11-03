@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using Microsoft.Win32;
 
-namespace YOLO11_Test
+namespace DetectView
 {
     /// <summary>
     /// 모니터가 <b>실제로</b> 어느 GPU 에 연결돼 있는지와, 이 앱의 Windows 그래픽 설정(GPU 기본 설정)을 알아낸다.

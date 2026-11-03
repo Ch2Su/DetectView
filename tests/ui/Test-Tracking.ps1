@@ -9,15 +9,15 @@
 #   5) 정지하면 번호가 지워진다
 #
 #   pwsh tests\ui\Test-Tracking.ps1                              # bin\Debug 빌드
-#   pwsh tests\ui\Test-Tracking.ps1 -ExeDir publish_gpu_ver      # 배포본
+#   pwsh tests\ui\Test-Tracking.ps1 -ExeDir publish      # 배포본
 param(
     [string]$ExeDir,
-    [string]$Video   # 생략 시 publish_gpu_ver\test4.mp4 (0~10.5초에 멈춘 차가 있는 영상이어야 한다)
+    [string]$Video   # 생략 시 publish\test4.mp4 (0~10.5초에 멈춘 차가 있는 영상이어야 한다)
 )
 . (Join-Path $PSScriptRoot 'Common.ps1')
 
 $ExeDir = Resolve-ExeDir $ExeDir
-if (-not $Video) { $Video = Join-Path $RepoRoot 'publish_gpu_ver\test4.mp4' }
+if (-not $Video) { $Video = Join-Path $RepoRoot 'publish\test4.mp4' }
 if (-not (Test-Path $Video)) { throw "테스트 영상이 없습니다: $Video" }
 
 $proc = $null

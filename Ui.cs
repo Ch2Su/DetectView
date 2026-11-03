@@ -1,7 +1,7 @@
 using System.Windows;
 using System.Windows.Media;
 
-namespace YOLO11_Test
+namespace DetectView
 {
     /// <summary>
     /// App.xaml 의 버튼·콤보 스타일이 읽는 첨부 속성.

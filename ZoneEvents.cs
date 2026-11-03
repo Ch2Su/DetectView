@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace YOLO11_Test
+namespace DetectView
 {
     internal enum ZoneEventKind
     {

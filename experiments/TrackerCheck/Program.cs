@@ -20,14 +20,14 @@ using Vortice.DXGI;
 using YoloDotNet;
 using YoloDotNet.Extensions;
 using YoloDotNet.Models;
-using YOLO11_Test;
-using Tracker = YOLO11_Test.Tracker;   // OpenCvSharp.Tracker 와 겹친다
+using DetectView;
+using Tracker = DetectView.Tracker;   // OpenCvSharp.Tracker 와 겹친다
 
 const double Confidence = 0.3, Iou = 0.7;   // 본 앱 ConfidenceThreshold · IouThreshold
 string[] TargetClasses = ["person", "car", "motorcycle", "truck", "bus", "scooter", "bicycle"];   // 본 앱 TargetClasses
 
 // 테스트 영상은 gitignore 대상이라 워크트리에는 없다 — 원래 저장소의 배포 폴더에서 읽는다
-const string VideoDir = @"E:\VS_E\YOLO11_Test\publish_gpu_ver";
+// 영상 폴더는 RepoPaths.VideoDir (저장소 루트의 publish — 절대 경로를 박지 않는다)
 
 // 뷰 구간(ms). test4 는 10.5~11.4초·20.5~21.2초에 카메라가 돌아간다 (CLAUDE.md "테스트 영상 내용").
 // 전환 감지는 나중 단계라, 여기선 알려진 구간에서 Reset() 하고 그동안은 추적기에 넣지 않는다 (전환 감지기가 할 일을 흉내)
@@ -59,8 +59,8 @@ return args.FirstOrDefault() switch
     "selftest" => SelfTest(),
     "gpu" => GpuCheck(),
     "scene" => SceneScan(args.Skip(1).ToArray()),
-    "views" => ViewsCheck.Run(VideoDir),
-    "mkrevisit" => ViewsCheck.MakeRevisit(VideoDir, args.Length > 1 ? args[1] : Path.Combine(outDir, "test4_revisit.mp4")),
+    "views" => ViewsCheck.Run(RepoPaths.VideoDir),
+    "mkrevisit" => ViewsCheck.MakeRevisit(RepoPaths.VideoDir, args.Length > 1 ? args[1] : Path.Combine(outDir, "test4_revisit.mp4")),
     "dedup" => Dedup(args.Skip(1).ToArray()),
     "sahi" => SahiCompare(args.Skip(1).ToArray()),
     "render" when args.Length >= 5 => Render(args[1], args[2], double.Parse(args[3], CultureInfo.InvariantCulture),
@@ -80,7 +80,7 @@ static int Usage()
 int SceneScan(string[] paths)
 {
     if (paths.Length == 0)
-        paths = Directory.GetFiles(VideoDir, "test*.mp4").OrderBy(p => p).Concat(Directory.GetFiles(Path.Combine(repo, "tests", "ui", "media"), "*.webm")).ToArray();
+        paths = Directory.GetFiles(RepoPaths.VideoDir, "test*.mp4").OrderBy(p => p).Concat(Directory.GetFiles(Path.Combine(repo, "tests", "ui", "media"), "*.webm")).ToArray();
 
     foreach (string path in paths)
     {
@@ -181,7 +181,7 @@ int Detect()
 
     foreach (var (name, _) in videos)
     {
-        string path = Path.Combine(VideoDir, name + ".mp4");
+        string path = Path.Combine(RepoPaths.VideoDir, name + ".mp4");
         using var cap = new VideoCapture(path);
         if (!cap.IsOpened()) throw new FileNotFoundException(path);
         if ((cap.FrameWidth, cap.FrameHeight) != frameSizes[name])
@@ -991,7 +991,7 @@ int SelfTest()
         Console.WriteLine($"[INFO] 왼쪽 테두리에 걸쳐 멈춘 차가 안쪽부터 가려짐: 1초 뒤 {Stat(after)} — 가려지는 동안 움직임으로 봄 (예전 판정 {Stat(oldAfter)})");
     }
 
-    ViewsCheck.SelfTest(Check, VideoDir);   // ⑫ 화면 식별 (2026-11-03)
+    ViewsCheck.SelfTest(Check, RepoPaths.VideoDir);   // ⑫ 화면 식별 (2026-11-03)
 
     Console.WriteLine(fails == 0 ? "모두 통과" : $"실패 {fails}건");
     return fails;
@@ -1053,7 +1053,7 @@ int Dedup(string[] opts)
     using var yolo = OpenModel(Log);
     foreach (var (name, _) in videos)
     {
-        using var cap = new VideoCapture(Path.Combine(VideoDir, name + ".mp4"));
+        using var cap = new VideoCapture(Path.Combine(RepoPaths.VideoDir, name + ".mp4"));
         using var frame = new Mat();
         int f = -1, n = 0, rawTotal = 0, oldTotal = 0, newTotal = 0, droppedDup = 0, droppedOther = 0, added = 0, leftDup = 0, leftDupFrames = 0, postTotal = 0;
         while (cap.Read(frame) && !frame.Empty())
@@ -1131,7 +1131,7 @@ int SahiCompare(string[] opts)
     using var yolo = OpenModel(Log);
     foreach (var (name, _) in videos)
     {
-        using var cap = new VideoCapture(Path.Combine(VideoDir, name + ".mp4"));
+        using var cap = new VideoCapture(Path.Combine(RepoPaths.VideoDir, name + ".mp4"));
         using var frame = new Mat();
         int f = -1, n = 0, oldTotal = 0, newTotal = 0, same = 0, changed = 0, grown = 0, added = 0, removed = 0;
         var diffs = new List<(double Sec, double Score, string Text)>();
@@ -1219,7 +1219,7 @@ int SahiCompare(string[] opts)
 // 그 장면의 옛(빨강)·새(초록) SAHI 결과를 그려 PNG 로
 void DrawSahiCompare(Yolo yolo, string name, double sec, string variant)
 {
-    using var cap = new VideoCapture(Path.Combine(VideoDir, name + ".mp4"));
+    using var cap = new VideoCapture(Path.Combine(RepoPaths.VideoDir, name + ".mp4"));
     cap.Set(VideoCaptureProperties.PosFrames, Math.Round(sec * cap.Get(VideoCaptureProperties.Fps)));   // mp4 는 PosFrames 시크가 정확하다(CLAUDE.md)
     using var img = new Mat();
     if (!cap.Read(img) || img.Empty()) return;
@@ -1385,7 +1385,7 @@ int Render(string name, string crop, double scale, double[] secs)
     var byFrame = File.ReadLines(Path.Combine(outDir, name + ".tracks.csv")).Skip(1).Select(l => l.Split(','))
         .GroupBy(c => int.Parse(c[0])).ToDictionary(g => g.Key, g => g.ToList());
     var frameMs = LoadDets(Path.Combine(outDir, name + ".dets.csv")).Select(x => x.Ms).ToArray();
-    using var cap = new VideoCapture(Path.Combine(VideoDir, name + ".mp4"));
+    using var cap = new VideoCapture(Path.Combine(RepoPaths.VideoDir, name + ".mp4"));
     var tiles = new List<Mat>();
     foreach (double sec in secs)
     {
@@ -1485,8 +1485,8 @@ static int GpuCheck()
 static string FindRepoRoot()
 {
     for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
-        if (File.Exists(Path.Combine(dir.FullName, "YOLO11_Test.csproj"))) return dir.FullName;
-    throw new DirectoryNotFoundException("저장소 루트(YOLO11_Test.csproj)를 찾지 못했습니다.");
+        if (File.Exists(Path.Combine(dir.FullName, "DetectView.csproj"))) return dir.FullName;
+    throw new DirectoryNotFoundException("저장소 루트(DetectView.csproj)를 찾지 못했습니다.");
 }
 
 record struct Obs(int F, double Ms, int View, Det Det);

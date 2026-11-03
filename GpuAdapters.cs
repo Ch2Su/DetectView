@@ -4,7 +4,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Vortice.DXGI;
 
-namespace YOLO11_Test
+namespace DetectView
 {
     /// <summary>
     /// GPU 어댑터 목록과 고성능/저전력 판정. 추론 GPU 선택(MainWindow.SelectBestGpu)과

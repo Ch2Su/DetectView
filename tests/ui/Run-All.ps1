@@ -1,7 +1,7 @@
 ﻿# UI 테스트 전체 실행. 하나라도 실패하면 종료 코드 1
 #   pwsh tests\ui\Run-All.ps1                            # bin\Debug 빌드 (먼저 dotnet build)
-#   pwsh tests\ui\Run-All.ps1 -ExeDir publish_gpu_ver    # 배포본 스모크 테스트
-# 필요: GPU(DirectML), publish_gpu_ver\test1.mp4. 테스트 중 DetectView 창이 떴다 닫히며 바탕화면을 캡처한다
+#   pwsh tests\ui\Run-All.ps1 -ExeDir publish    # 배포본 스모크 테스트
+# 필요: GPU(DirectML), publish\test1.mp4. 테스트 중 DetectView 창이 떴다 닫히며 바탕화면을 캡처한다
 param([string]$ExeDir)
 
 $failed = 0

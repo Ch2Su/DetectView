@@ -166,7 +166,7 @@ if (vai != null && npuModel != null && npuSkip == null)
 var frames = new List<(string Video, int Index, Mat Img)>();
 foreach (var v in new[] { "test4.mp4", "test5.mp4", "test1.mp4", "test2.mp4", "test3.mp4" })
 {
-    string path = Path.Combine(repo, "publish_gpu_ver", v);
+    string path = Path.Combine(repo, "publish", v);
     if (!File.Exists(path)) { Console.WriteLine($"  {v} 없음 — 건너뜀"); continue; }
     using var cap = new VideoCapture(path);
     int count = (int)cap.Get(VideoCaptureProperties.FrameCount);
@@ -411,7 +411,7 @@ string? FindSourceModel(string npu, string sourceMd5)
     var candidates = new List<string>();
     if (name.EndsWith(".npu.onnx", StringComparison.OrdinalIgnoreCase))
         candidates.Add(Path.Combine(dir, name[..^".npu.onnx".Length] + ".onnx"));
-    candidates.AddRange([Path.Combine(dir, "best.onnx"), Path.Combine(repo, "best.onnx"), Path.Combine(repo, "publish_gpu_ver", "best.onnx")]);
+    candidates.AddRange([Path.Combine(dir, "best.onnx"), Path.Combine(repo, "best.onnx"), Path.Combine(repo, "publish", "best.onnx")]);
     return candidates.Distinct(StringComparer.OrdinalIgnoreCase)
         .FirstOrDefault(c => File.Exists(c) && string.Equals(Md5(c), sourceMd5, StringComparison.OrdinalIgnoreCase));
 }
@@ -460,15 +460,15 @@ static void PrintUsage() => Console.WriteLine(
     "사용법: NpuBench.exe [기준 모델] [NPU 모델] [영상당 프레임 수] [--allow-fp32-npu] [--allow-mismatch]\n" +
     "  기준 모델         GPU(DirectML) 로 돌릴 FP32 원본 (기본: 저장소 루트 best.onnx)\n" +
     "  NPU 모델          CPU·NPU 로 돌릴 양자화 짝 (기본: 기준 옆 <이름>.npu.onnx — 없으면 NPU 를 건너뛴다)\n" +
-    "  영상당 프레임 수  publish_gpu_ver\\test1~5.mp4 에서 뽑을 장 수 (기본 20)\n" +
+    "  영상당 프레임 수  publish\\test1~5.mp4 에서 뽑을 장 수 (기본 20)\n" +
     "  --allow-fp32-npu  양자화 모델이 아니어도(npu_quant 없음) NPU 에 넣는다 — BF16 컴파일 실패 경로를 일부러 볼 때만\n" +
     "  --allow-mismatch  NPU 모델의 원본(npu_source_md5)이 기준 모델과 달라도 비교한다");
 
 static string FindRepoRoot()
 {
     for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
-        if (File.Exists(Path.Combine(dir.FullName, "YOLO11_Test.csproj"))) return dir.FullName;
-    throw new DirectoryNotFoundException("저장소 루트(YOLO11_Test.csproj)를 찾지 못했습니다.");
+        if (File.Exists(Path.Combine(dir.FullName, "DetectView.csproj"))) return dir.FullName;
+    throw new DirectoryNotFoundException("저장소 루트(DetectView.csproj)를 찾지 못했습니다.");
 }
 
 sealed class RunResult

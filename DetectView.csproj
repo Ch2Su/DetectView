@@ -15,7 +15,7 @@
     <WindowsPackageType>None</WindowsPackageType>
   </PropertyGroup>
 
-  <!-- 보관용 old/ 와 배포 산출물 publish*/ (publish_gpu_ver 등) 는 빌드 대상에서 제외.
+  <!-- 보관용 old/ 와 배포 산출물 publish*/ (publish 등) 는 빌드 대상에서 제외.
        experiments/ 는 따로 빌드하는 실험 프로젝트들(자기 .csproj 가 있음)이라 여기 섞이면 안 된다 -->
   <ItemGroup>
     <Compile Remove="old\**" />
@@ -43,7 +43,7 @@
     </None>
     <!-- NPU 짝 모델 (tools\Make-NpuModel.ps1). 빌드 출력에는 루트 best.onnx 와 같이 복사돼 짝이 맞는다.
          publish 에는 복사하지 않는다: 배포 폴더는 best.onnx 를 따로 바꿔 쓰므로 루트 짝을 덮어쓰면 짝이 어긋난다
-         → 배포 폴더의 짝은 그 모델로 도구를 돌려 만든다 (-Model publish_gpu_ver\best.onnx) -->
+         → 배포 폴더의 짝은 그 모델로 도구를 돌려 만든다 (-Model publish\best.onnx) -->
     <None Include="best.npu.onnx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>Never</CopyToPublishDirectory>

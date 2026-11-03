@@ -28,7 +28,7 @@ def eval_frames():
     # Program.cs 와 같은 (i+0.5)/n 위치 (보정 프레임 i/n 과 겹치지 않음)
     frames = []
     for name in VIDEOS:
-        path = repo / "publish_gpu_ver" / name
+        path = repo / "publish" / name
         if not path.exists():
             continue
         cap = cv2.VideoCapture(str(path))
@@ -97,7 +97,7 @@ def find_source(variant, source_md5):
     candidates = []
     if variant.name.lower().endswith(".npu.onnx"):
         candidates.append(variant.with_name(variant.name[:-len(".npu.onnx")] + ".onnx"))
-    candidates += [variant.with_name("best.onnx"), repo / "best.onnx", repo / "publish_gpu_ver" / "best.onnx"]
+    candidates += [variant.with_name("best.onnx"), repo / "best.onnx", repo / "publish" / "best.onnx"]
     seen = set()
     for c in candidates:
         key = str(c.resolve()).lower()
@@ -151,7 +151,7 @@ def main():
 
     frames = eval_frames()
     if not frames:
-        sys.exit(f"평가 프레임이 없습니다 — {repo / 'publish_gpu_ver'} 의 {', '.join(VIDEOS)} 가 필요합니다")
+        sys.exit(f"평가 프레임이 없습니다 — {repo / 'publish'} 의 {', '.join(VIDEOS)} 가 필요합니다")
     ref = run(ref_path, frames)
     print(f"평가 프레임 {len(frames)}장, 기준 FP32(CPU)")
     for path in variants:

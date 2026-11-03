@@ -2,7 +2,7 @@
 using System.Data;
 using System.Windows;
 
-namespace YOLO11_Test
+namespace DetectView
 {
     /// <summary>
     /// Interaction logic for App.xaml

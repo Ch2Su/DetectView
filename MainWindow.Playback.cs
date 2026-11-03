@@ -6,7 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Media.Imaging;
 
-namespace YOLO11_Test
+namespace DetectView
 {
     /// <summary>파일/카메라 공용 재생 루프, 시크, 재생 종료·카메라 유실 처리.</summary>
     public partial class MainWindow

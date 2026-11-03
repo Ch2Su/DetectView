@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using OpenCvSharp;
 
-namespace YOLO11_Test
+namespace DetectView
 {
     /// <summary>
     /// 한 화면(뷰)의 특징점 서명 — ORB 특징점과 기술자. 가로 <see cref="ViewMatcher.BaseWidth"/> 로 줄인 흑백 그림에서 만든다

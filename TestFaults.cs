@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 
-namespace YOLO11_Test
+namespace DetectView
 {
     /// <summary>
     /// 시험용 결함 주입 (Debug 빌드 전용). UI 테스트(tests/ui/Test-ScreenHud.ps1)가 실제로 일으키기 어려운 실패 —

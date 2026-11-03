@@ -7,7 +7,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 
-namespace YOLO11_Test
+namespace DetectView
 {
     /// <summary>화면 HUD — 모니터를 반복 캡처·검출해 바탕화면 위 투명 오버레이에 박스를 그린다.</summary>
     public partial class MainWindow

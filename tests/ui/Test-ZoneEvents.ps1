@@ -13,17 +13,17 @@
 #   8) 구역이 없는 영상(test1)은 이벤트 0건 · 정지하면 패널이 사라짐
 #
 #   pwsh tests\ui\Test-ZoneEvents.ps1                              # bin\Debug 빌드
-#   pwsh tests\ui\Test-ZoneEvents.ps1 -ExeDir publish_gpu_ver      # 배포본
+#   pwsh tests\ui\Test-ZoneEvents.ps1 -ExeDir publish      # 배포본
 param(
     [string]$ExeDir,
-    [string]$Video,       # 생략 시 publish_gpu_ver\test4.mp4
-    [string]$PlainVideo   # 구역 없는 영상. 생략 시 publish_gpu_ver\test1.mp4
+    [string]$Video,       # 생략 시 publish\test4.mp4
+    [string]$PlainVideo   # 구역 없는 영상. 생략 시 publish\test1.mp4
 )
 . (Join-Path $PSScriptRoot 'Common.ps1')
 
 $ExeDir = Resolve-ExeDir $ExeDir
-if (-not $Video) { $Video = Join-Path $RepoRoot 'publish_gpu_ver\test4.mp4' }
-if (-not $PlainVideo) { $PlainVideo = Join-Path $RepoRoot 'publish_gpu_ver\test1.mp4' }
+if (-not $Video) { $Video = Join-Path $RepoRoot 'publish\test4.mp4' }
+if (-not $PlainVideo) { $PlainVideo = Join-Path $RepoRoot 'publish\test1.mp4' }
 foreach ($v in $Video, $PlainVideo) { if (-not (Test-Path $v)) { throw "테스트 영상이 없습니다: $v" } }
 $roiFile = "$Video.roi.json"
 $csvFile = "$Video.events.csv"

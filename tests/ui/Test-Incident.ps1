@@ -11,15 +11,15 @@
 #   6) 시크(2초): 그 위치에서 다시 세어 8초 안에 유고 후보가 다시 선언되고, 선언 중에 다시 시크하면 '유고 해소 (시크)' 행
 #
 #   pwsh tests\ui\Test-Incident.ps1                              # bin\Debug 빌드
-#   pwsh tests\ui\Test-Incident.ps1 -ExeDir publish_gpu_ver      # 배포본
+#   pwsh tests\ui\Test-Incident.ps1 -ExeDir publish      # 배포본
 param(
     [string]$ExeDir,
-    [string]$Video   # 생략 시 publish_gpu_ver\test4.mp4
+    [string]$Video   # 생략 시 publish\test4.mp4
 )
 . (Join-Path $PSScriptRoot 'Common.ps1')
 
 $ExeDir = Resolve-ExeDir $ExeDir
-if (-not $Video) { $Video = Join-Path $RepoRoot 'publish_gpu_ver\test4.mp4' }
+if (-not $Video) { $Video = Join-Path $RepoRoot 'publish\test4.mp4' }
 if (-not (Test-Path $Video)) { throw "테스트 영상이 없습니다: $Video" }
 $roiFile = "$Video.roi.json"
 $csvFile = "$Video.events.csv"

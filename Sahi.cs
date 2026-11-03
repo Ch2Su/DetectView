@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace YOLO11_Test
+namespace DetectView
 {
     /// <summary>
     /// SAHI 알고리즘 (UI·모델과 무관한 순수 함수): 타일 원점 계산, 타일 간 중복 박스 병합.

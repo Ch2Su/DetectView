@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
-namespace YOLO11_Test
+namespace DetectView
 {
     /// <summary>모니터 1대의 정보(좌표·크기는 가상 화면 기준 물리 픽셀).</summary>
     internal readonly record struct MonitorInfo(

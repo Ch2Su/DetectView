@@ -16,7 +16,7 @@ experiments/TrackerCheck/bin/Release/net10.0-windows10.0.19041.0/TrackerCheck.ex
 experiments/TrackerCheck/bin/Release/net10.0-windows10.0.19041.0/TrackerCheck.exe track
 ```
 
-- `detect`: `out/test4.dets.csv`·`out/test5.dets.csv` (약 45초). 영상은 gitignore 대상이라 워크트리엔 없어서 `E:\VS_E\YOLO11_Test\publish_gpu_ver` 에서 읽는다. 모델은 저장소 루트 `best.onnx`
+- `detect`: `out/test4.dets.csv`·`out/test5.dets.csv` (약 45초). 영상은 gitignore 대상이라 워크트리엔 없어서 저장소 루트의 `publish` 에서 읽는다(`RepoPaths.VideoDir` — 절대 경로를 박지 않는다). 모델은 저장소 루트 `best.onnx`
 - `track [이름=값 ...] [Step=N] [noreset] [noframe]`: 트랙별 시작·끝·관측 비율·라벨 흔들림, 의심스러운 연결, 끊김 후보, 테두리 멈춤 판정,
   **목표 정지 차량 통과/실패**를 `out/report.txt` 에. 트랙 배정과 그 프레임의 정지 판정(`stationary` 열, 1 = `IsStationary`)은 `out/<영상>.tracks.csv`
   - test4 는 카메라가 도는 10.5~11.4초·20.5~21.2초에 `Reset()` 하고 그동안 넣지 않는다 (전환 감지기가 할 일을 흉내). `noreset` 이면 그대로 넣는다

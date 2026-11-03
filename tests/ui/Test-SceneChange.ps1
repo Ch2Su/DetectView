@@ -14,17 +14,17 @@
 #   8) 정지하면 배지가 사라진다
 #
 #   pwsh tests\ui\Test-SceneChange.ps1                              # bin\Debug 빌드
-#   pwsh tests\ui\Test-SceneChange.ps1 -ExeDir publish_gpu_ver      # 배포본
+#   pwsh tests\ui\Test-SceneChange.ps1 -ExeDir publish      # 배포본
 param(
     [string]$ExeDir,
-    [string]$Video4,   # 생략 시 publish_gpu_ver\test4.mp4
-    [string]$Video5    # 생략 시 publish_gpu_ver\test5.mp4
+    [string]$Video4,   # 생략 시 publish\test4.mp4
+    [string]$Video5    # 생략 시 publish\test5.mp4
 )
 . (Join-Path $PSScriptRoot 'Common.ps1')
 
 $ExeDir = Resolve-ExeDir $ExeDir
-if (-not $Video4) { $Video4 = Join-Path $RepoRoot 'publish_gpu_ver\test4.mp4' }
-if (-not $Video5) { $Video5 = Join-Path $RepoRoot 'publish_gpu_ver\test5.mp4' }
+if (-not $Video4) { $Video4 = Join-Path $RepoRoot 'publish\test4.mp4' }
+if (-not $Video5) { $Video5 = Join-Path $RepoRoot 'publish\test5.mp4' }
 foreach ($v in $Video4, $Video5) { if (-not (Test-Path $v)) { throw "테스트 영상이 없습니다: $v" } }
 
 $MOVING = '● 화면 이동 중'; $BLANK = '● 화면 끊김'; $CHANGED = '● 새 뷰 V2 · 구역 없음'   # 처음 보는 화면이라 새 뷰로 기억 (화면 식별 2b — 옛 글자는 '● 화면 전환 · 번호 새로 매김')

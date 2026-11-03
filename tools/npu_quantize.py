@@ -41,7 +41,7 @@ MODES = {
 }
 VIDEO_EXT = {".mp4", ".mkv", ".webm", ".avi", ".mov"}
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".bmp"}
-VIDEOS = ["test1.mp4", "test2.mp4", "test3.mp4", "test4.mp4", "test5.mp4"]   # 보정 기본값 (publish_gpu_ver 안)
+VIDEOS = ["test1.mp4", "test2.mp4", "test3.mp4", "test4.mp4", "test5.mp4"]   # 보정 기본값 (publish 안)
 
 repo = pathlib.Path(__file__).resolve().parents[1]
 # OpenCV 의 INTER_NEAREST 는 화소 중심을 맞추지 않는다. Skia(YoloDotNet)의 Nearest 와 같은 쪽은 NEAREST_EXACT
@@ -175,7 +175,7 @@ def main():
     ap = argparse.ArgumentParser(description="YOLO ONNX → AMD NPU 용 QDQ 모델")
     ap.add_argument("--model", required=True, help="원본 FP32 ONNX (Ultralytics 내보내기)")
     ap.add_argument("--out", help="결과 경로 (기본: 같은 폴더의 <이름>.npu.onnx)")
-    ap.add_argument("--calib", nargs="*", help="보정용 영상·이미지·이미지 폴더 (기본: publish_gpu_ver/test1~5.mp4)")
+    ap.add_argument("--calib", nargs="*", help="보정용 영상·이미지·이미지 폴더 (기본: publish/test1~5.mp4)")
     ap.add_argument("--per-video", type=int, default=20, help="영상마다 뽑을 장 수 (기본 20)")
     ap.add_argument("--mode", choices=MODES, default="a16w8-pc")
     a = ap.parse_args()
@@ -184,9 +184,9 @@ def main():
     dst = pathlib.Path(a.out).resolve() if a.out else src.with_name(src.stem + ".npu.onnx")
     if src == dst:
         sys.exit("결과 경로가 원본과 같습니다")
-    calib = a.calib or [str(repo / "publish_gpu_ver" / v) for v in VIDEOS if (repo / "publish_gpu_ver" / v).exists()]
+    calib = a.calib or [str(repo / "publish" / v) for v in VIDEOS if (repo / "publish" / v).exists()]
     if not calib:
-        sys.exit("보정 데이터가 없습니다 — --calib 로 영상이나 이미지 폴더를 주세요 (publish_gpu_ver/test1~5.mp4 도 없음)")
+        sys.exit("보정 데이터가 없습니다 — --calib 로 영상이나 이미지 폴더를 주세요 (publish/test1~5.mp4 도 없음)")
     act, per_channel, method = MODES[a.mode]
 
     source_md5 = hashlib.md5(src.read_bytes()).hexdigest().upper()

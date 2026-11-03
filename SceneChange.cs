@@ -1,6 +1,6 @@
 using System;
 
-namespace YOLO11_Test
+namespace DetectView
 {
     /// <summary>화면 전환 감지 파라미터 — 값은 experiments/TrackerCheck 의 <c>scene</c> 실측으로 골랐다 (CLAUDE.md '화면 전환 감지')</summary>
     internal sealed record SceneChangeOptions

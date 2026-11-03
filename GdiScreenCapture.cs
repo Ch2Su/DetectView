@@ -3,7 +3,7 @@ using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
-namespace YOLO11_Test
+namespace DetectView
 {
     /// <summary>
     /// GDI 기반 화면 캡처 (DXGI 를 쓸 수 없을 때의 대체 경로).

@@ -14,7 +14,7 @@ using YoloDotNet;
 using YoloDotNet.Extensions;
 using YoloDotNet.Models;
 
-namespace YOLO11_Test
+namespace DetectView
 {
     /// <summary>모델 로드(DirectML·GPU 자동 선택)와 프레임 검출.</summary>
     public partial class MainWindow

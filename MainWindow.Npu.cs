@@ -12,7 +12,7 @@ using System.Windows.Threading;
 using YoloDotNet;
 using YoloDotNet.Models;
 
-namespace YOLO11_Test
+namespace DetectView
 {
     /// <summary>
     /// 추론 장치(GPU ↔ NPU) 바꿔 끼우기와 툴바 "추론" 선택. NPU(AMD Ryzen AI · VitisAI EP) 준비 — ① 짝 모델 확인 → ② EP 준비·등록과

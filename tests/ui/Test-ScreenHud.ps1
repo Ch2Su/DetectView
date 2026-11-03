@@ -33,15 +33,15 @@
 #     검출 예외 4. 예: Debug·DXGI·박스 없음 = 39
 #
 #   pwsh tests\ui\Test-ScreenHud.ps1
-#   pwsh tests\ui\Test-ScreenHud.ps1 -ExeDir publish_gpu_ver
+#   pwsh tests\ui\Test-ScreenHud.ps1 -ExeDir publish
 param(
     [string]$ExeDir,
-    [string]$Video   # HUD → 파일 전환에 쓸 영상. 생략 시 publish_gpu_ver\test1.mp4
+    [string]$Video   # HUD → 파일 전환에 쓸 영상. 생략 시 publish\test1.mp4
 )
 . (Join-Path $PSScriptRoot 'Common.ps1')
 
 $ExeDir = Resolve-ExeDir $ExeDir
-if (-not $Video) { $Video = Join-Path $RepoRoot 'publish_gpu_ver\test1.mp4' }
+if (-not $Video) { $Video = Join-Path $RepoRoot 'publish\test1.mp4' }
 if (-not (Test-Path $Video)) { throw "테스트 영상이 없습니다: $Video" }
 
 # 오버레이 창 찾기: 이 프로세스의 보이는 최상위 창 중 클릭 통과(WS_EX_TRANSPARENT)이고 제목이 오버레이(OverlayWindow.xaml 의 Title)인 것.

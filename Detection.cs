@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace YOLO11_Test
+namespace DetectView
 {
     /// <summary>
     /// 검출 결과 1건. 좌표는 원본 프레임 픽셀 기준.

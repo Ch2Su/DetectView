@@ -8,17 +8,17 @@
 #   NPU(AMD Ryzen AI · VitisAI)가 없는 PC 거나 짝 모델이 없으면 2) 는 [INFO] 로 건너뛴다 (1)·3) 은 NPU 없이도 돈다)
 #
 #   pwsh tests\ui\Test-NpuSwitch.ps1                              # bin\Debug 빌드
-#   pwsh tests\ui\Test-NpuSwitch.ps1 -ExeDir publish_gpu_ver      # 배포본 (짝은 tools\Make-NpuModel.ps1 -Model publish_gpu_ver\best.onnx)
+#   pwsh tests\ui\Test-NpuSwitch.ps1 -ExeDir publish      # 배포본 (짝은 tools\Make-NpuModel.ps1 -Model publish\best.onnx)
 #   pwsh tests\ui\Test-NpuSwitch.ps1 -ColdCancel                  # + NPU 컴파일 캐시를 지우고 컴파일 도중 취소 (2분 넘게 걸림)
 param(
     [string]$ExeDir,
-    [string]$Video,          # 생략 시 publish_gpu_ver\test1.mp4
+    [string]$Video,          # 생략 시 publish\test1.mp4
     [switch]$ColdCancel
 )
 . (Join-Path $PSScriptRoot 'Common.ps1')
 
 $ExeDir = Resolve-ExeDir $ExeDir
-if (-not $Video) { $Video = Join-Path $RepoRoot 'publish_gpu_ver\test1.mp4' }
+if (-not $Video) { $Video = Join-Path $RepoRoot 'publish\test1.mp4' }
 if (-not (Test-Path $Video)) { throw "테스트 영상이 없습니다: $Video" }
 
 if (-not ('DetectViewTest.Window' -as [type])) {
@@ -431,7 +431,7 @@ try {
     $hasTwin = Test-Path (Join-Path $ExeDir 'best.npu.onnx')
 
     # 짝과 다른 모델 하나 (저장소 루트·배포 폴더 모델 중 MD5 가 다른 것). 없으면 그 경우만 건너뛴다
-    $other = @((Join-Path $RepoRoot 'best.onnx'), (Join-Path $RepoRoot 'publish_gpu_ver\best.onnx')) |
+    $other = @((Join-Path $RepoRoot 'best.onnx'), (Join-Path $RepoRoot 'publish\best.onnx')) |
              Where-Object { (Test-Path $_) -and (Get-Md5 $_) -ne (Get-Md5 (Join-Path $ExeDir 'best.onnx')) } | Select-Object -First 1
 
     $cases = @(

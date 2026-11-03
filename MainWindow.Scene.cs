@@ -1,6 +1,6 @@
 using System.Windows;
 
-namespace YOLO11_Test
+namespace DetectView
 {
     /// <summary>영상 위 배지가 알리는 상태 (화면 전환 감지 — 아래 MainWindow 의 ShowSceneBadge)</summary>
     internal enum SceneBadgeKind

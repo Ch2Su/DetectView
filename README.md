@@ -44,12 +44,12 @@ dotnet build
 배포용 단일 실행 파일:
 
 ```bash
-dotnet publish YOLO11_Test.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o publish_gpu_ver
+dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o publish
 ```
 
-- 프로젝트 파일(`YOLO11_Test.csproj`)을 꼭 지정합니다. 빼면 폴더의 `.slnx` 가 잡혀 `NETSDK1194` 경고가 납니다.
-- 결과는 `publish_gpu_ver\DetectView.exe`(약 126 MB, .NET 런타임 포함)와 `best.onnx` 입니다. **모델은 exe 에 들어가지 않으니 같은 폴더에 둡니다.**
-- NPU 짝 모델은 publish 에 복사되지 않습니다. 배포 폴더 모델로 만듭니다: `pwsh tools\Make-NpuModel.ps1 -Model publish_gpu_ver\best.onnx`
+- 프로젝트 파일(`DetectView.csproj`)을 꼭 지정합니다. 빼면 폴더의 `.slnx` 가 잡혀 `NETSDK1194` 경고가 납니다.
+- 결과는 `publish\DetectView.exe`(약 126 MB, .NET 런타임 포함)와 `best.onnx` 입니다. **모델은 exe 에 들어가지 않으니 같은 폴더에 둡니다.**
+- NPU 짝 모델은 publish 에 복사되지 않습니다. 배포 폴더 모델로 만듭니다: `pwsh tools\Make-NpuModel.ps1 -Model publish\best.onnx`
 - 실행해서 창 제목이 `DetectView — YOLO26s (2026-09-11 학습) — NVIDIA GeForce RTX 5060 Laptop GPU (DirectML)` 처럼 바뀌면 GPU 초기화에 성공한 것입니다.
 
 ## 사용법
@@ -75,7 +75,7 @@ dotnet publish YOLO11_Test.csproj -c Release -r win-x64 --self-contained true -p
 - 같은 형식의 다른 모델로 바꿔 쓸 수 있습니다(COCO 80클래스 YOLO26x 도 써 봤습니다). 창 제목의 모델 이름과 학습일은 ONNX 메타데이터에서 읽고, 화면에는 위 7개 클래스만 보입니다.
 - `best.npu.onnx` 는 `best.onnx` 의 NPU 짝(A16W8 양자화)입니다. 원본을 바꾸면 `pwsh tools\Make-NpuModel.ps1` 로 다시 만듭니다.
   앱은 짝 모델에 들어 있는 원본 MD5 로 짝이 맞는지 확인하고, 안 맞으면 NPU 를 막습니다.
-  보정 데이터 기본값은 `publish_gpu_ver\test1~5.mp4` 이고, 다른 영상을 쓰려면 `-Calib` 로 영상·이미지 폴더를 줍니다.
+  보정 데이터 기본값은 `publish\test1~5.mp4` 이고, 다른 영상을 쓰려면 `-Calib` 로 영상·이미지 폴더를 줍니다.
 
 ## 성능 (참고)
 
@@ -95,8 +95,8 @@ pwsh tests/ui/Run-All.ps1
 
 - 실제 앱을 띄워 UI Automation 으로 조작하는 회귀 테스트 10종입니다: 파일 재생 · 추적 · 구역 편집(실제 마우스를 움직입니다) · 화면 전환 감지 · 구역 이벤트 로그 · 유고 규칙 · 화면 식별(합성 영상 — 처음 한 번 `TrackerCheck mkrevisit` 이 만듭니다) · VFR 재생 · 화면 HUD · NPU 전환. 종료 코드 0 이면 모두 통과입니다.
 - 도는 동안 DetectView 창이 여러 번 떴다 닫히고 바탕화면을 캡처합니다. 몇 분 걸립니다.
-- 필요한 것: GPU, 테스트 영상 `publish_gpu_ver\test1.mp4` · `test4.mp4`(저장소에 없습니다). 가변 프레임레이트 표본은 `tests/ui/media` 에 들어 있습니다. NPU 검사는 NPU 와 짝 모델이 있을 때만 돕니다.
-- 배포본 검사: `pwsh tests/ui/Run-All.ps1 -ExeDir publish_gpu_ver`
+- 필요한 것: GPU, 테스트 영상 `publish\test1.mp4` · `test4.mp4`(저장소에 없습니다). 가변 프레임레이트 표본은 `tests/ui/media` 에 들어 있습니다. NPU 검사는 NPU 와 짝 모델이 있을 때만 돕니다.
+- 배포본 검사: `pwsh tests/ui/Run-All.ps1 -ExeDir publish`
 - 재생 FPS 비교: `pwsh tests/ui/Measure-Fps.ps1 -ExeDir <폴더>`
 - 추적기 검증(영상·GPU 불필요): `dotnet run --project experiments/TrackerCheck/TrackerCheck.csproj -c Release -- selftest`
 
@@ -110,7 +110,7 @@ pwsh tests/ui/Run-All.ps1
 | `experiments/` | 따로 빌드하는 실험 도구 — `NpuBench`(NPU 정확도·속도), `RuntimeParity`(런타임 교체 전후 검출 비교), `TrackerCheck`(추적기 검증) |
 | `CLAUDE.md` | 설계 결정 · 함정 · 실측 기록. 코드를 고치기 전에 읽을 것 |
 
-폴더 · 프로젝트 · 네임스페이스 이름은 옛 이름 `YOLO11_Test` 이고, 제품과 실행 파일 이름은 `DetectView` 입니다. 일부러 그대로 두었습니다.
+폴더 · 프로젝트 · 네임스페이스 · 제품 · 실행 파일 이름이 모두 `DetectView` 입니다 (2026-11-03 정리 — 예전엔 폴더·프로젝트·네임스페이스가 옛 이름 `YOLO11_Test` 였습니다).
 
 ## 개발 메모
 

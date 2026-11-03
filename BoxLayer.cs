@@ -5,7 +5,7 @@ using System.Text;
 using System.Windows;
 using System.Windows.Media;
 
-namespace YOLO11_Test
+namespace DetectView
 {
     /// <summary>
     /// 검출 박스 전체를 <b>단일 비주얼의 OnRender 한 번</b>으로 그린다 — HUD 오버레이와 앱 안 영상(파일·카메라·SAHI)이 같이 쓴다.

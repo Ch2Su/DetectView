@@ -3,7 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Windows;
 
-namespace YOLO11_Test
+namespace DetectView
 {
     /// <summary>카메라 열거(DirectShow — 인덱스가 OpenCV DSHOW 순서와 일치)와 시작.</summary>
     public partial class MainWindow

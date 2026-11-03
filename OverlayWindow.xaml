@@ -1,4 +1,4 @@
-<Window x:Class="YOLO11_Test.OverlayWindow"
+<Window x:Class="DetectView.OverlayWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="DetectView Overlay"

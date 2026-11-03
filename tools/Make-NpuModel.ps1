@@ -1,11 +1,11 @@
 ﻿# YOLO 모델(FP32 ONNX)로 AMD NPU 용 짝 모델(<이름>.npu.onnx, 기본 A16W8·가중치 채널별 QDQ)을 만든다.
 #   pwsh tools\Make-NpuModel.ps1                                    # 루트 best.onnx → best.npu.onnx (git 추적 대상)
-#   pwsh tools\Make-NpuModel.ps1 -Model publish_gpu_ver\best.onnx   # 배포 폴더 모델을 바꿨을 때 — 짝도 다시 만들어야 한다
+#   pwsh tools\Make-NpuModel.ps1 -Model publish\best.onnx   # 배포 폴더 모델을 바꿨을 때 — 짝도 다시 만들어야 한다
 #   pwsh tools\Make-NpuModel.ps1 -Model ... -Bench                  # 만든 뒤 NpuBench 로 NPU 정확도·속도 확인 (몇 분)
 #
 # 짝 모델에는 원본 MD5(npu_source_md5)가 들어간다. 원본을 바꾸면 짝이 어긋났다는 걸 그걸로 안다.
 # 필요: uv (python 은 PATH 에 없다 — uv 가 격리 환경을 만들고 처음 한 번 패키지를 내려받는다).
-# 보정 데이터 기본값은 publish_gpu_ver\test1~5.mp4 각 20장. 다른 현장 영상이면 -Calib 로 그 영상·이미지 폴더를 주는 게 낫다.
+# 보정 데이터 기본값은 publish\test1~5.mp4 각 20장. 다른 현장 영상이면 -Calib 로 그 영상·이미지 폴더를 주는 게 낫다.
 param(
     [string]$Model = 'best.onnx',
     [string]$Out,                       # 기본: 같은 폴더의 <이름>.npu.onnx

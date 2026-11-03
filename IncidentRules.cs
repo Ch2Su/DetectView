@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace YOLO11_Test
+namespace DetectView
 {
     /// <summary>유고 규칙 파라미터</summary>
     internal sealed record IncidentOptions

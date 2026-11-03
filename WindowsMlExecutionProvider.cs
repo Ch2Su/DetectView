@@ -11,7 +11,7 @@ using YoloDotNet.Extensions;
 using YoloDotNet.Models;
 using YoloDotNet.Models.Interfaces;
 
-namespace YOLO11_Test
+namespace DetectView
 {
     /// <summary>
     /// Windows ML 에 들어 있는 ONNX Runtime 으로 도는 YoloDotNet 실행 공급자.

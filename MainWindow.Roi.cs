@@ -6,7 +6,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 
-namespace YOLO11_Test
+namespace DetectView
 {
     /// <summary>왼쪽 패널 구역 목록의 한 줄 — 구역(RoiZone)에 목록이 쓰는 색·이름을 붙인 것</summary>
     internal sealed class RoiListItem

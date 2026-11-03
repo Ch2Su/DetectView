@@ -55,7 +55,7 @@ function WaitFor([scriptblock]$Cond, [int]$TimeoutMs, [int]$StepMs = 100) {
     return $false
 }
 
-# -ExeDir 생략 → bin\Debug 빌드. 상대 경로는 저장소 루트 기준 (예: publish_gpu_ver)
+# -ExeDir 생략 → bin\Debug 빌드. 상대 경로는 저장소 루트 기준 (예: publish)
 # Debug 출력 폴더 이름은 TFM 을 따라 바뀐다(net10.0-windows → net10.0-windows10.0.19041.0) → 가장 최근에 빌드된 것을 고른다
 function Resolve-ExeDir([string]$ExeDir) {
     if (-not $ExeDir) {
@@ -66,7 +66,7 @@ function Resolve-ExeDir([string]$ExeDir) {
         if (-not $exe) { throw 'bin\Debug 에 DetectView.exe 가 없습니다 (먼저 dotnet build)' }
         return $exe.DirectoryName
     }
-    # '.\publish_gpu_ver' 처럼 '.' 이 섞이거나 끝에 '\' 가 붙어도 같은 경로가 되게 정규화한다 — 예전엔 그대로 써서
+    # '.\publish' 처럼 '.' 이 섞이거나 끝에 '\' 가 붙어도 같은 경로가 되게 정규화한다 — 예전엔 그대로 써서
     # Test-NpuSwitch 미러의 파일 이름이 잘리고(경로 길이로 Substring) Test-ScreenHud 의 exe 경로 비교가 틀렸다
     $p = if ([IO.Path]::IsPathRooted($ExeDir)) { $ExeDir } else { Join-Path $RepoRoot $ExeDir }
     $full = [IO.Path]::GetFullPath($p)

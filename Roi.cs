@@ -6,7 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 
-namespace YOLO11_Test
+namespace DetectView
 {
     /// <summary>
     /// 관심 구역(ROI) 유형 — 나중에 유고 규칙이 '갓길에 멈춤'과 '신호대기 줄에 멈춤'을 가르는 데 쓴다

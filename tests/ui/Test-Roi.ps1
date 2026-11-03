@@ -14,10 +14,10 @@
 #   8) 깨진 구역 파일: 상태바에 사유, 빈 구역으로 시작, 옛 파일은 .bad 로 남김
 #
 #   pwsh tests\ui\Test-Roi.ps1                              # bin\Debug 빌드
-#   pwsh tests\ui\Test-Roi.ps1 -ExeDir publish_gpu_ver      # 배포본
+#   pwsh tests\ui\Test-Roi.ps1 -ExeDir publish      # 배포본
 param(
     [string]$ExeDir,
-    [string]$Video,        # 생략 시 publish_gpu_ver\test4.mp4
+    [string]$Video,        # 생략 시 publish\test4.mp4
     [int]$FrameW = 1280,   # 영상 해상도 (화면 위 좌표를 프레임 0~1 좌표로 옮기는 데 쓴다)
     [int]$FrameH = 720
 )
@@ -35,7 +35,7 @@ if (-not ('DetectViewTest.Input' -as [type])) {
 $In = [DetectViewTest.Input]
 
 $ExeDir = Resolve-ExeDir $ExeDir
-if (-not $Video) { $Video = Join-Path $RepoRoot 'publish_gpu_ver\test4.mp4' }
+if (-not $Video) { $Video = Join-Path $RepoRoot 'publish\test4.mp4' }
 if (-not (Test-Path $Video)) { throw "테스트 영상이 없습니다: $Video" }
 $roiFile = "$Video.roi.json"
 

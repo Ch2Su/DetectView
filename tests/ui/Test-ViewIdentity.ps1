@@ -12,7 +12,7 @@
 #      다시 열면 같은 뷰로 알아본다 — 구역은 그린 뷰(V2)에서만 보이고 V1 에선 안 보인다 (저장한 기준 화면 JPEG 로 알아봄)
 #
 #   pwsh tests\ui\Test-ViewIdentity.ps1                              # bin\Debug 빌드
-#   pwsh tests\ui\Test-ViewIdentity.ps1 -ExeDir publish_gpu_ver      # 배포본
+#   pwsh tests\ui\Test-ViewIdentity.ps1 -ExeDir publish      # 배포본
 param(
     [string]$ExeDir,
     [string]$Video   # 생략 시 experiments\TrackerCheck\out\test4_revisit.mp4 (없으면 만든다)
@@ -34,7 +34,7 @@ $ExeDir = Resolve-ExeDir $ExeDir
 if (-not $Video) {
     $Video = Join-Path $RepoRoot 'experiments\TrackerCheck\out\test4_revisit.mp4'
     if (-not (Test-Path $Video)) {
-        if (-not (Test-Path (Join-Path $RepoRoot 'publish_gpu_ver\test4.mp4'))) { throw "테스트 영상이 없습니다: publish_gpu_ver\test4.mp4 (합성 영상의 원본)" }
+        if (-not (Test-Path (Join-Path $RepoRoot 'publish\test4.mp4'))) { throw "테스트 영상이 없습니다: publish\test4.mp4 (합성 영상의 원본)" }
         & dotnet run --project (Join-Path $RepoRoot 'experiments\TrackerCheck') -- mkrevisit $Video | Out-Host
     }
 }

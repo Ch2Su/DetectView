@@ -8,7 +8,7 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
-namespace YOLO11_Test
+namespace DetectView
 {
     /// <summary>SAHI 정밀 분석 — 현재 프레임 1장을 타일로 나눠 검출 후 병합해 표시 (on-demand).</summary>
     public partial class MainWindow
