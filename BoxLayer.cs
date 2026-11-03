@@ -218,6 +218,11 @@ namespace YOLO11_Test
                 var paint = theme.For(d.Label);
                 var (x0, y0, x1, y1) = BoxEdges(d, sx, sy, ox, oy, ppd);
 
+                // 작은 물체는 테두리·꺾쇠도 옅게 (Theme.SizeOpacity)
+                double opacity = theme.SizeOpacity(x1 - x0, y1 - y0);
+                bool faded = opacity < 1;
+                if (faded) dc.PushOpacity(opacity);
+
                 // 꺾쇠를 잇는 옅은 테두리 (상자 바깥 줄 픽셀)
                 double f = theme.FrameThickness;
                 dc.DrawRectangle(null, paint.Frame, new Rect(x0 + f / 2, y0 + f / 2, x1 - x0 - f, y1 - y0 - f));
@@ -231,6 +236,7 @@ namespace YOLO11_Test
                 var corners = Corners(x0 + c / 2, y0 + c / 2, x1 - c / 2, y1 - c / 2, arm);
                 dc.DrawGeometry(null, haloPen, corners);
                 dc.DrawGeometry(null, cornerPen, corners);
+                if (faded) dc.Pop();
             }
 
             double bar = Snap(3, ppd);   // 범례 막대 (라벨 막대는 라벨 배율을 따른다)
@@ -252,9 +258,12 @@ namespace YOLO11_Test
                 double lh = Snap(text.Height + 2 * k, ppd);
                 double ly = y0 - lh - gap;
                 if (ly < 0) ly = y1 + gap + lh <= ActualHeight ? y1 + gap : Math.Max(0, y0 + gap);
+                double labelOpacity = theme.SizeOpacity(x1 - x0, y1 - y0);   // 작을수록 글자까지 옅게
+                if (labelOpacity < 1) dc.PushOpacity(labelOpacity);
                 dc.DrawRectangle(theme.LabelBack, null, new Rect(x0, ly, lw, lh));
                 dc.DrawRectangle(paint.Brush, null, new Rect(x0, ly, lbar, lh));
                 dc.DrawText(text, new Point(x0 + lbar + pad, ly + Snap((lh - text.Height) / 2, ppd)));
+                if (labelOpacity < 1) dc.Pop();
             }
 
             DrawLegend(dc, theme, ppd, bar);
@@ -357,7 +366,7 @@ namespace YOLO11_Test
             public readonly Brush LabelBack, LegendBack;
             public readonly Brush LegendTextBrush, LegendSubBrush;   // 범례 개수 · 머리 글자
             public readonly double FrameThickness;   // DIP (장치 픽셀 정수배)
-            private readonly double _ppd, _frameOpacity, _cornerOpacity, _fullSizeFrom, _minScale;
+            private readonly double _ppd, _frameOpacity, _cornerOpacity, _fullSizeFrom, _minScale, _tinySize, _tinyOpacity;
             private readonly int _cornerPx;   // 큰 물체의 꺾쇠 굵기 — 장치 픽셀 (100% 2px, 125% 3px)
             private readonly Color _other, _halo;
             private readonly Dictionary<string, Paint> _paints = new();
@@ -378,7 +387,9 @@ namespace YOLO11_Test
                 _frameOpacity = Res("Box.FrameOpacity", 0.3);
                 _cornerOpacity = Res("Box.CornerOpacity", 0.85);
                 _fullSizeFrom = Res("Box.FullSizeFrom", 48.0);
-                _minScale = Math.Clamp(Res("Box.MinScale", 0.6), 0.1, 1);   // Clamp(값, 하한, 1) 이 하한 > 1 로 던지지 않게
+                _minScale = Math.Clamp(Res("Box.MinScale", 0.45), 0.1, 1);   // Clamp(값, 하한, 1) 이 하한 > 1 로 던지지 않게
+                _tinySize = Math.Max(0, Res("Box.TinySize", 14.0));
+                _tinyOpacity = Math.Clamp(Res("Box.TinyOpacity", 0.45), 0.1, 1);
                 _other = Res("Box.Other", Colors.White);
                 _halo = Res("Box.Halo", Color.FromArgb(0x59, 0, 0, 0));
                 // 2px·1px 를 화면 배율에 맞춰 장치 픽셀 정수로 (125% 면 꺾쇠 3px) — 반 픽셀이면 흐려진다
@@ -393,6 +404,18 @@ namespace YOLO11_Test
             /// </summary>
             public double SizeScale(double w, double h) =>
                 _fullSizeFrom > 0 ? Math.Clamp(Math.Sqrt(Math.Max(0, w * h)) / _fullSizeFrom, _minScale, 1) : 1;
+
+            /// <summary>
+            /// 작은 물체의 박스·라벨 불투명도 배율(0~1): 크기 √(폭×높이)(DIP)가 Box.FullSizeFrom 이상이면 1, Box.TinySize 이하면 Box.TinyOpacity, 그 사이는 직선.
+            /// 배율(SizeScale)만 줄였을 땐 멀리 있는 작은 차가 수십 대 모인 장면(test4 신호대기 행렬)에서 라벨이 여전히 겹쳐 덩어리가 됐다 —
+            /// 작을수록 옅게 그려 그 덩어리가 영상을 덜 가리고 큰(가까운) 물체의 라벨이 앞서 읽히게 한다
+            /// </summary>
+            public double SizeOpacity(double w, double h)
+            {
+                if (_fullSizeFrom <= _tinySize) return 1;
+                double t = Math.Clamp((Math.Sqrt(Math.Max(0, w * h)) - _tinySize) / (_fullSizeFrom - _tinySize), 0, 1);
+                return _tinyOpacity + (1 - _tinyOpacity) * t;
+            }
 
             /// <summary>
             /// 배율 k 인 물체의 꺾쇠 붓·둘레 붓·꺾쇠 굵기(DIP). 굵기는 큰 물체의 굵기(장치 픽셀)에 k 를 곱해 장치 픽셀 정수로 반올림하고

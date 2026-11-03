@@ -90,7 +90,9 @@
         <!-- 작은 물체의 라벨·꺾쇠 (2026-11-02): 화면에서 물체 크기 √(폭×높이) 가 FullSizeFrom(DIP) 이상이면 기본 크기, 그보다 작으면
              라벨(글자·여백·막대)과 모서리 꺾쇠(굵기·팔 길이의 하한)를 크기에 비례해 줄인다. MinScale 이 하한 (글자 11 → 6.6 — 더 작으면 읽을 수 없다) -->
         <sys:Double x:Key="Box.FullSizeFrom">48</sys:Double>
-        <sys:Double x:Key="Box.MinScale">0.6</sys:Double>
+        <sys:Double x:Key="Box.MinScale">0.45</sys:Double>   <!-- 2026-11-03: 0.6 → 0.45 (사용자 요청 — 작은 물체를 더 줄이고 아래 TinyOpacity 로 더 옅게) -->
+        <sys:Double x:Key="Box.TinySize">14</sys:Double>       <!-- 이 크기(DIP, √(폭×높이)) 이하는 가장 옅게 (Box.FullSizeFrom 에서 1 로 직선) -->
+        <sys:Double x:Key="Box.TinyOpacity">0.45</sys:Double>  <!-- 가장 작은 물체의 박스·라벨 불투명도 배율 -->
 
         <!-- ===== 관심 구역 (RoiLayer·왼쪽 패널 '구역' 목록 — 처음 쓸 때 한 번 읽는다) =====
              키 = "Roi." + 구역 유형(RoiKinds.Key). 색은 박스 클래스 색과 겹치지 않는 계열 — 차로 = 강조색, 갓길 = 호박, 정지선·대기 = 보라, 무시 = 회청(점선) -->
