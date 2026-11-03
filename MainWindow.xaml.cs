@@ -72,6 +72,7 @@ namespace YOLO11_Test
             DisposeCapture();
             CloseOverlay();
             ClearRoi();   // 구역은 열려 있던 영상의 것
+            ShowSceneBadge(SceneBadgeKind.None);
         }
 
         // 소스 없음 상태로. 정지뿐 아니라 새 소스를 못 열었을 때도 쓴다 — 예전엔 이전 루프를 이미 내린 뒤 열기에 실패하면
@@ -85,6 +86,7 @@ namespace YOLO11_Test
             MainImage.Source = null;
             FrameBoxes.Clear();
             ClearRoi();   // 열기에 실패한 경우(구역을 읽은 뒤 실패)에도 구역이 남지 않게
+            ShowSceneBadge(SceneBadgeKind.None);
             PlaceholderText.Text = "파일을 열거나 카메라를 시작하세요";
 
             ApplyModeToUi();

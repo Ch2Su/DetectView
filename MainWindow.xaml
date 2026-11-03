@@ -169,6 +169,13 @@
                              창·영상 크기와 상관없이 선 굵기·라벨 글자 크기가 일정하다. 클래스별 개수 범례도 이 칸의 왼쪽 위 모서리에 같이 그린다
                              (레터박스가 있으면 그 검은 띠 위라 영상을 안 가린다). 범례 글자는 Txt_DetectionCount 의 UIA ItemStatus 로 나간다 -->
                         <local:BoxLayer x:Name="FrameBoxes" />
+                        <!-- 화면 전환 감지 배지 (MainWindow.Scene.cs): 카메라가 돌아가는 동안 '화면 이동 중'·검은 끊김엔 '화면 끊김', 안정돼 번호를 새로 매긴 직후 몇 초 '화면 전환 · 번호 새로 매김'.
+                             오른쪽 위 — 왼쪽 위는 검출 범례. 평소엔 숨김 (UIA 에서도 사라진다). 글자색은 코드가 키로 정한다 -->
+                        <Border x:Name="SceneBadge" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8"
+                                Padding="9,4" CornerRadius="2" Background="{StaticResource BadgeBackBrush}"
+                                IsHitTestVisible="False" Visibility="Collapsed">
+                            <TextBlock x:Name="Txt_SceneBadge" FontFamily="{StaticResource MonoFont}" FontSize="11" FontWeight="SemiBold"/>
+                        </Border>
 
                         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" IsHitTestVisible="False">
                             <TextBlock Text="&#xE9A6;" FontFamily="{StaticResource IconFont}" FontSize="40"

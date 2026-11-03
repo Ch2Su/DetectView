@@ -100,6 +100,9 @@
         <Color x:Key="Roi.ignore">#94A3B8</Color>
         <sys:Double x:Key="Roi.FillOpacity">0.16</sys:Double>    <!-- 구역 안쪽 칠의 불투명도 — 영상이 비쳐 보이게 -->
 
+        <!-- 영상 위 화면 전환 배지 바탕 (MainWindow.Scene.cs) — 범례와 같은 바탕 -->
+        <SolidColorBrush x:Key="BadgeBackBrush" Color="{StaticResource Box.LegendBack}" po:Freeze="True"/>
+
         <!-- ===== 글꼴 =====
              UI: 라틴은 Segoe UI Variable, 한글은 맑은 고딕으로 넘어간다 (WPF 가 글자마다 목록 순서대로 찾는다).
              상태바 크기를 바꾸면 최소 폭(900)에서 HUD 상태 문구가 말줄임되지 않는지 다시 잴 것 (CLAUDE.md '상태바') -->

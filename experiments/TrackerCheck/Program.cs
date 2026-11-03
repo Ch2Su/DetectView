@@ -58,6 +58,7 @@ return args.FirstOrDefault() switch
     "track" => TrackAll(args.Skip(1).ToArray()),
     "selftest" => SelfTest(),
     "gpu" => GpuCheck(),
+    "scene" => SceneScan(args.Skip(1).ToArray()),
     "dedup" => Dedup(args.Skip(1).ToArray()),
     "sahi" => SahiCompare(args.Skip(1).ToArray()),
     "render" when args.Length >= 5 => Render(args[1], args[2], double.Parse(args[3], CultureInfo.InvariantCulture),
@@ -69,6 +70,94 @@ static int Usage()
 {
     Console.WriteLine("사용법: detect | track [이름=값 ...] [noreset] [noframe] | selftest | gpu | dedup [Every=N] | sahi [Every=N] [영상@초 ...] | render <영상> <x,y,w,h|full> <배율> <초...>");
     return 2;
+}
+
+// ---------- scene: 프레임 간 변화량 실측 (화면 전환 감지의 임계값을 감으로 정하지 않으려고) → out/<영상>.scene.csv ----------
+// 앱 재생 루프와 같은 SceneThumbnail(64×36 흑백)로 연속한 두 프레임의 평균 절대차 d 와 평균 밝기를 재고,
+// d 가 임계값(6 · 12 · 25)을 넘는 연속 구간(에피소드)을 시각과 함께 보인다. 인자: 영상 경로들 (생략하면 배포 폴더 test*.mp4 + tests/ui/media/*.webm)
+int SceneScan(string[] paths)
+{
+    if (paths.Length == 0)
+        paths = Directory.GetFiles(VideoDir, "test*.mp4").OrderBy(p => p).Concat(Directory.GetFiles(Path.Combine(repo, "tests", "ui", "media"), "*.webm")).ToArray();
+
+    foreach (string path in paths)
+    {
+        using var cap = new VideoCapture(path);
+        if (!cap.IsOpened()) { Console.WriteLine($"[건너뜀] 열 수 없음: {path}"); continue; }
+        string name = Path.GetFileNameWithoutExtension(path);
+        using var thumb = new SceneThumbnail();
+        using var frame = new Mat();
+        byte[]? prev = null;
+        var rows = new List<(int N, double Ms, double D, double Mean)>();
+        int n = 0;
+        while (cap.Read(frame) && !frame.Empty())
+        {
+            double ms = cap.Get(VideoCaptureProperties.PosMsec);
+            byte[] cur = thumb.Compute(frame);
+            double sum = 0, diff = 0;
+            for (int i = 0; i < cur.Length; i++) { sum += cur[i]; if (prev != null) diff += Math.Abs(cur[i] - prev[i]); }
+            rows.Add((n++, ms, prev == null ? 0 : diff / cur.Length, sum / cur.Length));
+            prev = (byte[])cur.Clone();
+        }
+
+        using (var w = new StreamWriter(Path.Combine(outDir, name + ".scene.csv")))
+        {
+            w.WriteLine("frame,ms,d,mean");
+            foreach (var r in rows) w.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{r.N},{r.Ms:0.###},{r.D:0.###},{r.Mean:0.##}"));
+        }
+
+        // 같은 썸네일 열로 감지기를 돌려, 움직임 구간마다 안정된 뒤 직전 안정 화면과의 거리(AnchorDistance)와 전환 판정을 본다 —
+        // ViewDiff 는 전환의 거리와 전환이 아닌 구간(검은 끊김·지나가는 차)의 거리 사이에 놓여야 한다
+        {
+            var det = new SceneChangeDetector();
+            using var cap2 = new VideoCapture(path);
+            using var f2 = new Mat();
+            using var t2 = new SceneThumbnail();
+            var lines = new List<string>();
+            int unsettledFrames = 0, changes = 0, blanks = 0, timed = 0;
+            long ticks = 0;
+            while (cap2.Read(f2) && !f2.Empty())
+            {
+                double ms = cap2.Get(VideoCaptureProperties.PosMsec);
+                long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+                byte[] th = t2.Compute(f2);
+                var s = det.Update(th, ms);
+                ticks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;   // 앱이 프레임마다 더 쓰는 시간 = 썸네일 + 감지기
+                timed++;
+                if (th.All(b => b <= 24)) blanks++;
+                if (s.Unsettled) unsettledFrames++;
+                if (s.Settled)
+                {
+                    if (s.ViewChanged) changes++;
+                    lines.Add($"{s.EpisodeStartMs / 1000:0.00}→{ms / 1000:0.00}초 움직임 {s.HotFrames}장 · 기준과의 거리 {s.AnchorDistance:0.0} → {(s.ViewChanged ? "전환" : "같은 화면")}");
+                }
+            }
+            Console.WriteLine($"\n=== {name} 감지기: 전환 {changes}번 · 움직이는 중으로 본 프레임 {unsettledFrames}장 · 빈(검은) 프레임 {blanks}장 · 프레임당 썸네일+감지 {ticks * 1000.0 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, timed):0.000} ms");
+            foreach (var l in lines) Console.WriteLine("  " + l);
+        }
+
+        var ds = rows.Skip(1).Select(r => r.D).OrderBy(x => x).ToArray();
+        double Pct(double p) => ds.Length == 0 ? 0 : ds[Math.Min(ds.Length - 1, (int)(p * ds.Length))];
+        Console.WriteLine($"\n=== {name}: {rows.Count}프레임 · {rows[^1].Ms / 1000:0.0}초 · d 중앙 {Pct(0.5):0.00} · 95% {Pct(0.95):0.00} · 99% {Pct(0.99):0.00} · 최대 {ds[^1]:0.0} · 밝기 {rows.Min(r => r.Mean):0.0}~{rows.Max(r => r.Mean):0.0}");
+        foreach (double t in new[] { 6.0, 12.0, 25.0 })
+        {
+            var eps = new List<(double From, double To, int Count, double Peak)>();
+            double from = 0, last = 0, peak = 0; int cnt = 0;
+            foreach (var r in rows.Skip(1))
+            {
+                if (r.D >= t)
+                {
+                    if (cnt == 0) { from = r.Ms; peak = 0; }
+                    cnt++; last = r.Ms; peak = Math.Max(peak, r.D);
+                }
+                else if (cnt > 0) { eps.Add((from, last, cnt, peak)); cnt = 0; }
+            }
+            if (cnt > 0) eps.Add((from, last, cnt, peak));
+            Console.WriteLine($"  d ≥ {t,2}: 에피소드 {eps.Count}개 (프레임 {eps.Sum(e => e.Count)}장)" +
+                              (eps.Count > 0 && eps.Count <= 14 ? " — " + string.Join(" · ", eps.Select(e => $"{e.From / 1000:0.00}~{e.To / 1000:0.00}초 {e.Count}장 최대 {e.Peak:0.#}")) : ""));
+        }
+    }
+    return 0;
 }
 
 // ---------- detect: 모든 프레임 검출 → out/<영상>.dets.csv ----------
@@ -579,6 +668,138 @@ int SelfTest()
             Check(!File.Exists(path), "구역이 하나도 없으면 저장이 파일을 지움 (빈 파일을 영상 옆에 남기지 않는다)");
         }
         finally { Directory.Delete(dir, true); }
+    }
+
+    // ⑨ 화면 전환 감지 (2026-11-03): SceneChange.cs — 64×36 흑백 합성 그림으로. 실제 영상(test4 회전 둘·test5 검은 끊김)은 `scene` 명령이 본다
+    {
+        const int TW = SceneThumbnail.Width, TH = SceneThumbnail.Height;
+        // 화면 종류 kind 를 가로로 shift 만큼 민 그림 (+ 흔들림 ±noise). 무늬가 달라 kind 가 다르면 평균 절대차가 크다
+        byte[] Pic(int kind, int shift = 0, int noise = 0, double gain = 1)
+        {
+            var t = new byte[TW * TH];
+            for (int y = 0; y < TH; y++)
+                for (int x = 0; x < TW; x++)
+                {
+                    int sx = x + shift;
+                    double v = kind == 0 ? (sx * 3 + y * 5) % 200 + 30 : (sx * 7 + y * 2 + 90) % 200 + 30;
+                    v = v * gain + (noise == 0 ? 0 : Jitter() * noise);
+                    t[y * TW + x] = (byte)Math.Clamp(v, 25, 255);   // 25 이상 — 빈(검은) 프레임이 아니게
+                }
+            return t;
+        }
+        byte[] Black() => new byte[TW * TH];
+        double Dist(byte[] a, byte[] b) => SceneChangeDetector.MeanAbsDiff(a, b);
+
+        Check(Dist(Pic(0), Pic(1)) > 30 && Dist(Pic(0), Pic(0, 6)) > 30 && Dist(Pic(0), Pic(0, 0, 2)) < 3,
+              $"합성 그림이 쓸 만함: 다른 화면 {Dist(Pic(0), Pic(1)):0.#} · 6칸 민 화면 {Dist(Pic(0), Pic(0, 6)):0.#} · 흔들림만 {Dist(Pic(0), Pic(0, 0, 2)):0.#}");
+
+        // 프레임 열을 감지기에 넣고 결과를 모은다 (30fps)
+        (int Changes, int Settles, int Unsettled, List<int> ChangeAt) Feed(IEnumerable<byte[]> frames, SceneChangeOptions? opt = null, double fps = 30)
+        {
+            var d = new SceneChangeDetector(opt);
+            int changes = 0, settles = 0, unsettled = 0, i = 0;
+            var at = new List<int>();
+            foreach (var f in frames)
+            {
+                var s = d.Update(f, i * 1000 / fps);
+                if (s.Unsettled) unsettled++;
+                if (s.Settled) settles++;
+                if (s.ViewChanged) { changes++; at.Add(i); }
+                i++;
+            }
+            return (changes, settles, unsettled, at);
+        }
+        IEnumerable<byte[]> Repeat(Func<int, byte[]> make, int n) => Enumerable.Range(0, n).Select(make);
+
+        var still = Feed(Repeat(_ => Pic(0, 0, 2), 300));
+        Check(still is { Changes: 0, Settles: 0, Unsettled: 0 }, $"가만한 화면(흔들림 ±2) 10초: 움직임 없음 — 전환 {still.Changes} · 움직이는 중 {still.Unsettled}프레임");
+
+        var cut = Feed(Repeat(i => i < 60 ? Pic(0, 0, 2) : Pic(1, 0, 2), 150));
+        Check(cut.Changes == 1 && cut.ChangeAt[0] >= 60 && cut.ChangeAt[0] <= 60 + 8 && cut.Unsettled is >= 3 and <= 8,
+              $"컷(한 프레임에 다른 화면): 전환 {cut.Changes}번 · 프레임 {cut.ChangeAt.FirstOrDefault()} 에서 (바뀐 프레임 60) · 움직이는 중 {cut.Unsettled}프레임");
+
+        // 회전: 60 프레임 가만 → 12 프레임 동안 한 프레임에 6칸씩 밀림(연속 큰 변화) → 다시 가만
+        var pan = Feed(Repeat(i => i < 60 ? Pic(0, 0, 2) : i < 72 ? Pic(0, (i - 59) * 6, 2) : Pic(0, 72, 2), 160));
+        Check(pan.Changes == 1 && pan.Unsettled >= 12 && pan.ChangeAt[0] > 72,
+              $"회전(12프레임 동안 계속 밀림): 전환 {pan.Changes}번 · 프레임 {pan.ChangeAt.FirstOrDefault()} 에서 (끝난 프레임 72) · 움직이는 중 {pan.Unsettled}프레임");
+
+        // 검은 끊김(test5 꼴): 21 프레임 검은 뒤 같은 화면 → 전환 아님, 움직이는 중으로는 본다 (그동안 추적기에 안 넣음)
+        var blackSame = Feed(Repeat(i => i < 60 ? Pic(0, 0, 2) : i < 81 ? Black() : Pic(0, 0, 2), 160));
+        Check(blackSame.Changes == 0 && blackSame.Settles == 1 && blackSame.Unsettled >= 21,
+              $"검은 끊김 21프레임 뒤 같은 화면: 전환 {blackSame.Changes}번 · 안정 {blackSame.Settles}번 · 움직이는 중 {blackSame.Unsettled}프레임");
+        var blackOther = Feed(Repeat(i => i < 60 ? Pic(0, 0, 2) : i < 81 ? Black() : Pic(1, 0, 2), 160));
+        Check(blackOther.Changes == 1, $"검은 끊김 뒤 다른 화면: 전환 {blackOther.Changes}번");
+
+        // 원인 표시(Blanked): 검은 끊김이 낀 구간은 true(화면엔 '화면 끊김'), 카메라가 도는 구간은 false('화면 이동 중')
+        {
+            bool blackBlanked = true, panBlanked = false, blackSettleBlanked = false, panSettleBlanked = true;
+            var dBlack = new SceneChangeDetector();
+            var dPan = new SceneChangeDetector();
+            for (int i = 0; i < 160; i++)
+            {
+                var sb = dBlack.Update(i < 60 ? Pic(0, 0, 2) : i < 81 ? Black() : Pic(0, 0, 2), i * 1000 / 30.0);
+                if (sb.Unsettled) blackBlanked &= sb.Blanked;
+                if (sb.Settled) blackSettleBlanked = sb.Blanked;
+                var sp = dPan.Update(i < 60 ? Pic(0, 0, 2) : i < 72 ? Pic(0, (i - 59) * 6, 2) : Pic(0, 72, 2), i * 1000 / 30.0);
+                if (sp.Unsettled) panBlanked |= sp.Blanked;
+                if (sp.Settled) panSettleBlanked = sp.Blanked;
+            }
+            Check(blackBlanked && blackSettleBlanked && !panBlanked && !panSettleBlanked,
+                  $"원인 표시: 검은 끊김 구간 Blanked(움직이는 중 {blackBlanked} · 안정 {blackSettleBlanked}), 회전 구간은 아님({panBlanked} · {panSettleBlanked})");
+        }
+
+        // 지나가는 큰 차(한 프레임만 크게 튐) 뒤 같은 화면 → 전환 아님
+        var glitch = Feed(Repeat(i => i == 60 ? Pic(1, 0, 2) : Pic(0, 0, 2), 150));
+        Check(glitch.Changes == 0 && glitch.Settles == 1, $"한 프레임만 크게 튀고 같은 화면: 전환 {glitch.Changes}번 · 안정 {glitch.Settles}번");
+
+        // 느린 변화(해 뜨는 것·자동 노출): 밝기가 서서히 1.5배 — 기준이 따라가므로 전환 아님
+        var drift = Feed(Repeat(i => Pic(0, 0, 2, 1 + 0.5 * i / 599.0), 600));
+        Check(drift is { Changes: 0, Settles: 0, Unsettled: 0 }, $"느린 밝기 변화(20초에 1.5배): 전환 {drift.Changes} · 움직이는 중 {drift.Unsettled}프레임");
+
+        // 계속 흔들려 안정이 안 됨: 프레임마다 다른 그림 → 5초에 포기하고 전환으로 침 (그 뒤에도 5초마다)
+        var shaking = Feed(Repeat(i => Pic(i % 2, i * 5, 0), 450));
+        Check(shaking.Changes >= 2 && shaking.ChangeAt[0] is >= 148 and <= 152, $"계속 흔들림 15초: 5초(150프레임)마다 포기하고 전환 처리 — 전환 {shaking.Changes}번, 첫 번째 프레임 {shaking.ChangeAt.FirstOrDefault()}");
+
+        // 검은 화면이 계속됨: 5초에 포기하고 전환으로 침 (기준은 버림)
+        var dead = Feed(Repeat(i => i < 30 ? Pic(0, 0, 2) : Black(), 240));
+        Check(dead.Changes >= 1 && dead.ChangeAt[0] is >= 178 and <= 182, $"검은 화면 8초: 5초 뒤 포기하고 전환 처리 — 프레임 {dead.ChangeAt.FirstOrDefault()}");
+
+        // Reset(시크): 앞뒤 화면이 다르지만 Reset 하면 전환이 아니다. 움직이는 중이던 상태도 버린다
+        var det = new SceneChangeDetector();
+        for (int i = 0; i < 30; i++) det.Update(Pic(0, 0, 2), i * 33.3);
+        det.Update(Pic(1, 0, 2), 1000);   // 움직임 시작
+        bool wasUnsettled = det.Unsettled;
+        det.Reset();
+        int resetChanges = 0; bool anyUnsettled = false;
+        for (int i = 0; i < 60; i++)
+        {
+            var s = det.Update(Pic(1, 0, 2), 1100 + i * 33.3);
+            if (s.ViewChanged) resetChanges++;
+            anyUnsettled |= s.Unsettled;
+        }
+        Check(wasUnsettled && !det.Unsettled && resetChanges == 0 && !anyUnsettled, $"Reset(시크): 움직이는 중이던 상태를 버리고 새 화면을 그대로 기준으로 — 전환 {resetChanges}번");
+
+        // 왜 전환에서 추적기를 비우나: 멈춘 트랙은 10초 남아서, 움직이는 동안 추적기에 안 넣어도(앱) 전환 뒤 같은 자리에 나타난 다른 차가 그 번호를 물려받는다.
+        // UI 테스트(Test-SceneChange)는 test4 의 회전 뒤 화면에 옛 트럭 자리의 검출이 없어 이 비우기가 빠져도 못 잡는다 — 그래서 추적기 단위로 가른다
+        {
+            Det Car() => new(400, 300, 80, 40, "car", 0.9);
+            int Run3s(Tracker t) { int id = 0; for (int i = 0; i < 90; i++) id = t.UpdateTagged([Car()], i * 1000 / 30.0, W, H)[0].TrackId; return id; }
+            var keep = new Tracker();
+            var fresh = new Tracker();
+            int before = Run3s(keep);
+            Run3s(fresh);
+            fresh.Reset();   // 전환 → 앱이 하는 일
+            // 움직이는 동안(1.2초)은 둘 다 넣지 않고, 안정된 뒤 같은 자리에 다른 차가 나타난다
+            int inherited = keep.UpdateTagged([Car()], 4200, W, H)[0].TrackId;
+            int renumbered = fresh.UpdateTagged([Car()], 4200, W, H)[0].TrackId;
+            Check(inherited == before && renumbered != before,
+                  $"전환 뒤 같은 자리의 다른 차: 비우지 않으면 옛 번호 #{inherited} 를 물려받고(옛 #{before}), 비우면 새 번호 #{renumbered}");
+        }
+
+        // 프레임 간격이 다른 소스: 10fps 카메라·60fps 파일에서도 같다
+        var cut10 = Feed(Repeat(i => i < 20 ? Pic(0, 0, 2) : Pic(1, 0, 2), 60), fps: 10);
+        var cut60 = Feed(Repeat(i => i < 120 ? Pic(0, 0, 2) : Pic(1, 0, 2), 300), fps: 60);
+        Check(cut10.Changes == 1 && cut60.Changes == 1, $"프레임 간격이 달라도 컷 하나는 전환 하나: 10fps {cut10.Changes}번 · 60fps {cut60.Changes}번");
     }
 
     // 한계 (통과·실패 없이 보이기만): 박스만으로는 움직임을 잴 수 없거나 나가는 차와 구분되지 않는 경우

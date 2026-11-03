@@ -237,6 +237,15 @@ namespace YOLO11_Test
             // 앞으로 가는 시크는 안 비운다(정지 트랙을 10초 붙들어, 시크 앞뒤의 다른 물체가 같은 번호를 받을 수 있다). 카메라는 멈췄다 재개해도 비운다
             var tracker = new Tracker();
             bool resetTracker = false;
+
+            // 화면 전환 감지 (파일 전용 — SceneChange.cs, 2026-11-03): 보이는 프레임마다 작은 흑백 그림을 만들어 카메라가 돌거나 화면이 바뀌었는지 본다.
+            // 움직이는 동안은 추적기에 넣지 않고(돌아가는 카메라의 박스로 가짜 트랙을 만들지 않게) 안정된 뒤 직전과 다른 화면이면 추적기를 비운다 — 번호가 새로 매겨진다.
+            // 시크하면 앞뒤가 이어지지 않으니 감지기도 같이 비운다(resetTracker). 카메라는 쓰지 않는다: 웹캠은 가까이서 큰 동작만 해도 한 프레임이 크게 바뀌어
+            // 번호가 깜빡일 수 있는데 이 PC 에선 실측할 수 없다 — PTZ 소스로 확인한 뒤 켠다
+            using var sceneThumb = isCamera ? null : new SceneThumbnail();
+            var scene = new SceneChangeDetector();
+            double sceneNoticeUntilMs = double.NegativeInfinity;   // '화면 전환' 배지를 보일 영상 시각(파일)의 끝
+            var badge = SceneBadgeKind.None;
             try
             {
                 while (!ct.IsCancellationRequested)
@@ -421,6 +430,9 @@ namespace YOLO11_Test
                         }
                     }
 
+                    // 화면에 내보낼 프레임의 작은 흑백 그림 — 아래에서 buffer 를 맞바꾸기 전에 만든다 (맞바꾼 뒤 frame 은 옛 버퍼)
+                    byte[]? sceneThumbBytes = sceneThumb?.Compute(frame);
+
                     // SAHI 정밀 분석에 쓸 원본 프레임 보관 (ProcessFrame 은 frame 에 그리지 않으므로 깨끗함).
                     // 화면에 내보내는 프레임과 같도록 기다린 뒤에 바꾼다. 복제 대신 버퍼를 맞바꾸고, 이전 보관 버퍼는 다음 Read 에 재사용
                     lock (_lastFrameLock)
@@ -431,9 +443,39 @@ namespace YOLO11_Test
 
                     // 화면에 내보낼 프레임에만 추적기를 돌린다 — 위에서 버린 프레임(일시정지 중 옮긴 위치의 옛 프레임)을 넣으면 시각이 어긋난다.
                     // 시각: 파일은 영상 시각(VFR 도 실제 타임스탬프), 카메라는 이 루프의 벽시계. 추적기가 실패해도 재생은 이어간다(박스는 번호 없이)
-                    if (resetTracker) { tracker.Reset(); resetTracker = false; }
-                    try { dets = tracker.UpdateTagged(dets, isCamera ? clock.Elapsed.TotalMilliseconds : posMs, width, height); }
-                    catch (Exception ex) { Debug.WriteLine($"추적기 오류: {ex.Message}"); tracker.Reset(); }
+                    if (resetTracker)
+                    {
+                        tracker.Reset();
+                        scene.Reset();
+                        sceneNoticeUntilMs = double.NegativeInfinity;
+                        badge = SceneBadgeKind.None;
+                        resetTracker = false;
+                    }
+                    bool feedTracker = true;
+                    if (sceneThumbBytes != null)
+                    {
+                        var sc = scene.Update(sceneThumbBytes, posMs);
+                        if (sc.Unsettled)
+                        {
+                            feedTracker = false;   // 움직이는 중 — 박스는 그대로 보이되 번호는 안 붙인다
+                            badge = sc.Blanked ? SceneBadgeKind.Blank : SceneBadgeKind.Moving;
+                        }
+                        else
+                        {
+                            if (sc.ViewChanged)
+                            {
+                                tracker.Reset();   // 직전과 다른 화면 — 이전 트랙은 이어지지 않는다 (번호는 이어서 센다)
+                                sceneNoticeUntilMs = posMs + SceneNoticeMs;
+                            }
+                            badge = posMs < sceneNoticeUntilMs ? SceneBadgeKind.Changed : SceneBadgeKind.None;
+                        }
+                    }
+                    if (feedTracker)
+                    {
+                        try { dets = tracker.UpdateTagged(dets, isCamera ? clock.Elapsed.TotalMilliseconds : posMs, width, height); }
+                        catch (Exception ex) { Debug.WriteLine($"추적기 오류: {ex.Message}"); tracker.Reset(); }
+                    }
+                    var badgeNow = badge;
 
                     await Dispatcher.InvokeAsync(() =>
                     {
@@ -441,6 +483,7 @@ namespace YOLO11_Test
 
                         MainImage.Source = resultImage;
                         FrameBoxes.Show(dets, width, height);   // 영상과 같은 디스패치에서 — 박스가 다른 프레임 위에 남지 않게
+                        ShowSceneBadge(badgeNow);
 
                         // 시크가 대기 중이면 이 프레임은 이전 위치의 것 → 진행 표시를 되돌리지 않는다
                         if (_mode == SourceMode.File && !_isUserDraggingSlider && !SeekPending)

@@ -559,9 +559,10 @@ namespace YOLO11_Test
 
         private void DrawHint(DrawingContext dc, double ppd)
         {
+            // 구역이 없고 그리는 중도 아니면 안내하지 않는다 — 구역을 안 쓰는 사람도 일시정지할 때마다 이 줄을 보게 된다 ([추가] 버튼이 시작점)
+            if (_draft == null && _model.Zones.Count == 0) return;
             string s = _draft != null ? "클릭: 점 추가 · 첫 점·Enter: 닫기 · 우클릭: 한 점 취소 · Esc: 그만두기"
-                : _model.Zones.Count > 0 ? "구역 클릭: 선택 · 점 끌기: 이동 · ○ 끌기: 점 추가 · 점 선택 후 Delete: 점 삭제"
-                : "왼쪽 [추가] 로 구역을 그리세요";
+                : "구역 클릭: 선택 · 점 끌기: 이동 · ○ 끌기: 점 추가 · 점 선택 후 Delete: 점 삭제";
             var text = Text(s, RoiTheme.Res<Brush>("SubTextBrush", Brushes.LightGray), ppd, Math.Max(40, ActualWidth - 40));
             const double padX = 8, padY = 3;
             double w = text.WidthIncludingTrailingWhitespace + 2 * padX, h = text.Height + 2 * padY;
