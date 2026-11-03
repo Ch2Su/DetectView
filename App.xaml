@@ -89,6 +89,7 @@
         <sys:Double x:Key="Box.FontSize">11</sys:Double>
         <!-- 작은 물체의 라벨·꺾쇠 (2026-11-02): 화면에서 물체 크기 √(폭×높이) 가 FullSizeFrom(DIP) 이상이면 기본 크기, 그보다 작으면
              라벨(글자·여백·막대)과 모서리 꺾쇠(굵기·팔 길이의 하한)를 크기에 비례해 줄인다. MinScale 이 하한 (글자 11 → 6.6 — 더 작으면 읽을 수 없다) -->
+        <Color x:Key="Box.Incident">#F87171</Color>           <!-- 유고 후보로 선언된 물체의 박스·라벨 (DangerColor 와 같은 값) — 클래스 색 대신 -->
         <sys:Double x:Key="Box.FullSizeFrom">48</sys:Double>
         <sys:Double x:Key="Box.MinScale">0.45</sys:Double>   <!-- 2026-11-03: 0.6 → 0.45 (사용자 요청 — 작은 물체를 더 줄이고 아래 TinyOpacity 로 더 옅게) -->
         <sys:Double x:Key="Box.TinySize">14</sys:Double>       <!-- 이 크기(DIP, √(폭×높이)) 이하는 가장 옅게 (Box.FullSizeFrom 에서 1 로 직선) -->

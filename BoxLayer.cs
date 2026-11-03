@@ -20,6 +20,8 @@ namespace YOLO11_Test
     internal sealed class BoxLayer : FrameworkElement
     {
         private const string DefaultLegendTitle = "검출";
+        // 유고 후보(Det.Incident) 박스는 클래스 색 대신 이 키의 붓(App.xaml Box.Incident)으로 그린다 — 라벨 이름과 겹치지 않는 키
+        private const string IncidentKey = "\u0001incident";
         // 범례 줄 순서: 도로 CCTV 에서 흔한 것부터 (App.xaml 의 Box.* 순서와 같게), 목록에 없는 라벨은 그 뒤 이름순.
         // 개수순으로 줄을 세우면 재생 중 개수가 엇갈릴 때마다 줄이 자리를 바꿔 읽기 어렵다
         private static readonly string[] LegendOrder = ["car", "truck", "bus", "motorcycle", "scooter", "bicycle", "person"];
@@ -134,6 +136,7 @@ namespace YOLO11_Test
                 sb ??= new StringBuilder();
                 sb.Append(sb.Length > 0 ? " · #" : "#").Append(d.TrackId);
                 if (d.Stationary) sb.Append(" 정지");
+                if (d.Incident) sb.Append(" 유고");
             }
             return sb?.ToString() ?? "";
         }
@@ -143,6 +146,7 @@ namespace YOLO11_Test
         {
             string name = d.Label.ToUpperInvariant();
             if (d.TrackId <= 0) return $"{name} {d.Conf:0.00}";
+            if (d.Incident) return $"{name} #{d.TrackId} 유고? {d.Conf:0.00}";   // 유고 후보 — 정지는 당연해서 '정지' 대신 '유고?'
             return d.Stationary ? $"{name} #{d.TrackId} 정지 {d.Conf:0.00}" : $"{name} #{d.TrackId} {d.Conf:0.00}";
         }
 
@@ -180,7 +184,7 @@ namespace YOLO11_Test
             for (int i = 0; i < dets.Count; i++)
             {
                 Det a = dets[i], b = _dets[i];
-                if (a.Label != b.Label || a.TrackId != b.TrackId || a.Stationary != b.Stationary
+                if (a.Label != b.Label || a.TrackId != b.TrackId || a.Stationary != b.Stationary || a.Incident != b.Incident
                     || Math.Abs(a.X - b.X) * sx >= 0.5 || Math.Abs(a.Y - b.Y) * sy >= 0.5
                     || Math.Abs(a.W - b.W) * sx >= 0.5 || Math.Abs(a.H - b.H) * sy >= 0.5
                     || Math.Round(a.Conf, 2) != Math.Round(b.Conf, 2))
@@ -215,11 +219,12 @@ namespace YOLO11_Test
             for (int i = 0; i < dets.Count; i++)
             {
                 var d = dets[i];
-                var paint = theme.For(d.Label);
+                string key = d.Incident ? IncidentKey : d.Label;
+                var paint = theme.For(key);
                 var (x0, y0, x1, y1) = BoxEdges(d, sx, sy, ox, oy, ppd);
 
-                // 작은 물체는 테두리·꺾쇠도 옅게 (Theme.SizeOpacity)
-                double opacity = theme.SizeOpacity(x1 - x0, y1 - y0);
+                // 작은 물체는 테두리·꺾쇠도 옅게 (Theme.SizeOpacity). 유고 후보는 작아도 옅게·작게 하지 않는다 — 경고라서
+                double opacity = d.Incident ? 1 : theme.SizeOpacity(x1 - x0, y1 - y0);
                 bool faded = opacity < 1;
                 if (faded) dc.PushOpacity(opacity);
 
@@ -230,8 +235,8 @@ namespace YOLO11_Test
                 // 모서리 꺾쇠 — 어두운 둘레를 먼저 깔아 밝은 배경(흰 차·하늘)에서도 보이게.
                 // 작은 물체는 꺾쇠도 라벨과 같은 배율로 줄인다(굵기와 팔 길이의 하한) — 예전엔 굵기 2px(둘레까지 4px)·팔 최소 5 DIP 가 늘 같아서
                 // 멀리 있는 작은 차는 굵은 꺾쇠에 덮여 물체가 안 보였다. 팔 길이는 원래 상자 짧은 변의 1/3 이라 크기를 따르고, 하한만 배율을 따른다
-                double k = theme.SizeScale(x1 - x0, y1 - y0);
-                var (cornerPen, haloPen, c) = theme.CornerPens(d.Label, k);
+                double k = d.Incident ? 1 : theme.SizeScale(x1 - x0, y1 - y0);
+                var (cornerPen, haloPen, c) = theme.CornerPens(key, k);
                 double arm = Snap(Math.Clamp(Math.Min(x1 - x0, y1 - y0) / 3, 5 * k, 14), ppd);
                 var corners = Corners(x0 + c / 2, y0 + c / 2, x1 - c / 2, y1 - c / 2, arm);
                 dc.DrawGeometry(null, haloPen, corners);
@@ -243,13 +248,13 @@ namespace YOLO11_Test
             for (int i = 0; i < dets.Count; i++)
             {
                 var d = dets[i];
-                var paint = theme.For(d.Label);
+                var paint = theme.For(d.Incident ? IncidentKey : d.Label);
                 var (x0, y0, x1, y1) = BoxEdges(d, sx, sy, ox, oy, ppd);
 
                 // 라벨: 상자 위 (위에 자리가 없으면 아래, 그것도 없으면 상자 안 위쪽).
                 // 화면에서 작은 물체는 라벨(글자·여백·막대)도 크기에 비례해 줄인다 — 멀리 있는 작은 차에 기본 크기 라벨이 붙으면
                 // 라벨이 물체보다 몇 배 커서 이웃 라벨과 겹치고 영상을 가렸다(test4 신호대기 행렬). 큰 물체는 지금 크기 그대로
-                double k = theme.SizeScale(x1 - x0, y1 - y0);
+                double k = d.Incident ? 1 : theme.SizeScale(x1 - x0, y1 - y0);
                 double lbar = Math.Max(1 / ppd, Snap(3 * k, ppd)), pad = Snap(5 * k, ppd), gap = Snap(3 * k, ppd);
                 var text = new FormattedText(
                     LabelText(d), CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
@@ -258,7 +263,7 @@ namespace YOLO11_Test
                 double lh = Snap(text.Height + 2 * k, ppd);
                 double ly = y0 - lh - gap;
                 if (ly < 0) ly = y1 + gap + lh <= ActualHeight ? y1 + gap : Math.Max(0, y0 + gap);
-                double labelOpacity = theme.SizeOpacity(x1 - x0, y1 - y0);   // 작을수록 글자까지 옅게
+                double labelOpacity = d.Incident ? 1 : theme.SizeOpacity(x1 - x0, y1 - y0);   // 작을수록 글자까지 옅게 (유고 후보는 아님)
                 if (labelOpacity < 1) dc.PushOpacity(labelOpacity);
                 dc.DrawRectangle(theme.LabelBack, null, new Rect(x0, ly, lw, lh));
                 dc.DrawRectangle(paint.Brush, null, new Rect(x0, ly, lbar, lh));
@@ -441,7 +446,8 @@ namespace YOLO11_Test
             public Paint For(string label)
             {
                 if (_paints.TryGetValue(label, out var p)) return p;
-                var c = Application.Current?.TryFindResource("Box." + label) is Color color ? color : _other;
+                var c = label == IncidentKey ? Res("Box.Incident", Color.FromRgb(0xF8, 0x71, 0x71))
+                    : Application.Current?.TryFindResource("Box." + label) is Color color ? color : _other;
                 // 라벨 글자·막대는 클래스 색 그대로(읽혀야 해서), 테두리·꺾쇠는 영상이 비쳐 보이게 옅게
                 var faint = Color.FromArgb((byte)Math.Round(c.A * _frameOpacity), c.R, c.G, c.B);
                 var corner = Color.FromArgb((byte)Math.Round(c.A * _cornerOpacity), c.R, c.G, c.B);

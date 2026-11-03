@@ -19,6 +19,9 @@ namespace YOLO11_Test
 
         /// <summary>추적기가 멈춘 물체로 본다 (<see cref="Track.IsStationary"/>)</summary>
         public bool Stationary { get; init; }
+
+        /// <summary>유고 후보로 선언된 물체 (IncidentRules.cs) — 화면에서 박스를 빨갛게 강조한다. 추적하지 않은 검출은 false</summary>
+        public bool Incident { get; init; }
     }
 
     /// <summary>

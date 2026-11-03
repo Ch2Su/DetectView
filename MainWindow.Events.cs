@@ -28,11 +28,19 @@ namespace YOLO11_Test
             }
             else
             {
-                LabelText = $"{e.Label.ToUpperInvariant()} #{e.TrackId}";
-                LabelBrush = RoiTheme.BoxBrushOf(e.Label);
+                bool incident = e.Kind == ZoneEventKind.Incident;
+                LabelText = $"{(incident ? "⚠ " : "")}{e.Label.ToUpperInvariant()} #{e.TrackId}";
+                LabelBrush = incident ? RoiTheme.Res<Brush>("DangerBrush", Brushes.IndianRed) : RoiTheme.BoxBrushOf(e.Label);
                 ZoneText = e.ZoneName;
                 ZoneBrush = RoiTheme.SolidOf(e.ZoneKind);
             }
+            // 유고 후보 행은 빨갛게, 해소 행은 초록으로 (그 밖의 이벤트는 기본 글자색)
+            ActionBrush = e.Kind switch
+            {
+                ZoneEventKind.Incident => RoiTheme.Res<Brush>("DangerBrush", Brushes.IndianRed),
+                ZoneEventKind.IncidentEnd => RoiTheme.Res<Brush>("OkBrush", Brushes.LightGreen),
+                _ => RoiTheme.Res<Brush>("TextBrush", Brushes.White),
+            };
             ActionText = e.ActionText;
             DisplayName = string.Join(" ", new[] { Time, LabelText, ZoneText, ActionText }.Where(s => s.Length > 0));
         }
@@ -44,6 +52,7 @@ namespace YOLO11_Test
         public string ZoneText { get; }
         public Brush ZoneBrush { get; }
         public string ActionText { get; }
+        public Brush ActionBrush { get; }
         /// <summary>UIA 이름 — "00:11.2 CAR #40 Z1 차로 진입"</summary>
         public string DisplayName { get; }
 
@@ -93,7 +102,20 @@ namespace YOLO11_Test
         private void ClearZoneEvents()
         {
             _eventItems.Clear();
+            ShowIncidentCount(0);
             UpdateEventPanel();
+        }
+
+        private int _incidentCount;
+
+        // 지금 풀리지 않은 유고 후보 수 — 헤더에 빨간 글자로 (로그를 접어 둬도 보이게). 보이는 프레임의 상태라 일시정지하면 그대로 남는다.
+        // 프레임마다 부르므로 같은 값이면 건드리지 않는다. 0 이면 숨긴다 (UIA 에서도 사라진다)
+        private void ShowIncidentCount(int n)
+        {
+            if (n == _incidentCount) return;
+            _incidentCount = n;
+            Txt_EventIncident.Text = n > 0 ? $"⚠ 유고 후보 {n}" : "";
+            Txt_EventIncident.Visibility = n > 0 ? Visibility.Visible : Visibility.Collapsed;
         }
 
         // 헤더 글자·버튼·접힘 — 영상(파일)일 때만 패널이 보인다 (ApplyModeToUi 도 부른다)
@@ -136,7 +158,7 @@ namespace YOLO11_Test
                       .Append(marker ? "" : ev.Label).Append(',')
                       .Append(marker ? "" : $"Z{ev.ZoneId}").Append(',')
                       .Append(marker ? "" : RoiKinds.Key(ev.ZoneKind)).Append(',')
-                      .Append(ev.Kind == ZoneEventKind.Exit ? ev.DwellMs.ToString("0", CultureInfo.InvariantCulture) : "")
+                      .Append(ev.Kind is ZoneEventKind.Exit or ZoneEventKind.Incident or ZoneEventKind.IncidentEnd ? ev.DwellMs.ToString("0", CultureInfo.InvariantCulture) : "")
                       .Append("\r\n");
                 }
                 File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));

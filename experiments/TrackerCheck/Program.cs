@@ -893,6 +893,85 @@ int SelfTest()
         Check(removed.Count(e => e.ZoneId == 1) == 0 && noZones.Count == 0, $"구역을 지움: Z1 이벤트 {removed.Count(e => e.ZoneId == 1)}건 · 구역 없음 {noZones.Count}건");
     }
 
+    // ⑪ 유고 규칙 (2026-11-03): IncidentRules.cs — 차로에 멈춘 차량이 정지로 5초 이어지면 유고 후보. 정지(Det.Stationary)는 추적기가 정하므로 여기선 값으로 준다
+    {
+        ZoneShape Rc(int id, RoiKind k, double x0, double y0, double x1, double y1) => new(id, k, [new(x0, y0), new(x1, y0), new(x1, y1), new(x0, y1)]);
+        ZoneShape[] zs = [Rc(1, RoiKind.Lane, 0.30, 0.40, 0.70, 0.90), Rc(2, RoiKind.Shoulder, 0.80, 0.40, 1.00, 0.90), Rc(3, RoiKind.Stopline, 0.40, 0.80, 0.60, 0.85), Rc(4, RoiKind.Ignore, 0.30, 0.40, 0.50, 0.50)];
+        Det V(int id, double fx, double fy, bool still = true, string label = "car") =>
+            new Det(fx * W - 40, fy * H - 40, 80, 40, label, 0.9) with { TrackId = id, Stationary = still };
+        // 30fps 로 frames 프레임. make(i) 가 그 프레임의 박스들. 이벤트를 모은다
+        List<ZoneEvent> IncRun(Func<int, Det[]> make, int frames, IncidentDetector det, ZoneShape[]? zones = null, int from = 0)
+        {
+            var all = new List<ZoneEvent>();
+            for (int i = from; i < from + frames; i++) all.AddRange(det.Update(make(i), zones ?? zs, i * 1000 / 30.0, W, H));
+            return all;
+        }
+        string Ie(ZoneEvent e) => $"{e.CsvEvent} #{e.TrackId} Z{e.ZoneId} @{e.Ms:0}ms" + (e.Kind == ZoneEventKind.IncidentEnd ? $" 멈춤 {e.DwellMs:0}ms{(e.Note.Length > 0 ? " (" + e.Note + ")" : "")}" : "");
+        bool Near(double a, double b, double tol) => Math.Abs(a - b) <= tol;
+
+        // 1) 차로에 혼자 멈춘 차: 8초 멈춤 뒤 움직임 → 5초에 유고 후보, 움직임을 멈춘 1초 뒤에 해소 (시각은 마지막으로 멈춰 있던 때)
+        var d1 = new IncidentDetector();
+        var one = IncRun(i => [V(1, 0.5, 0.7, still: i < 240)], 330, d1);
+        Check(one.Count == 2 && one[0] is { Kind: ZoneEventKind.Incident } && Near(one[0].Ms, 5000, 40) && one[1] is { Kind: ZoneEventKind.IncidentEnd } && Near(one[1].Ms, 239 * 1000 / 30.0, 40) && Near(one[1].DwellMs, 7967, 80) && d1.ActiveCount == 0,
+              $"차로에 혼자 멈춘 차: {string.Join(" · ", one.Select(Ie))} (손계산 5000 · 멈춤 끝 7967)");
+
+        // 2) 후보가 아닌 것들: 갓길·차로 밖 · 정지선·대기 구역 안 · 무시 구역 안 · 사람 · 움직이는 차 · 구역 없음
+        int Count(Func<int, Det[]> make, ZoneShape[]? zones = null) => IncRun(make, 300, new IncidentDetector(), zones).Count;
+        int shoulder = Count(i => [V(1, 0.9, 0.7)]);
+        int stopline = Count(i => [V(1, 0.5, 0.82)]);
+        int ignore = Count(i => [V(1, 0.4, 0.45)]);
+        int person = Count(i => [V(1, 0.5, 0.7, label: "person")]);
+        int moving = Count(i => [V(1, 0.5, 0.7, still: false)]);
+        int noZones = Count(i => [V(1, 0.5, 0.7)], zones: []);
+        int onlyShoulderZone = Count(i => [V(1, 0.5, 0.7)], zones: [zs[1]]);
+        Check(shoulder == 0 && stopline == 0 && ignore == 0 && person == 0 && moving == 0 && noZones == 0 && onlyShoulderZone == 0,
+              $"후보 아님: 갓길 {shoulder} · 정지선·대기 안 {stopline} · 무시 안 {ignore} · 사람 {person} · 움직이는 차 {moving} · 구역 없음 {noZones} · 차로 구역 없음 {onlyShoulderZone} (모두 0 이어야)");
+
+        // 3) 줄지어 선 정체: 같은 차로 구역에 정지한 차 4대(서로 자신 말고 3대 이상)는 후보가 아니다. 단 이미 선언한 뒤 뒤로 차가 밀려도 풀지 않는다
+        var queue = IncRun(i => [V(1, 0.40, 0.55), V(2, 0.45, 0.60), V(3, 0.50, 0.65), V(4, 0.55, 0.70)], 300, new IncidentDetector());
+        var d3 = new IncidentDetector();
+        var behind = IncRun(i => i < 240 ? [V(1, 0.5, 0.7)] : [V(1, 0.5, 0.7), V(2, 0.45, 0.62), V(3, 0.5, 0.62), V(4, 0.55, 0.62)], 480, d3);
+        Check(queue.Count == 0 && behind.Count == 1 && behind[0].Kind == ZoneEventKind.Incident && d3.ActiveCount == 1,
+              $"정체: 정지한 4대 → 후보 {queue.Count}건 · 먼저 서 있다 뒤로 차가 밀림 → {string.Join(" · ", behind.Select(Ie))}, 지금도 후보 {d3.ActiveCount}건");
+        var queue2 = IncRun(i => [V(1, 0.40, 0.55), V(2, 0.45, 0.60), V(3, 0.50, 0.65)], 300, new IncidentDetector());   // 3대는 정체가 아니다(자신 말고 2대)
+        Check(queue2.Count == 3 && queue2.All(e => e.Kind == ZoneEventKind.Incident), $"정지 차량 3대(자신 말고 2대)는 정체가 아니다 → 후보 {queue2.Count}건");
+
+        // 4) 정지 판정의 흔들림: 0.5초 끊겨도 이어짐(5초에 선언) / 1.5초 끊기면 처음부터 다시 센다(끊긴 뒤 3.5초에 다시 시작해 8.5초에 선언)
+        var brief = IncRun(i => [V(1, 0.5, 0.7, still: i is < 90 or >= 105)], 300, new IncidentDetector());
+        var longGap = IncRun(i => [V(1, 0.5, 0.7, still: i is < 60 or >= 105)], 400, new IncidentDetector());
+        Check(brief.Count == 1 && Near(brief[0].Ms, 5000, 40) && longGap.Count == 1 && Near(longGap[0].Ms, 105 * 1000 / 30.0 + 5000, 80),
+              $"정지 판정 흔들림: 0.5초 끊김 → {string.Join(" · ", brief.Select(Ie))} / 1.5초 끊김 → {string.Join(" · ", longGap.Select(Ie))} (손계산 5000 · 8500)");
+
+        // 5) 추적이 끊김: 선언한 뒤 1초 가려졌다 돌아오면 이어지고, 그대로 사라지면 마지막으로 본 때로 '추적 끝' 해소
+        var occl = IncRun(i => i is >= 240 and < 270 ? [] : [V(1, 0.5, 0.7)], 400, new IncidentDetector());
+        var gone = IncRun(i => i < 240 ? [V(1, 0.5, 0.7)] : [], 400, new IncidentDetector());
+        Check(occl.Count == 1 && gone.Count == 2 && gone[1] is { Kind: ZoneEventKind.IncidentEnd, Lost: true, Note: "추적 끝" } && Near(gone[1].Ms, 239 * 1000 / 30.0, 40),
+              $"추적 끊김: 1초 가림 → {occl.Count}건 · 사라짐 → {string.Join(" · ", gone.Select(Ie))}");
+
+        // 6) 차량 둘은 따로, Suspend(화면 전환)·Reset(시크)은 선언돼 있던 것을 끝내는 이벤트를 내고 상태를 비운다
+        var d6 = new IncidentDetector();
+        var two = IncRun(i => [V(1, 0.5, 0.7), V(2, 0.6, 0.65, label: "truck")], 200, d6);
+        int active = d6.ActiveCount;
+        bool flagged = d6.IsActive(1) && d6.IsActive(2) && !d6.IsActive(3);
+        var sus = d6.Suspend();
+        var whileSus = IncRun(i => [V(1, 0.5, 0.7)], 300, d6, from: 200);
+        var rst = d6.Reset();
+        var rst2 = d6.Reset();
+        var after = IncRun(i => [V(1, 0.5, 0.7)], 200, d6, from: 500);
+        Check(two.Count == 2 && active == 2 && flagged && sus.Count == 2 && sus.All(e => e is { Kind: ZoneEventKind.IncidentEnd, Note: "화면 전환" }) && whileSus.Count == 0 && rst.Count == 0 && rst2.Count == 0 && after.Count == 1,
+              $"차량 둘: 후보 {two.Count}건·활성 {active}·번호별 판정 {flagged} → Suspend {sus.Count}건 종료 · 멈춘 동안 {whileSus.Count}건 · Reset 뒤 다시 {after.Count}건");
+        var d6b = new IncidentDetector();
+        IncRun(i => [V(1, 0.5, 0.7)], 200, d6b);
+        var rstEnd = d6b.Reset();
+        Check(rstEnd.Count == 1 && rstEnd[0] is { Kind: ZoneEventKind.IncidentEnd } && rstEnd[0].Note.Length > 0 && d6b.ActiveCount == 0, $"Reset(시크): 선언돼 있던 후보를 끝내는 이벤트 {rstEnd.Count}건 ({rstEnd.FirstOrDefault()?.Note})");
+
+        // 7) 구역이 사라지면(지움) 끝낸다
+        var d7 = new IncidentDetector();
+        IncRun(i => [V(1, 0.5, 0.7)], 200, d7);
+        var cleared = IncRun(i => [V(1, 0.5, 0.7)], 10, d7, zones: [], from: 200);
+        Check(cleared.Count == 1 && cleared[0] is { Kind: ZoneEventKind.IncidentEnd, Note: "구역 없음" } && d7.ActiveCount == 0, $"구역이 없어짐: {string.Join(" · ", cleared.Select(Ie))}");
+    }
+
     // 한계 (통과·실패 없이 보이기만): 박스만으로는 움직임을 잴 수 없거나 나가는 차와 구분되지 않는 경우
     {
         var scene = NewScene(3000);

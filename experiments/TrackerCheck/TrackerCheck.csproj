@@ -20,6 +20,7 @@
     <Compile Include="..\..\SceneThumbnail.cs" />
     <Compile Include="..\..\SceneChange.cs" />
     <Compile Include="..\..\ZoneEvents.cs" />
+    <Compile Include="..\..\IncidentRules.cs" />
   </ItemGroup>
 
   <ItemGroup>

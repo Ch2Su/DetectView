@@ -1,4 +1,4 @@
-﻿# DetectView UI 자동화 테스트 — 공용 도우미 (각 테스트 스크립트가 dot-source 한다)
+# DetectView UI 자동화 테스트 — 공용 도우미 (각 테스트 스크립트가 dot-source 한다)
 #
 # 다시 알아내기 번거로웠던 요령 (2026-09-23):
 #  - WPF 버튼의 InvokePattern.Invoke() 는 클릭을 Dispatcher 로 넘기고 곧바로 돌아온다.
@@ -162,13 +162,15 @@ function Get-TrackMarks($El) {
     $s = [string]$El.Current.ItemType
     $ids = [System.Collections.Generic.List[int]]::new()
     $still = [System.Collections.Generic.List[int]]::new()
+    $inc = [System.Collections.Generic.List[int]]::new()
     foreach ($part in ($s -split ' · ' | Where-Object { $_ })) {
-        if ($part -notmatch '^#([1-9]\d*)( 정지)?$') { return $null }
+        if ($part -notmatch '^#([1-9]\d*)( 정지)?( 유고)?$') { return $null }
         $id = [int]$Matches[1]
         $ids.Add($id)
         if ($Matches[2]) { $still.Add($id) }
+        if ($Matches[3]) { $inc.Add($id) }
     }
-    [pscustomobject]@{ Text = $s; Ids = $ids; Stationary = $still }
+    [pscustomobject]@{ Text = $s; Ids = $ids; Stationary = $still; Incidents = $inc }
 }
 
 # 박스마다 번호가 하나씩 붙었는가(번호 수 = '검출 N', 번호는 겹치지 않음). 재생 중엔 두 값을 읽는 사이 프레임이 바뀔 수 있어

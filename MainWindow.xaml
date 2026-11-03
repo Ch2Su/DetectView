@@ -240,19 +240,23 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <Button x:Name="Btn_EventToggle"
                                     Content="이벤트 0건" local:Ui.Glyph="&#xE70E;"
                                     Height="26" Style="{StaticResource SideButton}"
                                     ToolTipService.ShowDuration="60000"
                                     Click="Btn_EventToggle_Click"/>
-                            <Button x:Name="Btn_EventSave" Grid.Column="1" Margin="6,0,0,0"
+                            <!-- 풀리지 않은 유고 후보가 있을 때만 (IncidentRules.cs) — 로그를 접어 둬도 보이게 -->
+                            <TextBlock x:Name="Txt_EventIncident" Grid.Column="1" Margin="12,0,6,0" VerticalAlignment="Center"
+                                       FontWeight="SemiBold" Foreground="{StaticResource DangerBrush}" Visibility="Collapsed"/>
+                            <Button x:Name="Btn_EventSave" Grid.Column="2" Margin="6,0,0,0"
                                     Content="CSV 저장" local:Ui.Glyph="&#xE74E;"
                                     Height="26" Style="{StaticResource SideButton}"
                                     ToolTipService.ShowOnDisabled="True" ToolTipService.ShowDuration="60000"
                                     IsEnabled="False"
                                     Click="Btn_EventSave_Click"/>
-                            <Button x:Name="Btn_EventClear" Grid.Column="2" Margin="6,0,0,0"
+                            <Button x:Name="Btn_EventClear" Grid.Column="3" Margin="6,0,0,0"
                                     Content="비우기" local:Ui.Glyph="&#xE74D;" local:Ui.GlyphBrush="{StaticResource DangerBrush}"
                                     Height="26" Style="{StaticResource SideButton}"
                                     ToolTip="이벤트 목록을 비웁니다 (저장한 CSV 는 그대로)"
@@ -270,7 +274,7 @@
                                                    FontFamily="{StaticResource MonoFont}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding LabelBrush}"/>
                                         <TextBlock Text="{Binding ZoneText}" Width="118" VerticalAlignment="Center"
                                                    FontFamily="{StaticResource MonoFont}" FontSize="11" Foreground="{Binding ZoneBrush}"/>
-                                        <TextBlock Text="{Binding ActionText}" VerticalAlignment="Center" FontSize="12"/>
+                                        <TextBlock Text="{Binding ActionText}" VerticalAlignment="Center" FontSize="12" Foreground="{Binding ActionBrush}"/>
                                     </StackPanel>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>

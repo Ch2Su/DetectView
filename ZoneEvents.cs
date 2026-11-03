@@ -12,11 +12,15 @@ namespace YOLO11_Test
         Exit,
         /// <summary>표시: 화면이 전환돼 구역 이벤트를 멈췄다 (어느 뷰인지 몰라 구역이 맞는지 알 수 없다)</summary>
         ViewChanged,
+        /// <summary>유고 후보 — 차로에 멈춘 차량이 기준 시간 넘게 이어졌다 (IncidentRules.cs). <see cref="ZoneEvent.DwellMs"/> = 그때까지 멈춘 시간</summary>
+        Incident,
+        /// <summary>유고 후보가 풀렸다 (다시 움직임·구역을 나감·추적 끝·화면 전환·시크). <see cref="ZoneEvent.DwellMs"/> = 유고 후보가 된 뒤 이어진 시간이 아니라 멈춘 전체 시간</summary>
+        IncidentEnd,
     }
 
     /// <summary>구역 이벤트 한 건 — 로그 한 줄. Ms 는 실제로 넘어간 영상 시각이다(확인은 조금 늦다)</summary>
     internal sealed record ZoneEvent(ZoneEventKind Kind, double Ms, int TrackId, string Label, int ZoneId, RoiKind ZoneKind,
-                                     double DwellMs = 0, bool Initial = false, bool Lost = false)
+                                     double DwellMs = 0, bool Initial = false, bool Lost = false, string Note = "")
     {
         public string ZoneName => ZoneId == 0 ? "" : $"Z{ZoneId} {RoiKinds.Name(ZoneKind)}";
 
@@ -25,6 +29,8 @@ namespace YOLO11_Test
         {
             ZoneEventKind.Enter => Initial ? "이미 안에 있음" : "진입",
             ZoneEventKind.Exit => Lost ? "나감 (추적 끝)" : "나감",
+            ZoneEventKind.Incident => "유고 후보 — 차로 정차 (높음)",
+            ZoneEventKind.IncidentEnd => $"유고 해소{(Note.Length > 0 ? $" ({Note})" : "")} · 멈춤 {DwellMs / 1000:0.0}초",
             _ => "화면 전환 — 구역 이벤트 멈춤 (뷰를 알 수 없음)",
         };
 
@@ -33,6 +39,8 @@ namespace YOLO11_Test
         {
             ZoneEventKind.Enter => Initial ? "initial" : "enter",
             ZoneEventKind.Exit => Lost ? "lost" : "exit",
+            ZoneEventKind.Incident => "incident",
+            ZoneEventKind.IncidentEnd => "incident_end",
             _ => "view_changed",
         };
     }
