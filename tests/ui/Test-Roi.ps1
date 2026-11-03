@@ -116,7 +116,8 @@ try {
 
     # 1) 재생 중엔 편집이 막힌다
     Check '재생 중: 추가·목록·유형이 꺼지고 사유는 툴팁에' (-not $add.Current.IsEnabled -and -not $list.Current.IsEnabled -and -not $kind.Current.IsEnabled -and $add.Current.HelpText -like '*일시정지*') "추가 툴팁='$($add.Current.HelpText)'"
-    Check '구역 개수가 보이고 툴팁에 구역 파일 경로' ($zcount.Current.HelpText -eq "구역 파일: $roiFile" -and (NameOf $zcount) -eq '0개') "툴팁='$($zcount.Current.HelpText)' 개수='$(NameOf $zcount)'"
+    $null = WaitFor { (NameOf $zcount) -like 'V*' } 5000   # 첫 화면을 알아보는 데 잠깐 걸린다 ('뷰 확인 중' → 'V1 · 0개')
+    Check '구역 개수가 보이고 툴팁에 구역 파일 경로' ($zcount.Current.HelpText -eq "구역 파일: $roiFile" -and (NameOf $zcount) -eq 'V1 · 0개') "툴팁='$($zcount.Current.HelpText)' 개수='$(NameOf $zcount)'"
 
     # 2) 일시정지 → 구역 그리기
     Click $play
@@ -138,7 +139,7 @@ try {
     Click-At $s[0] $s[1]   # 첫 점을 눌러 닫기
     $ok = WaitFor { (Get-ZoneNames $list) -contains 'Z1 차로' } 3000
     Check '점 4개 + 첫 점 클릭 → 목록에 Z1 차로' $ok "목록=[$((Get-ZoneNames $list) -join ', ')] 개수='$(NameOf $zcount)'"
-    Check '새 구역이 선택됨: 지우기·유형이 켜지고 유형 콤보가 차로' ($del.Current.IsEnabled -and $kind.Current.IsEnabled -and (Get-ComboSelection $kind) -eq '차로' -and (NameOf $zcount) -eq '1개') "유형='$(Get-ComboSelection $kind)' 개수='$(NameOf $zcount)'"
+    Check '새 구역이 선택됨: 지우기·유형이 켜지고 유형 콤보가 차로' ($del.Current.IsEnabled -and $kind.Current.IsEnabled -and (Get-ComboSelection $kind) -eq '차로' -and (NameOf $zcount) -eq 'V1 · 1개') "유형='$(Get-ComboSelection $kind)' 개수='$(NameOf $zcount)'"
 
     $ok = WaitFor { $j = Read-RoiFile; $null -ne $j -and @($j.zones).Count -eq 1 } 3000
     $j = Read-RoiFile
@@ -193,7 +194,7 @@ try {
     $null = ($list.FindFirst($Tree::Descendants, (New-Object $PC ($AE::NameProperty, 'Z1 갓길')))).GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
     $ok = WaitFor { $del.Current.IsEnabled } 2000
     Click $del
-    $ok2 = WaitFor { (Get-ZoneNames $list).Count -eq 0 -and (NameOf $zcount) -eq '0개' -and -not (Test-Path $roiFile) } 3000
+    $ok2 = WaitFor { (Get-ZoneNames $list).Count -eq 0 -and (NameOf $zcount) -eq 'V1 · 0개' -and -not (Test-Path $roiFile) } 3000
     Check '지우기: 목록이 비고 개수 0개, 구역 파일이 지워짐' ($ok -and $ok2) "목록 $((Get-ZoneNames $list).Count)개 개수='$(NameOf $zcount)' 파일=$(Test-Path $roiFile)"
 
     # 7) 다시 그려 두고 정지 → 패널이 빔 → 같은 영상을 다시 열면 구역이 돌아온다
@@ -214,7 +215,7 @@ try {
 
     Open-VideoFile $root $Video
     $ok = WaitFor { (NameOf $status) -like '파일:*' } 10000
-    $ok2 = WaitFor { (Get-ZoneNames $list) -contains 'Z2 갓길' -and (NameOf $zcount) -eq '1개' } 3000
+    $ok2 = WaitFor { (Get-ZoneNames $list) -contains 'Z2 갓길' -and (NameOf $zcount) -eq 'V1 · 1개' } 3000
     Check '같은 영상을 다시 열면 구역이 돌아옴' ($ok -and $ok2) "목록=[$((Get-ZoneNames $list) -join ', ')] 개수='$(NameOf $zcount)'"
 
     # 8) 깨진 구역 파일
@@ -223,7 +224,8 @@ try {
     [IO.File]::WriteAllText($roiFile, '{ 깨진 구역 파일')
     Open-VideoFile $root $Video
     $ok = WaitFor { (NameOf $status) -like '구역 파일을 읽지 못했습니다*' } 10000
-    Check '깨진 구역 파일: 상태바에 사유, 빈 구역으로 시작' ($ok -and (Get-ZoneNames $list).Count -eq 0 -and (NameOf $zcount) -eq '0개') "상태='$(NameOf $status)' 목록 $((Get-ZoneNames $list).Count)개"
+    $null = WaitFor { (NameOf $zcount) -eq 'V1 · 0개' } 5000
+    Check '깨진 구역 파일: 상태바에 사유, 빈 구역으로 시작' ($ok -and (Get-ZoneNames $list).Count -eq 0 -and (NameOf $zcount) -eq 'V1 · 0개') "상태='$(NameOf $status)' 목록 $((Get-ZoneNames $list).Count)개"
     Check '옛 파일은 .bad 로 복사해 둠' ((Test-Path "$roiFile.bad") -and (Get-Content -Raw "$roiFile.bad").Contains('깨진')) ''
 }
 catch { Check '예외' $false $_.Exception.Message }

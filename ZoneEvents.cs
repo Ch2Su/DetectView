@@ -31,7 +31,8 @@ namespace YOLO11_Test
             ZoneEventKind.Exit => Lost ? "나감 (추적 끝)" : "나감",
             ZoneEventKind.Incident => "유고 후보 — 차로 정차 (높음)",
             ZoneEventKind.IncidentEnd => $"유고 해소{(Note.Length > 0 ? $" ({Note})" : "")} · 멈춤 {DwellMs / 1000:0.0}초",
-            _ => "화면 전환 — 구역 이벤트 멈춤 (뷰를 알 수 없음)",
+            // 화면 전환 표시 — 뷰를 알아봤으면 Note 에 그 뷰("V2 · 구역 3개"), 못 알아봤으면 이벤트를 멈춘다 (화면 식별 2b)
+            _ => Note.Length > 0 ? $"화면 전환 → {Note}" : "화면 전환 — 구역 이벤트 멈춤 (뷰를 알 수 없음)",
         };
 
         /// <summary>CSV 의 event 열 (기계가 읽는 이름)</summary>

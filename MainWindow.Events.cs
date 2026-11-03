@@ -140,13 +140,17 @@ namespace YOLO11_Test
 
         private void Btn_EventClear_Click(object sender, RoutedEventArgs e) => ClearZoneEvents();
 
+        // 쉼표·따옴표·줄바꿈이 있으면 따옴표로 감싼다 (note 열 — 해소 사유·뷰 이름에 쓰이는 글자)
+        private static string CsvText(string s) =>
+            s.IndexOfAny([',', '"', '\r', '\n']) >= 0 ? "\"" + s.Replace("\"", "\"\"") + "\"" : s;
+
         private void Btn_EventSave_Click(object sender, RoutedEventArgs e)
         {
             if (_filePath == null || _eventItems.Count == 0) return;
             string path = _filePath + ".events.csv";
             try
             {
-                var sb = new StringBuilder("ms,time,event,track,label,zone,zone_kind,dwell_ms\r\n");
+                var sb = new StringBuilder("ms,time,event,track,label,zone,zone_kind,dwell_ms,note\r\n");
                 foreach (var it in _eventItems.Reverse())   // 시간 순(오래된 것부터)
                 {
                     var ev = it.Event;
@@ -158,7 +162,8 @@ namespace YOLO11_Test
                       .Append(marker ? "" : ev.Label).Append(',')
                       .Append(marker ? "" : $"Z{ev.ZoneId}").Append(',')
                       .Append(marker ? "" : RoiKinds.Key(ev.ZoneKind)).Append(',')
-                      .Append(ev.Kind is ZoneEventKind.Exit or ZoneEventKind.Incident or ZoneEventKind.IncidentEnd ? ev.DwellMs.ToString("0", CultureInfo.InvariantCulture) : "")
+                      .Append(ev.Kind is ZoneEventKind.Exit or ZoneEventKind.Incident or ZoneEventKind.IncidentEnd ? ev.DwellMs.ToString("0", CultureInfo.InvariantCulture) : "").Append(',')
+                      .Append(CsvText(ev.Note))
                       .Append("\r\n");
                 }
                 File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));

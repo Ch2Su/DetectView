@@ -42,6 +42,8 @@ namespace YOLO11_Test
             InitializeYoloModel();
             InitHudTracking();
             InitRoi();
+            // 화면 식별(ORB)의 첫 호출은 수백 ms 걸린다 — 재생 루프에서 처음 부르면 영상이 멈칫하니 다른 스레드에서 미리 한 번 돌려 둔다
+            _ = Task.Run(() => { try { ViewMatcher.WarmUp(); } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"화면 식별 준비 실패: {ex.Message}"); } });
             InitEvents();
             FrameBoxes.LegendTextChanged += ShowClassCounts;   // HUD 오버레이의 범례는 StartHud 에서 잇는다
             FrameBoxes.TrackTextChanged += ShowTrackMarks;

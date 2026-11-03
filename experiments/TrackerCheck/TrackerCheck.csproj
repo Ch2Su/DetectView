@@ -21,6 +21,7 @@
     <Compile Include="..\..\SceneChange.cs" />
     <Compile Include="..\..\ZoneEvents.cs" />
     <Compile Include="..\..\IncidentRules.cs" />
+    <Compile Include="..\..\ViewIdentity.cs" />
   </ItemGroup>
 
   <ItemGroup>

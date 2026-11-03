@@ -5,7 +5,7 @@
 #
 #   1) 접어 둔 패널(헤더 한 줄, 목록 안 보임) → 펼치면 목록이 보임
 #   2) 재생 3초 안에 멈춘 트럭이 'Z1 차로 이미 안에 있음' 으로 기록됨
-#   3) 도는 구간(10.5~11.4초)을 지나면 '화면 전환 — 구역 이벤트 멈춤' 표시가 남고, 그 뒤로는 이벤트가 없다 (구역이 그려진 뷰인지 알 수 없다)
+#   3) 도는 구간(10.5~11.4초)을 지나면 '화면 전환 → 새 뷰 V2 (구역 없음)' 표시가 남고, 그 뒤로는 이벤트가 없다 (구역은 V1 의 것 — 새 뷰엔 구역이 없다)
 #   4) 헤더 개수 = 표시를 뺀 항목 수
 #   5) [CSV 저장]: 영상 옆 <영상>.events.csv — 헤더·행 수·initial 행·view_changed 행, 상태바 문구
 #   6) 시크하면 감지가 다시 시작해 멈춘 트럭이 다시 기록됨 (멈췄던 이벤트도 풀림)
@@ -40,7 +40,7 @@ function Get-LogItems($List) {
     @($List.FindAll($Tree::Descendants, (New-Object $PC ($AE::ControlTypeProperty, [System.Windows.Automation.ControlType]::ListItem))) | ForEach-Object {
         $n = $_.Current.Name
         $ms = if ($n -match '^(\d+):(\d\d)\.(\d) ') { ([int]$Matches[1] * 60 + [int]$Matches[2]) * 1000 + [int]$Matches[3] * 100 } else { -1 }
-        [pscustomobject]@{ Ms = $ms; Name = $n; Marker = ($n -like '*화면 전환 — 구역 이벤트 멈춤*') }
+        [pscustomobject]@{ Ms = $ms; Name = $n; Marker = ($n -like '*화면 전환 →*') }
     })
 }
 function Header-Count($Toggle) { if ((NameOf $Toggle) -match '^이벤트 (\d+)건$') { [int]$Matches[1] } else { -1 } }
@@ -94,7 +94,7 @@ try {
     $ok = WaitFor { Test-Path $csvFile } 3000
     $lines = if ($ok) { @(Get-Content $csvFile -Encoding utf8) } else { @() }
     $ok2 = WaitFor { (NameOf $status) -like '이벤트 저장:*' } 3000
-    Check 'CSV 저장: 영상 옆 events.csv, 헤더와 행 수' ($ok -and $lines.Count -ge 2 -and $lines[0] -eq 'ms,time,event,track,label,zone,zone_kind,dwell_ms' -and $lines.Count -eq $items.Count + 1) "줄 $($lines.Count) (항목 $($items.Count) + 헤더) · $((Split-Path $csvFile -Leaf))"
+    Check 'CSV 저장: 영상 옆 events.csv, 헤더와 행 수' ($ok -and $lines.Count -ge 2 -and $lines[0] -eq 'ms,time,event,track,label,zone,zone_kind,dwell_ms,note' -and $lines.Count -eq $items.Count + 1) "줄 $($lines.Count) (항목 $($items.Count) + 헤더) · $((Split-Path $csvFile -Leaf))"
     Check 'CSV 내용: initial 행(Z1 · lane)과 view_changed 행' (@($lines | Where-Object { $_ -match '^\d+,[\d:.]+,initial,\d+,(car|truck),Z1,lane,' }).Count -ge 1 -and @($lines | Where-Object { $_ -match ',view_changed,' }).Count -eq 1) "initial $(@($lines | Where-Object { $_ -match ',initial,' }).Count)행 · view_changed $(@($lines | Where-Object { $_ -match ',view_changed,' }).Count)행"
     Check '저장 뒤 상태바 문구' ($ok2 -and (NameOf $status) -match "^이벤트 저장: test4\.mp4\.events\.csv \(${expect}건\)$") "상태='$(NameOf $status)'"
 

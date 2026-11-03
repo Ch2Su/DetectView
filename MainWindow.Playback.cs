@@ -252,6 +252,19 @@ namespace YOLO11_Test
             var zoneEvents = new ZoneEventDetector();
             // 유고 규칙 (파일 전용 — IncidentRules.cs, 2026-11-03): 차로에 멈춘 차량이 정지로 5초 이어지면 유고 후보(박스 강조 + 로그 행). 구역 이벤트와 같은 자리에서 비우고·멈춘다
             var incidents = new IncidentDetector();
+
+            // 화면 식별 (파일 전용 — ViewIdentity.cs, 2026-11-03 2b): 안정된 화면이 어느 뷰인지 ORB 특징점으로 알아본다 — 영상을 연 직후·시크 뒤·화면 전환 뒤에.
+            // 구역은 그린 뷰의 것이라 이벤트·유고 감지는 지금 뷰의 구역(viewZones)만 쓴다. 알아보지 못하면(애매·특징 부족) 구역 없이 1초마다 다시 본다.
+            // 추적기·구역 이벤트·유고 상태는 뷰를 다시 만나도 이어 붙이지 않고 방문마다 새로 센다
+            var views = isCamera ? null : _viewRegistry;
+            bool needIdentify = views != null;
+            bool announceView = false;                          // 화면 전환 뒤 알아본 뷰를 배지·로그로 알릴 차례
+            double nextIdentifyMs = double.NegativeInfinity;   // 알아보기에 실패한 뒤 다시 시도할 영상 시각
+            int viewNow = 0;                                    // 지금 화면의 뷰 번호 (0 = 모름)
+            string badgeText = "";                              // 화면 전환 배지의 뷰 글자
+            ZoneShape[] viewZones = [];
+            ZoneShape[]? viewZonesFrom = null;
+            int viewZonesView = -1;
             try
             {
                 while (!ct.IsCancellationRequested)
@@ -460,6 +473,7 @@ namespace YOLO11_Test
                         sceneNoticeUntilMs = double.NegativeInfinity;
                         badge = SceneBadgeKind.None;
                         resetTracker = false;
+                        if (views != null) { needIdentify = true; nextIdentifyMs = double.NegativeInfinity; announceView = false; }   // 시크한 위치가 어느 뷰인지 다시 본다
                     }
                     if (Interlocked.Exchange(ref _zoneEventsReset, 0) == 1)   // 구역을 읽었거나 고쳤다
                     {
@@ -478,17 +492,71 @@ namespace YOLO11_Test
                         }
                         else
                         {
-                            if (sc.ViewChanged)
+                            bool changedNow = sc.ViewChanged;
+                            if (changedNow)
                             {
                                 tracker.Reset();   // 직전과 다른 화면 — 이전 트랙은 이어지지 않는다 (번호는 이어서 센다)
                                 sceneNoticeUntilMs = posMs + SceneNoticeMs;
-                                // 구역은 그 구역을 그린 화면의 것 — 전환 뒤엔 같은 뷰인지 알 수 없어(2b) 이벤트를 멈춘다. 구역이 있을 때만 로그에 표시를 남긴다
+                                // 구역은 그 구역을 그린 뷰의 것 — 어느 뷰인지 알아볼 때까지(아래) 이벤트를 멈추고 선언된 유고 후보를 끝낸다
                                 var marker = zoneEvents.Suspend(posMs);
-                                var viewEnds = incidents.Suspend();   // 선언돼 있던 유고 후보도 끝낸다 (구역이 맞는 화면인지 알 수 없다)
-                                if (marker != null && _zoneShapes.Length > 0) (frameEvents ??= []).Add(marker);
+                                var viewEnds = incidents.Suspend();
                                 if (viewEnds.Count > 0) (frameEvents ??= []).AddRange(viewEnds);
+                                viewNow = 0;
+                                badgeText = "";
+                                if (views != null) { needIdentify = true; nextIdentifyMs = double.NegativeInfinity; announceView = true; }
+                                else if (marker != null && _zoneShapes.Length > 0) (frameEvents ??= []).Add(marker);   // 식별기가 없으면 예전처럼 멈춘 채 둔다
                             }
-                            badge = posMs < sceneNoticeUntilMs ? SceneBadgeKind.Changed : SceneBadgeKind.None;
+                            if (views != null && needIdentify && posMs >= nextIdentifyMs)
+                            {
+                                // 안정된 화면이 어느 뷰인지 알아본다 (처음 보는 화면이면 새 뷰로 기억한다). ORB·호모그래피라 한 번에 수 ms~수십 ms 지만
+                                // 영상을 연 직후·시크·전환 뒤에만 부른다. 방금 내보낼 프레임은 위 맞바꾸기로 _lastFrame 에 있다 (이 스레드만 쓰는 값)
+                                var vid = new ViewIdentification(ViewOutcome.Unknown, 0, default);
+                                try
+                                {
+                                    Mat current;
+                                    lock (_lastFrameLock) current = _lastFrame!;
+                                    vid = views.Identify(current);
+                                }
+                                catch (Exception ex) { Debug.WriteLine($"뷰 식별 오류: {ex.Message}"); }
+
+                                if (vid.Outcome == ViewOutcome.Unknown)
+                                {
+                                    viewNow = 0;
+                                    nextIdentifyMs = posMs + 1000;   // 일시적으로 애매했을 수 있다 — 1초마다 다시
+                                    if (changedNow && _zoneShapes.Length > 0)
+                                        (frameEvents ??= []).Add(new ZoneEvent(ZoneEventKind.ViewChanged, posMs, 0, "", 0, default));   // 뷰를 알 수 없어 이벤트를 멈췄다는 표시
+                                }
+                                else
+                                {
+                                    needIdentify = false;
+                                    viewNow = vid.ViewId;
+                                    if (announceView)
+                                    {
+                                        announceView = false;
+                                        sceneNoticeUntilMs = posMs + SceneNoticeMs;
+                                        bool isNew = vid.Outcome == ViewOutcome.New;
+                                        int zonesHere = _zoneShapes.Count(z => z.ViewId == viewNow);
+                                        badgeText = isNew ? $"새 뷰 V{viewNow} · 구역 없음" : $"뷰 V{viewNow} · 아는 화면";
+                                        if (_zoneShapes.Length > 0)   // 구역이 있는 영상의 로그에만 (구역이 없는 영상의 로그를 채우지 않는다)
+                                        {
+                                            string note = isNew ? $"새 뷰 V{viewNow} (구역 없음)" : zonesHere > 0 ? $"뷰 V{viewNow} · 구역 {zonesHere}개" : $"뷰 V{viewNow} (구역 없음)";
+                                            (frameEvents ??= []).Add(new ZoneEvent(ZoneEventKind.ViewChanged, posMs, 0, "", 0, default, Note: note));
+                                        }
+                                    }
+                                    zoneEvents.Reset();   // 멈춘 상태를 풀고 이 뷰의 구역으로 시작한다 (이미 안에 있는 물체는 '이미 안에 있음')
+                                    incidents.Reset("화면 전환");
+                                }
+                            }
+                            // 이 프레임의 구역 — 지금 뷰의 것만 (구역 스냅샷이나 뷰가 바뀔 때만 다시 거른다). 식별기가 없으면 전체
+                            var shapes = _zoneShapes;
+                            if (!ReferenceEquals(shapes, viewZonesFrom) || viewNow != viewZonesView)
+                            {
+                                viewZones = views == null ? shapes : viewNow > 0 ? shapes.Where(z => z.ViewId == viewNow).ToArray() : [];
+                                viewZonesFrom = shapes;
+                                viewZonesView = viewNow;
+                            }
+                            badge = views != null && viewNow == 0 ? SceneBadgeKind.UnknownView
+                                  : posMs < sceneNoticeUntilMs ? SceneBadgeKind.Changed : SceneBadgeKind.None;
                         }
                     }
                     if (feedTracker)
@@ -500,9 +568,9 @@ namespace YOLO11_Test
                         {
                             try
                             {
-                                var ze = zoneEvents.Update(dets, _zoneShapes, posMs, width, height);
+                                var ze = zoneEvents.Update(dets, viewZones, posMs, width, height);
                                 if (ze.Count > 0) (frameEvents ??= []).AddRange(ze);
-                                var ie = incidents.Update(dets, _zoneShapes, posMs, width, height);
+                                var ie = incidents.Update(dets, viewZones, posMs, width, height);
                                 if (ie.Count > 0) (frameEvents ??= []).AddRange(ie);
                                 // 유고 후보로 선언된 차량의 박스를 강조한다 (BoxLayer 가 빨갛게 그리고 라벨에 유고? 가 붙는다)
                                 if (incidents.ActiveCount > 0)
@@ -512,6 +580,8 @@ namespace YOLO11_Test
                         }
                     }
                     var badgeNow = badge;
+                    string badgeTextNow = badgeText;
+                    int viewShow = viewNow;
                     int incidentNow = incidents.ActiveCount;
 
                     await Dispatcher.InvokeAsync(() =>
@@ -520,7 +590,8 @@ namespace YOLO11_Test
 
                         MainImage.Source = resultImage;
                         FrameBoxes.Show(dets, width, height);   // 영상과 같은 디스패치에서 — 박스가 다른 프레임 위에 남지 않게
-                        ShowSceneBadge(badgeNow);
+                        ShowSceneBadge(badgeNow, badgeTextNow);
+                        if (views != null) ShowCurrentView(viewShow);   // 구역 패널·그림이 이 뷰의 구역으로 — 프레임과 같은 디스패치에서
                         if (frameEvents != null) AddZoneEvents(frameEvents);   // 이벤트 로그 — 이 프레임과 같은 디스패치에서
                         ShowIncidentCount(incidentNow);
 

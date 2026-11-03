@@ -127,7 +127,41 @@ namespace YOLO11_Test
             }
         }
 
-        public RoiZone? SelectedZone => _selectedId == 0 ? null : _model.Find(_selectedId);
+        public RoiZone? SelectedZone
+        {
+            get
+            {
+                if (_selectedId == 0) return null;
+                var z = _model.Find(_selectedId);
+                return z != null && z.ViewId == _viewId ? z : null;
+            }
+        }
+
+        /// <summary>
+        /// 지금 보이는 화면의 뷰 번호 (화면 식별 2b — 0 이면 아직 모름) — 이 뷰의 구역만 그리고 고르고 새 구역도 이 뷰의 것이 된다.
+        /// 바뀌면 그리던 것·끌기·선택을 버린다 (다른 뷰의 구역을 고른 채 남지 않게)
+        /// </summary>
+        public int ViewId
+        {
+            get => _viewId;
+            set
+            {
+                if (_viewId == value) return;
+                EndDrag();
+                bool wasDrafting = _draft != null;
+                _draft = null;
+                _viewId = value;
+                _selectedId = 0;
+                _selVertex = -1;
+                InvalidateVisual();
+                if (wasDrafting) DraftingChanged?.Invoke();
+            }
+        }
+
+        private int _viewId;
+
+        /// <summary>지금 뷰의 구역들 (뷰를 모르면 없음 — 뷰가 정해지지 않은 옛 구역도 알아본 뒤에야 보인다)</summary>
+        public IEnumerable<RoiZone> VisibleZones => _viewId > 0 ? _model.ZonesOf(_viewId) : [];
 
         /// <summary>점·구역을 바꿨다 (끌기가 끝났을 때·새 구역·지우기·유형 바꿈) — 저장할 때</summary>
         public event Action? ZonesChanged;
@@ -186,7 +220,7 @@ namespace YOLO11_Test
         /// <summary>새 구역 그리기 시작 — 클릭으로 점을 찍는다. 편집할 수 없으면 false</summary>
         public bool BeginAdd(RoiKind kind)
         {
-            if (!_editable || !HasFrameSize) return false;
+            if (!_editable || !HasFrameSize || _viewId <= 0) return false;   // 어느 뷰의 구역인지 모르면 그릴 수 없다
             EndDrag();
             bool hadSelection = _selectedId != 0;
             _draft = [];
@@ -250,7 +284,7 @@ namespace YOLO11_Test
         {
             var d = _draft;
             if (d == null || d.Count < RoiSet.MinPoints || RoiGeometry.Area(d) < MinArea) return;   // 아직 닫을 수 없다 — 계속 그린다
-            var z = _model.Add(_draftKind, d);
+            var z = _model.Add(_draftKind, d, _viewId);
             _draft = null;
             _selectedId = z.Id;
             _selVertex = -1;
@@ -350,7 +384,7 @@ namespace YOLO11_Test
             }
 
             var (rx, ry) = f.Raw(p);
-            int hitId = _model.ZoneAt(rx, ry)?.Id ?? 0;
+            int hitId = _model.ZoneAt(rx, ry, _viewId)?.Id ?? 0;
             if (hitId != _selectedId)
             {
                 _selectedId = hitId;
@@ -465,10 +499,10 @@ namespace YOLO11_Test
             double ppd = VisualTreeHelper.GetDpi(this).PixelsPerDip;
 
             var sel = SelectedZone;
-            foreach (var z in _model.Zones)
+            foreach (var z in VisibleZones)
                 if (z.Id != _selectedId) DrawZone(dc, z, f, false);
             if (sel != null) DrawZone(dc, sel, f, true);   // 고른 구역이 맨 위
-            foreach (var z in _model.Zones) DrawLabel(dc, z, f, ppd);
+            foreach (var z in VisibleZones) DrawLabel(dc, z, f, ppd);
 
             if (sel != null && _editable && _draft == null) DrawHandles(dc, sel, f);
             if (_draft != null) DrawDraft(dc, f);
@@ -574,7 +608,7 @@ namespace YOLO11_Test
         private void DrawHint(DrawingContext dc, double ppd)
         {
             // 구역이 없고 그리는 중도 아니면 안내하지 않는다 — 구역을 안 쓰는 사람도 일시정지할 때마다 이 줄을 보게 된다 ([추가] 버튼이 시작점)
-            if (_draft == null && _model.Zones.Count == 0) return;
+            if (_draft == null && !VisibleZones.Any()) return;
             string s = _draft != null ? "클릭: 점 추가 · 첫 점·Enter: 닫기 · 우클릭: 한 점 취소 · Esc: 그만두기"
                 : "구역 클릭: 선택 · 점 끌기: 이동 · ○ 끌기: 점 추가 · 점 선택 후 Delete: 점 삭제";
             var text = Text(s, RoiTheme.Res<Brush>("SubTextBrush", Brushes.LightGray), ppd, Math.Max(40, ActualWidth - 40));

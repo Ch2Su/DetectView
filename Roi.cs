@@ -50,15 +50,22 @@ namespace YOLO11_Test
 
     internal sealed class RoiZone
     {
-        public RoiZone(int id, RoiKind kind, IEnumerable<RoiPoint> points)
+        public RoiZone(int id, RoiKind kind, IEnumerable<RoiPoint> points, int viewId = 0)
         {
             Id = id;
             Kind = kind;
+            ViewId = viewId;
             Points = points.Select(p => new RoiPoint(RoiGeometry.Clamp01(p.X), RoiGeometry.Clamp01(p.Y))).ToList();
         }
 
         /// <summary>1 부터, 지운 번호는 다시 쓰지 않는다 (나중에 이벤트 로그가 번호로 구역을 가리킨다)</summary>
         public int Id { get; }
+
+        /// <summary>
+        /// 이 구역을 그린 뷰(카메라 자세)의 번호 — 구역은 그 뷰에서만 보이고 이벤트에 쓰인다 (화면 식별 2b, ViewIdentity.cs).
+        /// 0 = 뷰가 정해지지 않은 구역(뷰 식별 전에 저장한 옛 파일) — 영상을 연 뒤 처음 알아본 뷰의 것이 된다 (<see cref="RoiSet.AdoptUnassigned"/>)
+        /// </summary>
+        public int ViewId { get; set; }
         public RoiKind Kind { get; set; }
         public List<RoiPoint> Points { get; }
 
@@ -74,7 +81,7 @@ namespace YOLO11_Test
     /// 구역 하나의 모양 스냅샷 — 재생 루프 스레드가 읽는 불변 값. UI 스레드가 구역을 고치는 동안 루프가 같은 목록을 읽지 않게
     /// (구역은 멈춘 뒤에만 편집되지만 멈추는 순간 루프가 한 프레임을 더 처리 중일 수 있다) 바뀔 때마다 새로 만들어 참조를 바꾼다
     /// </summary>
-    internal sealed record ZoneShape(int Id, RoiKind Kind, RoiPoint[] Points)
+    internal sealed record ZoneShape(int Id, RoiKind Kind, RoiPoint[] Points, int ViewId = 0)
     {
         public string Name => $"Z{Id} {RoiKinds.Name(Kind)}";
         public bool Contains(double x, double y) => RoiGeometry.Contains(Points, x, y);
@@ -162,7 +169,8 @@ namespace YOLO11_Test
     /// </summary>
     internal sealed class RoiSet
     {
-        public const int Version = 1;
+        /// <summary>쓰는 판. 2 = 구역마다 뷰 번호(view)와 파일의 뷰 목록(views — 번호·기준 화면 JPEG)이 있다. 1(뷰 식별 전)도 읽는다</summary>
+        public const int Version = 2;
         public const int MinPoints = 3;
 
         private readonly List<RoiZone> _zones = [];
@@ -172,15 +180,34 @@ namespace YOLO11_Test
         /// <summary>다음에 붙일 번호 — 지운 번호는 다시 쓰지 않는다 (파일에도 적어 다시 열어도 이어진다)</summary>
         public int NextId { get; private set; } = 1;
 
+        /// <summary>파일에서 읽은 뷰들 (ViewRegistry 의 시작값). 새로 만든 구역 집합이면 빈 목록</summary>
+        public IReadOnlyList<ViewInfo> SavedViews { get; private set; } = [];
+
+        /// <summary>파일에서 읽은 다음 뷰 번호 (지운 번호를 다시 쓰지 않으려고 파일에도 적는다)</summary>
+        public int NextViewId { get; private set; } = 1;
+
         public static string PathFor(string videoPath) => videoPath + ".roi.json";
 
-        public RoiZone Add(RoiKind kind, IEnumerable<RoiPoint> points)
+        public RoiZone Add(RoiKind kind, IEnumerable<RoiPoint> points, int viewId = 0)
         {
-            var z = new RoiZone(NextId, kind, points);
+            var z = new RoiZone(NextId, kind, points, viewId);
             if (z.Points.Count < MinPoints) throw new ArgumentException($"구역은 점이 {MinPoints}개 이상이어야 한다");
             NextId++;
             _zones.Add(z);
             return z;
+        }
+
+        /// <summary>이 뷰의 구역들 (파일 순서)</summary>
+        public IEnumerable<RoiZone> ZonesOf(int viewId) => _zones.Where(z => z.ViewId == viewId);
+
+        /// <summary>뷰가 정해지지 않은 구역(옛 파일)을 이 뷰의 것으로 한다. 바꾼 구역 수</summary>
+        public int AdoptUnassigned(int viewId)
+        {
+            if (viewId <= 0) return 0;
+            int n = 0;
+            foreach (var z in _zones)
+                if (z.ViewId == 0) { z.ViewId = viewId; n++; }
+            return n;
         }
 
         public bool Remove(int id) => _zones.RemoveAll(z => z.Id == id) > 0;
@@ -191,19 +218,20 @@ namespace YOLO11_Test
         /// 지금 구역들의 불변 복사본 — 재생 루프 스레드가 구역 이벤트 감지(ZoneEvents.cs)에 쓴다. 이 객체의 점 목록은 UI 스레드가 고치므로
         /// 루프는 원본을 읽지 않고 이 복사본을 읽는다 (바뀔 때마다 새로 만들어 참조를 바꾼다)
         /// </summary>
-        public ZoneShape[] Snapshot() => _zones.Select(z => new ZoneShape(z.Id, z.Kind, z.Points.ToArray())).ToArray();
+        public ZoneShape[] Snapshot() => _zones.Select(z => new ZoneShape(z.Id, z.Kind, z.Points.ToArray(), z.ViewId)).ToArray();
 
         /// <summary>
         /// (x, y) 를 품은 구역 중 가장 작은 것 — 큰 구역 안의 작은 구역(차로 안의 정지선·대기 등)도 고를 수 있게.
-        /// 좌표가 프레임 밖(0~1 밖)이면 없음
+        /// 좌표가 프레임 밖(0~1 밖)이면 없음. <paramref name="viewId"/> 를 주면 그 뷰의 구역만 본다
         /// </summary>
-        public RoiZone? ZoneAt(double x, double y)
+        public RoiZone? ZoneAt(double x, double y, int? viewId = null)
         {
             if (x < 0 || x > 1 || y < 0 || y > 1) return null;
             RoiZone? best = null;
             double bestArea = double.MaxValue;
             foreach (var z in _zones)
             {
+                if (viewId != null && z.ViewId != viewId) continue;
                 if (!z.Contains(x, y)) continue;
                 double a = RoiGeometry.Area(z.Points);
                 if (a < bestArea) { bestArea = a; best = z; }
@@ -213,15 +241,30 @@ namespace YOLO11_Test
 
         // ---------- 파일 ----------
 
-        public string ToJson()
+        /// <summary>
+        /// 파일 내용. <paramref name="views"/>·<paramref name="nextView"/> 는 앱이 알고 있는 뷰들(ViewRegistry)이다 — 기준 화면 JPEG 를 base64 로 적는다.
+        /// 안 주면 이 집합이 파일에서 읽은 뷰를 그대로 다시 쓴다 (읽고 고치기만 하는 호출이 뷰를 잃지 않게)
+        /// </summary>
+        public string ToJson(IReadOnlyList<ViewInfo>? views = null, int nextView = 0)
         {
+            views ??= SavedViews;
+            nextView = Math.Max(nextView, Math.Max(NextViewId, views.Count == 0 ? 1 : views.Max(v => v.Id) + 1));
             var sb = new StringBuilder();
-            sb.Append("{\n  \"version\": ").Append(Version).Append(",\n  \"nextId\": ").Append(NextId).Append(",\n  \"zones\": [");
+            sb.Append("{\n  \"version\": ").Append(Version).Append(",\n  \"nextId\": ").Append(NextId)
+              .Append(",\n  \"nextView\": ").Append(nextView).Append(",\n  \"views\": [");
+            for (int i = 0; i < views.Count; i++)
+            {
+                sb.Append(i == 0 ? "\n" : ",\n");
+                sb.Append("    { \"id\": ").Append(views[i].Id).Append(", \"ref\": \"").Append(Convert.ToBase64String(views[i].RefJpeg)).Append("\" }");
+            }
+            sb.Append(views.Count == 0 ? "],\n  \"zones\": [" : "\n  ],\n  \"zones\": [");
             for (int i = 0; i < _zones.Count; i++)
             {
                 var z = _zones[i];
                 sb.Append(i == 0 ? "\n" : ",\n");
-                sb.Append("    { \"id\": ").Append(z.Id).Append(", \"kind\": \"").Append(RoiKinds.Key(z.Kind)).Append("\", \"points\": [");
+                sb.Append("    { \"id\": ").Append(z.Id);
+                if (z.ViewId > 0) sb.Append(", \"view\": ").Append(z.ViewId);
+                sb.Append(", \"kind\": \"").Append(RoiKinds.Key(z.Kind)).Append("\", \"points\": [");
                 for (int k = 0; k < z.Points.Count; k++)
                 {
                     if (k > 0) sb.Append(", ");
@@ -253,18 +296,52 @@ namespace YOLO11_Test
             {
                 var root = doc.RootElement;
                 if (root.ValueKind != JsonValueKind.Object) throw new FormatException("최상위가 객체가 아님");
-                if (!root.TryGetProperty("version", out var ver) || ver.ValueKind != JsonValueKind.Number || !ver.TryGetInt32(out int v) || v != Version)
-                    throw new FormatException($"지원하지 않는 판 (version {Version} 만 읽는다)");
+                if (!root.TryGetProperty("version", out var ver) || ver.ValueKind != JsonValueKind.Number || !ver.TryGetInt32(out int v) || v < 1 || v > Version)
+                    throw new FormatException($"지원하지 않는 판 (version 1~{Version} 만 읽는다)");
 
                 int nextId = 1;
                 if (root.TryGetProperty("nextId", out var ni)
                     && !(ni.ValueKind == JsonValueKind.Number && ni.TryGetInt32(out nextId) && nextId >= 1))
                     throw new FormatException("nextId 가 1 이상의 정수가 아님");
 
+                // 판 2: 뷰 목록(번호·기준 화면). 판 1 파일엔 없다 — 그 구역들은 뷰가 정해지지 않은 채(0) 읽는다
+                var views = new List<ViewInfo>();
+                var viewIds = new HashSet<int>();
+                int nextView = 1;
+                if (v >= 2)
+                {
+                    if (root.TryGetProperty("nextView", out var nv)
+                        && !(nv.ValueKind == JsonValueKind.Number && nv.TryGetInt32(out nextView) && nextView >= 1))
+                        throw new FormatException("nextView 가 1 이상의 정수가 아님");
+                    if (root.TryGetProperty("views", out var vs))
+                    {
+                        if (vs.ValueKind != JsonValueKind.Array) throw new FormatException("views 가 배열이 아님");
+                        int vi = 0;
+                        foreach (var ve in vs.EnumerateArray())
+                        {
+                            string vat = $"views[{vi++}]";
+                            if (ve.ValueKind != JsonValueKind.Object) throw new FormatException($"{vat} 가 객체가 아님");
+                            if (!ve.TryGetProperty("id", out var vide) || vide.ValueKind != JsonValueKind.Number || !vide.TryGetInt32(out int vid) || vid < 1)
+                                throw new FormatException($"{vat}.id 가 1 이상의 정수가 아님");
+                            if (!viewIds.Add(vid)) throw new FormatException($"{vat}.id {vid} 가 겹침");
+                            byte[] jpeg;
+                            try
+                            {
+                                string? b64 = ve.TryGetProperty("ref", out var re) && re.ValueKind == JsonValueKind.String ? re.GetString() : null;
+                                jpeg = string.IsNullOrEmpty(b64) ? [] : Convert.FromBase64String(b64);
+                            }
+                            catch (FormatException) { throw new FormatException($"{vat}.ref 가 base64 가 아님"); }
+                            if (jpeg.Length == 0) throw new FormatException($"{vat}.ref (기준 화면)가 없음");
+                            views.Add(new ViewInfo(vid, jpeg));
+                        }
+                    }
+                    nextView = Math.Max(nextView, viewIds.Count == 0 ? 1 : viewIds.Max() + 1);
+                }
+
                 if (!root.TryGetProperty("zones", out var zs) || zs.ValueKind != JsonValueKind.Array)
                     throw new FormatException("zones 배열이 없음");
 
-                var set = new RoiSet();
+                var set = new RoiSet { SavedViews = views, NextViewId = nextView };
                 var seen = new HashSet<int>();
                 int maxId = 0, index = 0;
                 foreach (var ze in zs.EnumerateArray())
@@ -293,7 +370,15 @@ namespace YOLO11_Test
                     }
                     if (pts.Count < MinPoints) throw new FormatException($"{at}.points 가 {MinPoints}개 미만");
 
-                    set._zones.Add(new RoiZone(id, kind, pts));
+                    int viewId = 0;
+                    if (v >= 2 && ze.TryGetProperty("view", out var vwe))
+                    {
+                        if (vwe.ValueKind != JsonValueKind.Number || !vwe.TryGetInt32(out viewId) || viewId < 0)
+                            throw new FormatException($"{at}.view 가 0 이상의 정수가 아님");
+                        if (viewId > 0 && !viewIds.Contains(viewId)) throw new FormatException($"{at}.view {viewId} 가 views 에 없음");
+                    }
+
+                    set._zones.Add(new RoiZone(id, kind, pts, viewId));
                     maxId = Math.Max(maxId, id);
                 }
                 set.NextId = Math.Max(nextId, maxId + 1);
@@ -306,7 +391,7 @@ namespace YOLO11_Test
             File.Exists(path) ? FromJson(File.ReadAllText(path, Encoding.UTF8)) : new RoiSet();
 
         /// <summary>구역이 하나도 없으면 파일을 지운다 (빈 파일을 영상 옆에 남기지 않는다). 쓰다 끊겨도 옛 파일이 상하지 않게 임시 파일에 쓴 뒤 바꾼다</summary>
-        public void Save(string path)
+        public void Save(string path, IReadOnlyList<ViewInfo>? views = null, int nextView = 0)
         {
             if (_zones.Count == 0)
             {
@@ -314,7 +399,7 @@ namespace YOLO11_Test
                 return;
             }
             string tmp = path + ".tmp";
-            File.WriteAllText(tmp, ToJson(), new UTF8Encoding(false));
+            File.WriteAllText(tmp, ToJson(views, nextView), new UTF8Encoding(false));
             File.Move(tmp, path, overwrite: true);
         }
     }

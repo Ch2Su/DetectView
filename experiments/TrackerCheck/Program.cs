@@ -59,6 +59,8 @@ return args.FirstOrDefault() switch
     "selftest" => SelfTest(),
     "gpu" => GpuCheck(),
     "scene" => SceneScan(args.Skip(1).ToArray()),
+    "views" => ViewsCheck.Run(VideoDir),
+    "mkrevisit" => ViewsCheck.MakeRevisit(VideoDir, args.Length > 1 ? args[1] : Path.Combine(outDir, "test4_revisit.mp4")),
     "dedup" => Dedup(args.Skip(1).ToArray()),
     "sahi" => SahiCompare(args.Skip(1).ToArray()),
     "render" when args.Length >= 5 => Render(args[1], args[2], double.Parse(args[3], CultureInfo.InvariantCulture),
@@ -617,13 +619,13 @@ int SelfTest()
                    && a.Points.Zip(b.Points).All(p => Math.Abs(p.First.X - p.Second.X) < 1e-5 && Math.Abs(p.First.Y - p.Second.Y) < 1e-5);
         }
         Check(same && back.NextId == 6, $"JSON 왕복: 번호·유형·점이 그대로, nextId {back.NextId} 도 이어짐");
-        Check(json.Contains("\"kind\": \"stopline\"") && json.Contains("\"version\": 1"), "파일에 적히는 이름: version·kind(lane·shoulder·stopline·ignore)");
+        Check(json.Contains("\"kind\": \"stopline\"") && json.Contains("\"version\": 2"), "파일에 적히는 이름: version·kind(lane·shoulder·stopline·ignore)");
 
         // 읽지 못하는 파일은 모두 FormatException (사유가 메시지에) — 앱은 이걸 받아 .bad 로 복사하고 빈 구역으로 시작한다
         string[] bad =
         [
             "", "not json", "[]", "{}",
-            "{\"version\": 2, \"zones\": []}",
+            "{\"version\": 3, \"zones\": []}",
             "{\"version\": 1}",
             "{\"version\": 1, \"zones\": {}}",
             "{\"version\": 1, \"nextId\": 0, \"zones\": []}",
@@ -988,6 +990,8 @@ int SelfTest()
         var oldAfter = Run(scene, W, H, frame: false).Where(f => f.Ms >= 1000).ToList();
         Console.WriteLine($"[INFO] 왼쪽 테두리에 걸쳐 멈춘 차가 안쪽부터 가려짐: 1초 뒤 {Stat(after)} — 가려지는 동안 움직임으로 봄 (예전 판정 {Stat(oldAfter)})");
     }
+
+    ViewsCheck.SelfTest(Check, VideoDir);   // ⑫ 화면 식별 (2026-11-03)
 
     Console.WriteLine(fails == 0 ? "모두 통과" : $"실패 {fails}건");
     return fails;

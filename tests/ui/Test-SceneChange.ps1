@@ -5,7 +5,7 @@
 #   test4 (10.5~11.4초에 카메라가 돌아간다, 0~10.5초엔 차로에 멈춘 덤프트럭): 7초로 시크해 재생
 #     1) 돌기 전(10.4초 전): 배지 없음, 멈춘 차에 '정지' 번호가 붙어 있다
 #     2) 도는 동안: '화면 이동 중' 배지, 박스는 보이지만 번호는 없다 (가짜 트랙을 만들지 않으려고 추적기에 안 넣는다)
-#     3) 안정된 뒤: '화면 전환 · 번호 새로 매김' 배지, 번호가 모두 돌기 전에 본 번호보다 크다 (추적기를 비웠다)
+#     3) 안정된 뒤: '새 뷰 V2 · 구역 없음' 배지, 번호가 모두 돌기 전에 본 번호보다 크다 (추적기를 비웠다)
 #     4) 몇 초 뒤(13.9초~): 배지가 사라진다 (13.43초에 한 프레임 크게 튀는 건 전환이 아니다)
 #   test5 (29.63~29.98초에 스트림이 검게 끊겼다 같은 화면으로 돌아온다): 27초로 시크해 재생
 #     5) 끊김 동안 '화면 끊김' 배지 (이동 중도 전환도 아님)
@@ -27,7 +27,7 @@ if (-not $Video4) { $Video4 = Join-Path $RepoRoot 'publish_gpu_ver\test4.mp4' }
 if (-not $Video5) { $Video5 = Join-Path $RepoRoot 'publish_gpu_ver\test5.mp4' }
 foreach ($v in $Video4, $Video5) { if (-not (Test-Path $v)) { throw "테스트 영상이 없습니다: $v" } }
 
-$MOVING = '● 화면 이동 중'; $BLANK = '● 화면 끊김'; $CHANGED = '● 화면 전환 · 번호 새로 매김'
+$MOVING = '● 화면 이동 중'; $BLANK = '● 화면 끊김'; $CHANGED = '● 새 뷰 V2 · 구역 없음'   # 처음 보는 화면이라 새 뷰로 기억 (화면 식별 2b — 옛 글자는 '● 화면 전환 · 번호 새로 매김')
 
 # 위치 $FromMs 로 시크한 뒤 $ToMs 까지 재생하며 표본을 모은다. 표본: Pos(ms) · Badge('' 이면 없음) · Ids · Stationary · N(검출 수)
 function Sample-Playback($Root, $Range, $Count, [double]$FromMs, [double]$ToMs, [int]$TimeoutMs) {
@@ -88,7 +88,7 @@ try {
     $changed = @($s | Where-Object { $_.Badge -eq $CHANGED })
     $changedNumbered = @($changed | Where-Object { $_.Ids.Count -gt 0 })
     $oldIds = @($changedNumbered | ForEach-Object { $_.Ids } | Where-Object { $_ -le $maxBefore })
-    Check '안정된 뒤: 화면 전환 · 번호 새로 매김 배지' ($changed.Count -ge 5 -and $changed[0].Pos -ge 11000 -and $changed[-1].Pos -le 14200) "표본 $($changed.Count)개 · $(if ($changed.Count) { "$([int]$changed[0].Pos)~$([int]$changed[-1].Pos) ms" })"
+    Check '안정된 뒤: 새 뷰 V2 · 구역 없음 배지 (번호는 새로 매김)' ($changed.Count -ge 5 -and $changed[0].Pos -ge 11000 -and $changed[-1].Pos -le 14200) "표본 $($changed.Count)개 · $(if ($changed.Count) { "$([int]$changed[0].Pos)~$([int]$changed[-1].Pos) ms" })"
     Check '안정된 뒤: 번호가 돌기 전에 본 번호보다 모두 큼 (추적기를 비웠다)' ($changedNumbered.Count -gt 0 -and $oldIds.Count -eq 0) "돌기 전 최대 #$maxBefore · 번호 있던 표본 $($changedNumbered.Count)개 · 옛 번호 $($oldIds.Count)개"
 
     $late = @($s | Where-Object { $_.Pos -ge 13900 })

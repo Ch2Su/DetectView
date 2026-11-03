@@ -24,6 +24,8 @@ experiments/TrackerCheck/bin/Release/net10.0-windows10.0.19041.0/TrackerCheck.ex
   - 추적기에 프레임 크기(test4 1280×720 · test5 1280×854 — `frameSizes`, `detect` 가 영상과 맞는지 본다)를 준다. `noframe` 이면 안 줘서 테두리 처리 전(예전) 판정 — 아래 "화면 가장자리 멈춤 판정"
 - `selftest`: 합성 장면으로 테두리 멈춤 판정을 본다. 앱 연결(2026-11-02)도 본다 — `UpdateTagged` 가 번호·정지를 `Update` 와 같게 붙이는지, 화면 HUD 의 가상 시계(새 화면 사이 250ms 상한)가 정지 화면에서
   번호를 지키고 출력이 수렴하는지 (영상·GPU 불필요, 결정적, 종료 코드 = 실패 수)
+- `views`: 화면 식별(`ViewIdentity.cs` — ORB + 호모그래피)을 test4 의 세 화면·test1~3·5 의 실제 프레임에서 재 본다 — 기준(행) → 새 화면(열) 인라이어/격자 칸 행렬, A2 기준 상세(특징점·좋은 짝·인라이어·이동·배율·원근), 식별 한 번의 시간 내역, 같은 화면에 흔들림(옮김·확대·회전·밝기·노이즈·JPEG)을 줬을 때. 결과(2026-11-03): 같은 화면 300~540, 다른 화면 최대 8
+- `mkrevisit [출력 경로]`: test4 조각을 하드 컷으로 이어 같은 화면이 다시 나오는 30초 영상을 만든다 — A 0~8 → B 12~18 → A 1~9 → C 22~26 → B 14~18 (기본 `out/test4_revisit.mp4`, 33 MB). `tests/ui/Test-ViewIdentity.ps1` 이 쓴다 (원본의 조각이라 저장소엔 없다)
 - `dedup [Every=N]`: 본 앱 표시 경로의 중복 박스 필터(`Detection.cs` 의 `DuplicateBoxes`) 전후를 `out/dedup.txt` 에 (아래 "중복 박스 필터").
   ① 저장한 검출로 박스 수 전후·뺀 박스 종류·목표 정지 차량 자리의 이중 박스 ② SAHI — 타일 검출을 GPU 로 다시 해(N 프레임에 하나, 기본 15) 병합 결과 전후
 - `render <test4|test5> <x,y,w,h|full> <배율> <초...>`: 트랙 ID(번호+라벨 첫 글자, 정지 판정이면 뒤에 `*`)를 그린 프레임을 세로로 이어 `out/render_*.png` 로. 의심 연결은 이걸로 눈으로 봤다

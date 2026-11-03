@@ -5,7 +5,7 @@
 param([string]$ExeDir)
 
 $failed = 0
-foreach ($test in 'Test-FilePlayback.ps1', 'Test-Tracking.ps1', 'Test-Roi.ps1', 'Test-SceneChange.ps1', 'Test-ZoneEvents.ps1', 'Test-Incident.ps1', 'Test-VfrPlayback.ps1', 'Test-ScreenHud.ps1', 'Test-NpuSwitch.ps1') {
+foreach ($test in 'Test-FilePlayback.ps1', 'Test-Tracking.ps1', 'Test-Roi.ps1', 'Test-SceneChange.ps1', 'Test-ZoneEvents.ps1', 'Test-Incident.ps1', 'Test-ViewIdentity.ps1', 'Test-VfrPlayback.ps1', 'Test-ScreenHud.ps1', 'Test-NpuSwitch.ps1') {
     "=== $test ==="
     # 테스트가 try 밖에서 throw 해도(영상·빌드 없음 등) 그 파일만 실패로 세고 다음으로 간다 —
     # 예전엔 Run-All 까지 끝나, 영상이 필요 없는 테스트도 돌지 않고 요약도 나오지 않았다
