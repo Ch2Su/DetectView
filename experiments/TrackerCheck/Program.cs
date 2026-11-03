@@ -802,6 +802,97 @@ int SelfTest()
         Check(cut10.Changes == 1 && cut60.Changes == 1, $"프레임 간격이 달라도 컷 하나는 전환 하나: 10fps {cut10.Changes}번 · 60fps {cut60.Changes}번");
     }
 
+    // ⑩ 구역 진입·나감 이벤트 (2026-11-03): ZoneEvents.cs — 추적기를 거친 박스(발 위치)로. 앱의 로그·CSV 화면은 UI 테스트 Test-ZoneEvents.ps1 이 본다
+    {
+        // 구역 (프레임 0~1): 차로 Z1 · 갓길 Z2 · 차로 안의 정지선·대기 Z3 · 차로 위쪽 모서리를 덮는 무시 Z4
+        ZoneShape Rect(int id, RoiKind k, double x0, double y0, double x1, double y1) =>
+            new(id, k, [new(x0, y0), new(x1, y0), new(x1, y1), new(x0, y1)]);
+        ZoneShape[] zs =
+        [
+            Rect(1, RoiKind.Lane, 0.30, 0.40, 0.70, 0.90),
+            Rect(2, RoiKind.Shoulder, 0.80, 0.40, 1.00, 0.90),
+            Rect(3, RoiKind.Stopline, 0.40, 0.80, 0.60, 0.85),
+            Rect(4, RoiKind.Ignore, 0.30, 0.40, 0.50, 0.50),
+        ];
+        // 발 위치 (fx, fy)(프레임 0~1)가 되도록 놓은 80×40 박스 — 발 = 박스 아래 가운데
+        Det Car(int id, double fx, double fy, string label = "car") =>
+            new Det(fx * W - 40, fy * H - 40, 80, 40, label, 0.9) with { TrackId = id };
+        // 30fps 로 frames 프레임: make(i) 가 그 프레임의 박스들. 이벤트를 모아 돌려준다 (시각 ms 와 함께)
+        List<ZoneEvent> ZeRun(Func<int, Det[]> make, int frames, ZoneShape[]? zones = null, ZoneEventDetector? det = null, int from = 0)
+        {
+            det ??= new ZoneEventDetector();
+            var all = new List<ZoneEvent>();
+            for (int i = from; i < from + frames; i++) all.AddRange(det.Update(make(i), zones ?? zs, i * 1000 / 30.0, W, H));
+            return all;
+        }
+        string Ev(ZoneEvent e) => $"{e.CsvEvent} #{e.TrackId} Z{e.ZoneId} @{e.Ms:0}ms" + (e.Kind == ZoneEventKind.Exit ? $" 머문 {e.DwellMs:0}ms" : "");
+
+        // 1) 차로를 가로질러 갓길로: x 0.1 → 0.9 (6초), y 0.7. Z1 은 x 0.3~0.7 (1.5~4.5초), Z2 는 x 0.8~ (5.25초). Z4(무시)는 y 0.4~0.5 라 못 닿는다
+        var cross = ZeRun(i => [Car(1, 0.1 + 0.8 * i / 180.0, 0.7)], 200);
+        var c = cross.Select(e => (e.Kind, e.ZoneId)).ToList();
+        bool orderOk = c.SequenceEqual([(ZoneEventKind.Enter, 1), (ZoneEventKind.Exit, 1), (ZoneEventKind.Enter, 2)]);
+        Check(orderOk && Math.Abs(cross[0].Ms - 1500) <= 40 && Math.Abs(cross[1].Ms - 4500) <= 40 && Math.Abs(cross[1].DwellMs - 3000) <= 60
+              && Math.Abs(cross[2].Ms - 5250) <= 40 && cross.All(e => !e.Initial && !e.Lost),
+              $"차로를 가로지름: {string.Join(" · ", cross.Select(Ev))} (손계산 1500 · 4500 머문 3000 · 5250)");
+
+        // 2) 경계 흔들림: 안에 100ms(3프레임)만 걸쳤다 빠지면 진입이 아니고, 확정된 뒤 300ms 밖에 있다 돌아오면 나감이 아니다
+        var grazed = ZeRun(i => [Car(1, i is >= 60 and < 63 ? 0.32 : 0.25, 0.7)], 150);
+        var wobble = ZeRun(i => [Car(1, i is >= 120 and < 129 ? 0.75 : 0.5, 0.7)], 200);   // 안에 4초 → 밖에 0.3초 → 다시 안
+        Check(grazed.Count == 0 && wobble.Count(e => e.Kind == ZoneEventKind.Exit) == 0 && wobble.Count(e => e.Kind == ZoneEventKind.Enter) == 1,
+              $"경계 흔들림: 3프레임 걸침 → 이벤트 {grazed.Count}건 · 0.3초 나갔다 돌아옴 → 진입 {wobble.Count(e => e.Kind == ZoneEventKind.Enter)} 나감 {wobble.Count(e => e.Kind == ZoneEventKind.Exit)}");
+        var left = ZeRun(i => [Car(1, i < 60 ? 0.5 : 0.75, 0.7)], 150);   // 2초 안 → 밖에서 계속
+        Check(left.Count(e => e.Kind == ZoneEventKind.Exit && e.ZoneId == 1) == 1 && Math.Abs(left.First(e => e.Kind == ZoneEventKind.Exit).Ms - 2000) <= 40,
+              $"0.5초 넘게 밖에 있으면 나감, 시각은 나간 때: {string.Join(" · ", left.Select(Ev))}");
+
+        // 3) 추적이 끊김: 안에 있다 1초 가려졌다 같은 번호로 돌아오면 이벤트 없음 / 그대로 사라지면 마지막으로 본 때로 '나감(추적 끝)'
+        var occluded = ZeRun(i => i is >= 60 and < 90 ? [] : [Car(1, 0.5, 0.7)], 200);
+        var gone = ZeRun(i => i < 60 ? [Car(1, 0.5, 0.7)] : [], 200);
+        var lost = gone.FirstOrDefault(e => e.Kind == ZoneEventKind.Exit);
+        Check(occluded.Count(e => e.Kind == ZoneEventKind.Exit) == 0 && lost is { Lost: true } && Math.Abs(lost.Ms - 59 * 1000 / 30.0) <= 40,
+              $"추적 끊김: 1초 가림 → 나감 {occluded.Count(e => e.Kind == ZoneEventKind.Exit)}건, 사라짐 → {(lost == null ? "없음" : Ev(lost) + " 추적 끝")}");
+
+        // 4) 무시 구역: 발이 무시 Z4 안이면(차로 Z1 과 겹친 자리) Z1 도 이벤트를 안 낸다. 무시 구역 자체는 이벤트가 없다
+        var ignored = ZeRun(i => [Car(1, 0.4, 0.45)], 120);
+        var leaveIgnore = ZeRun(i => [Car(1, i < 60 ? 0.4 : 0.6, i < 60 ? 0.45 : 0.6)], 150);   // 무시 구역에서 차로로 → 진입은 차로로 들어온 때
+        Check(ignored.Count == 0 && leaveIgnore.Count(e => e.Kind == ZoneEventKind.Enter && e.ZoneId == 1) == 1 && Math.Abs(leaveIgnore[0].Ms - 2000) <= 40 && leaveIgnore.All(e => e.ZoneId != 4),
+              $"무시 구역: 안에서는 이벤트 {ignored.Count}건, 벗어나 차로로 가면 그때 진입: {string.Join(" · ", leaveIgnore.Select(Ev))}");
+
+        // 5) 겹친 구역: 차로 Z1 과 그 안의 정지선·대기 Z3 에 동시에 들어오면 둘 다 센다
+        var both = ZeRun(i => [Car(1, 0.5, 0.82)], 60);
+        Check(both.Count == 2 && both.Select(e => e.ZoneId).OrderBy(x => x).SequenceEqual([1, 3]), $"겹친 구역: {string.Join(" · ", both.Select(Ev))}");
+
+        // 6) 처음부터 안에 있던 물체는 '이미 안에 있음'(Initial), 나중에 들어온 물체는 진입. Reset 뒤에도 다시 Initial
+        var det6 = new ZoneEventDetector();
+        var start = ZeRun(i => i < 60 ? [Car(1, 0.5, 0.7)] : [Car(1, 0.5, 0.7), Car(2, 0.5, 0.65)], 120, det: det6);
+        det6.Reset();
+        var afterReset = ZeRun(i => [Car(1, 0.5, 0.7)], 30, det: det6, from: 200);
+        Check(start.Count == 2 && start[0] is { TrackId: 1, Initial: true } && start[1] is { TrackId: 2, Initial: false } && afterReset.Count == 1 && afterReset[0].Initial,
+              $"처음부터 안 / 나중에 들어옴 / Reset 뒤 다시 '이미 안': {string.Join(" · ", start.Concat(afterReset).Select(e => Ev(e) + (e.Initial ? "(이미 안)" : "")))}");
+
+        // 7) Suspend(화면 전환): 표시 이벤트를 한 번 내고 Reset 까지 아무것도 안 낸다 (안에 있던 물체의 '나감'도 기록하지 않는다)
+        var det7 = new ZoneEventDetector();
+        ZeRun(i => [Car(1, 0.5, 0.7)], 60, det: det7);
+        var marker = det7.Suspend(2000);
+        var again = det7.Suspend(2100);
+        var whileSuspended = ZeRun(i => [Car(1, 0.5, 0.7), Car(2, 0.75, 0.7)], 90, det: det7, from: 60);
+        det7.Reset();
+        var resumed = ZeRun(i => [Car(1, 0.5, 0.7)], 30, det: det7, from: 200);
+        Check(marker is { Kind: ZoneEventKind.ViewChanged } && again == null && det7 != null && whileSuspended.Count == 0 && resumed.Count == 1,
+              $"화면 전환: 표시 {marker?.CsvEvent} · 두 번째 Suspend {(again == null ? "없음" : "있음")} · 멈춘 동안 이벤트 {whileSuspended.Count}건 · Reset 뒤 {resumed.Count}건");
+
+        // 8) 번호 없는 박스(TrackId 0 — 움직이는 동안·SAHI)는 무시하고, 한 물체가 오래 서 있어도 이벤트는 한 번뿐이다
+        var untracked = ZeRun(i => [new Det(0.5 * W - 40, 0.7 * H - 40, 80, 40, "car", 0.9)], 60);
+        var stoodLong = ZeRun(i => [Car(1, 0.5, 0.7)], 900);   // 30초
+        Check(untracked.Count == 0 && stoodLong.Count == 1, $"번호 없는 박스 {untracked.Count}건 · 30초 서 있는 차 {stoodLong.Count}건");
+
+        // 9) 구역을 지우면 상태를 조용히 버린다 (나감을 만들지 않음). 구역이 없으면 아무 일도 없다
+        var det9 = new ZoneEventDetector();
+        ZeRun(i => [Car(1, 0.5, 0.7)], 60, det: det9);
+        var removed = ZeRun(i => [Car(1, 0.5, 0.7)], 60, zones: [zs[1], zs[2], zs[3]], det: det9, from: 60);   // Z1 이 지워짐
+        var noZones = ZeRun(i => [Car(1, 0.5, 0.7)], 30, zones: [], det: det9, from: 120);
+        Check(removed.Count(e => e.ZoneId == 1) == 0 && noZones.Count == 0, $"구역을 지움: Z1 이벤트 {removed.Count(e => e.ZoneId == 1)}건 · 구역 없음 {noZones.Count}건");
+    }
+
     // 한계 (통과·실패 없이 보이기만): 박스만으로는 움직임을 잴 수 없거나 나가는 차와 구분되지 않는 경우
     {
         var scene = NewScene(3000);

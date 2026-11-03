@@ -71,6 +71,7 @@ namespace YOLO11_Test
             }
             ZoneLayer.SetFrameSize(frameW, frameH);
             ZoneLayer.SetZones(set);
+            PublishZoneShapes();
             RefreshRoiList();
             UpdateRoiUi();
             return warn;
@@ -82,6 +83,7 @@ namespace YOLO11_Test
             _roiPath = null;
             ZoneLayer.SetFrameSize(0, 0);
             ZoneLayer.SetZones(new RoiSet());
+            PublishZoneShapes();
             RefreshRoiList();
             UpdateRoiUi();
         }
@@ -98,6 +100,7 @@ namespace YOLO11_Test
 
         private void OnRoiZonesChanged()
         {
+            PublishZoneShapes();   // 구역 이벤트 감지가 새 구역으로 다시 시작한다
             SaveRoi();
             RefreshRoiList();
             UpdateRoiUi();

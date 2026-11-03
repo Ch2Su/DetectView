@@ -65,6 +65,8 @@ dotnet publish YOLO11_Test.csproj -c Release -r win-x64 --self-contained true -p
 | `SceneChange.cs` | 화면 전환 감지 순수 알고리즘(`SceneChangeDetector`) — 카메라가 돌거나 화면이 바뀌었는지 64×36 흑백 그림 열로 본다. WPF·OpenCV 없음 — experiments 가 소스로 링크 (2026-11-03, 아래 "화면 전환 감지") |
 | `SceneThumbnail.cs` | 프레임 → 64×36 흑백 그림(면적 평균 축소 — 썸네일 + 감지기로 프레임당 약 0.8 ms). 앱과 실험 도구가 **같은 코드**로 만들어야 도구가 잰 임계값이 앱에서도 맞는다 (OpenCvSharp — TrackerCheck 도 소스로 링크) |
 | `MainWindow.Scene.cs` | 영상 위 화면 전환 배지(`SceneBadge` — `ShowSceneBadge`). 감지·추적기 연결은 `PlaybackLoop` |
+| `ZoneEvents.cs` | 구역 진입·나감 이벤트 순수 알고리즘(`ZoneEventDetector`) — 추적기를 거친 박스의 발 위치가 구역 안인지로 본다. WPF 없음 — experiments 가 소스로 링크 (2026-11-03, 아래 "구역 진입·나감 이벤트") |
+| `MainWindow.Events.cs` | 영상 아래 접이식 이벤트 로그 패널(`EventLogPanel` — 목록·CSV 저장·비우기)과 구역 스냅샷을 루프에 넘기는 `PublishZoneShapes` |
 | `GpuAdapters.cs` | GPU 어댑터 목록(DXGI 하드웨어)과 고성능/저전력 판정 — **내장 여부(DXCore `IsIntegrated`)** 로 가르고 못 읽으면 전용 VRAM. 추론 GPU 선택(`SelectBestGpu`)과 HUD 안내(`DisplayTopology.FindMonitorGpu`)가 같은 함수(`IsHighPerformance`·`Best`)를 쓴다. WPF 없음 — experiments 가 소스로 링크 |
 | `DisplayTopology.cs` | 모니터가 실제로 붙은 GPU(`QueryDisplayConfig`)와 이 exe 의 Windows 그래픽 설정(레지스트리 읽기) — GDI 대체 안내용. 저전력/고성능은 `GpuAdapters` 판정 |
 | `ScreenCapture.cs` | `MonitorInfo`, `PixelRect`, `IScreenCapture` 인터페이스(`Interruption`·`Redelivered` 포함), `ScreenCaptureLostException`, `ScreenCapture.Create()`(DXGI 우선·GDI 대체)·`Fallback()`(사유 붙은 GDI)·`GetMonitors()` |
@@ -84,7 +86,7 @@ dotnet publish YOLO11_Test.csproj -c Release -r win-x64 --self-contained true -p
 | `LICENSE` · `THIRD-PARTY-NOTICES.md` | 저장소 라이선스 GNU AGPL-3.0 (2026-11-02 — 들어 있는 `best.onnx` 가 Ultralytics YOLO26 파인튜닝이라 Ultralytics 가 프로젝트 전체에 AGPL-3.0 을 요구)과 저장소 안 남의 저작물 고지(모델 AGPL-3.0 · `WindowsMlExecutionProvider.cs` 의 바탕 YoloDotNet MIT · `.claude/` 의 graft 연동 파일 MIT — 각 전문). 남의 코드·파일을 가져오면 여기에 더한다 |
 | `tools/` | `Make-NpuModel.ps1`(+ `npu_quantize.py`): YOLO 모델의 NPU 용 짝 `<이름>.npu.onnx` 만들기 (아래 "NPU") |
 | `best.npu.onnx` | 루트 `best.onnx` 의 NPU 짝 (A16W8·가중치 채널별 QDQ, 10.4 MB, git 추적). 원본을 바꾸면 다시 만든다 |
-| `experiments/` | 따로 빌드하는 실험 프로젝트(각자 `.csproj`). 본 `.csproj` 의 `Compile/Page/None Remove` 로 빠져 있다. `NpuBench/`: AMD NPU 실험 — 짝 확인(`npu_quant`·`npu_source_md5`) 뒤에만 NPU 에 넣는다 (아래 "NPU"). `RuntimeParity/`: 런타임 교체 전후 검출 결과 비교 (1번 항목, GPU 선택은 두 빌드 모두 `GpuAdapters.cs` 링크). `TrackerCheck/`: 추적기 검증 (아래 "추적기")·테두리 멈춤 판정 합성 장면(`selftest` — 관심 구역 `Roi.cs` 의 판정·파일 검사 ⑧, 화면 전환 감지 합성 장면 ⑨도 여기)·화면 전환 감지 임계값 실측(`scene`)·GPU 고성능/저전력 판정(`gpu`)·중복 박스 필터 전후 비교 (3번 항목). 산출물 `*/out/`·`*/bin/`·`*/obj/`·`*/.venv/` 는 gitignore |
+| `experiments/` | 따로 빌드하는 실험 프로젝트(각자 `.csproj`). 본 `.csproj` 의 `Compile/Page/None Remove` 로 빠져 있다. `NpuBench/`: AMD NPU 실험 — 짝 확인(`npu_quant`·`npu_source_md5`) 뒤에만 NPU 에 넣는다 (아래 "NPU"). `RuntimeParity/`: 런타임 교체 전후 검출 결과 비교 (1번 항목, GPU 선택은 두 빌드 모두 `GpuAdapters.cs` 링크). `TrackerCheck/`: 추적기 검증 (아래 "추적기")·테두리 멈춤 판정 합성 장면(`selftest` — 관심 구역 `Roi.cs` 의 판정·파일 검사 ⑧, 화면 전환 감지 합성 장면 ⑨, 구역 진입·나감 이벤트 ⑩도 여기)·화면 전환 감지 임계값 실측(`scene`)·GPU 고성능/저전력 판정(`gpu`)·중복 박스 필터 전후 비교 (3번 항목). 산출물 `*/out/`·`*/bin/`·`*/obj/`·`*/.venv/` 는 gitignore |
 | `graft/` · `.claude/` | 코드 인덱스(graft)와 그 에이전트 연동. graft 는 CLI 로만 쓴다 — MCP 서버 등록은 2026-11-02 사용자 결정으로 전역(`~/.claude.json`)과 이 저장소(`.mcp.json` 삭제) 모두 뺐다. `graft/` 는 재생성 가능한 캐시라 커밋하지 않는다. `.claude/helpers/graft-statusline.cjs`(상태줄)는 graft 설치 경로를 `%APPDATA%\npm` 에서 계산한다(2026-11-02 — graft 가 박아 넣은 `C:\Users\<이름>\…` 경로를 저장소에서 뺌. graft 를 다시 설치해 박힌 경로로 돌아오면 다시 고칠 것). graft 훅은 전역 `~/.claude/settings.json` 에만 둔다 — 프로젝트에도 있으면 둘 다 돌아 세션마다 graft 안내문이 두 번 들어가고 도구마다 훅이 두 번 돈다(2026-11-02 프로젝트 쪽 훅과 `graft-hooks.cjs` 를 뺌. graft 를 이 저장소에 다시 설치해 돌아오면 다시 뺄 것) |
 
 ## 절대 건드리면 안 되는 것들 (실제로 한 번씩 터졌던 부분)
@@ -410,7 +412,7 @@ DXGI 와 GDI 캡처는 같은 영역에서 **픽셀이 완전히 동일**했고 
 | `DuplicateIos` / `DuplicateMinAreaRatio` | 0.8 / 0.5 | IoU>0.7 쌍은 IoS>0.82 라 함께 잡힌다 |
 
 **검증** (`experiments/TrackerCheck` — 모든 프레임 검출을 CSV 로 남기고 추적만 다시 돌린다. 자세한 건 그 README).
-루트 `Detection.cs`·`Tracker.cs`·`Sahi.cs`·`WindowsMlExecutionProvider.cs`·`GpuAdapters.cs`·`Roi.cs`·`SceneChange.cs`·`SceneThumbnail.cs` 를 소스로 링크해 WPF 없이 빌드하므로 이 여덟에 WPF 의존을 넣으면 빌드가 깨진다.
+루트 `Detection.cs`·`Tracker.cs`·`Sahi.cs`·`WindowsMlExecutionProvider.cs`·`GpuAdapters.cs`·`Roi.cs`·`SceneChange.cs`·`SceneThumbnail.cs`·`ZoneEvents.cs` 를 소스로 링크해 WPF 없이 빌드하므로 이 아홉에 WPF 의존을 넣으면 빌드가 깨진다.
 앱 상수(신뢰도 0.3·IoU 0.7·`TargetClasses`·타일 640·겹침 0.3·병합 0.45/0.6)와 `DetectTile` 은 **복사본**이라(`SelectBestGpu` 는 `GpuAdapters.cs` 를 링크해 앱과 같은 판정) 앱 쪽을 바꾸면 같이 맞춰야
 비교가 조용히 어긋나지 않는다. 검출 CSV 는 `DuplicateBoxes` **전** 결과다(앱의 '검출 N' 보다 많다):
 - 정지 판정(`IsStationary`)도 보고한다 — `tracks.csv` 마지막 열 `stationary`, `render` 는 정지면 ID 뒤 `*`, 보고서의 '테두리 멈춤 판정' 절(관측마다 판정과 따로 잰 중심 이동을 맞댐)
@@ -477,7 +479,7 @@ HUD 는 캡처 크기 — 크기 없는 판은 아래 '화면 가장자리' 문�
   (구역은 영상 파일의 것 — 카메라 뷰마다 두려면 화면 전환 감지로 뷰를 식별하는 일이 먼저다)
 - **UIA**: `RoiLayer` 에 자동화 피어를 달았다(`ZoneLayer`, 이름 '구역 편집 영역') — 그리는 요소엔 기본 피어가 없고 같은 칸의 `Image` 는 UIA 영역이 비어 있어서, 테스트가 이 영역으로 화면 좌표를 프레임 좌표로 옮긴다
 - **확인**: `TrackerCheck selftest` ⑧(안·밖·넓이·무게중심·점 집기·번호·JSON 왕복·잘못된 파일 14가지·파일 입출력, 영상·GPU 없이) + `tests/ui/Test-Roi.ps1`(실제 마우스로 그리고 끌고 지우고 파일의 좌표까지 확인 — 아래 '테스트').
-  남은 것: 구역을 통째로 끌어 옮기기(지금은 점 하나씩), 구역 겹침 경고, 구역을 쓰는 규칙(진입 이벤트 → 유고), HUD·카메라 연결
+  남은 것: 구역을 통째로 끌어 옮기기(지금은 점 하나씩), 구역 겹침 경고, 구역을 쓰는 규칙(진입 이벤트는 11-03 에 생겼다 — 다음은 유고 규칙), HUD·카메라 연결
 
 ## 도메인 지식 — 화면 전환 감지 (유고 감지 2단계의 하나, 2026-11-03)
 
@@ -500,6 +502,25 @@ HUD 는 캡처 크기 — 크기 없는 판은 아래 '화면 가장자리' 문�
   `TrackerCheck scene`(실제 영상), `tests/ui/Test-SceneChange.ps1`(아래 '테스트'). **UI 테스트가 못 가르는 것**: 전환 때 `tracker.Reset()` 호출 자체 — 움직이는 동안 추적기에 안 넣어 옛 트랙이 대부분 만료되고 test4 의 회전 뒤 화면엔 옛 트럭 자리의 검출이 없어서
   그 줄을 뺀 변종 빌드도 통과했다(2026-11-03 확인). 비우기의 효과는 추적기 단위 selftest 가 본다.
 - **남은 것**: 2b(뷰 식별 — 같은 프리셋으로 돌아오면 구역을 복원하고 정지 시간을 이어 붙인다), 카메라(PTZ 소스로 d 분포 실측 뒤), 작은 팬 감지, 구역을 쓰는 규칙이 생기면 '뷰를 모르는 동안 구역 규칙 끄기'
+
+## 도메인 지식 — 구역 진입·나감 이벤트 (유고 감지 3단계, 2026-11-03)
+
+구역(ROI)에 물체가 들어오고 나갈 때마다 로그 한 줄 — 유고 규칙(정지 + 구역 유형 + 주변 흐름)이 쓸 재료다. 화면은 사용자가 시안(로그 위치 셋: 영상 아래 접이식 · 영상 위 최근 이벤트 · 왼쪽 패널 절 /
+저장 방식 넷: 화면만 · 화면 + [CSV 저장] 버튼 · 자동 CSV · 자동 CSV + 스냅샷) 중 **영상 아래 접이식 로그 + 화면 + [CSV 저장] 버튼**을 골랐다.
+- **감지**(`ZoneEvents.cs`, 순수): 추적기를 거친 박스(`TrackId > 0`)의 **발 위치**(박스 아래 가운데, 프레임 0~1 좌표)가 구역 안인지로 본다. 진입은 안에 **0.2초** 이상 이어서 있어야, 나감은 밖에 **0.5초** 이상 이어서 있어야 확정해
+  경계에서 박스가 떨려도 이벤트가 반복되지 않는다. 이벤트 시각은 **실제로 넘어간 때**(확정은 그만큼 늦다 — 로그는 확정 순서라 시각이 조금 뒤섞일 수 있다). 무시 구역은 이벤트가 없고, 발이 무시 구역 안이면 다른 구역에서도 빠진다.
+  겹친 구역(차로 안의 정지선·대기)은 각각 센다. 안에서 추적이 1.5초 넘게 끊기면 `나감 (추적 끝)`(`Lost`, 시각은 마지막으로 본 때) — 그보다 짧은 가림은 이벤트 없음. 오래 서 있는 물체도 이벤트는 한 번뿐.
+- **이미 안에 있음**(`Initial`): 감지를 시작하거나 Reset 한 뒤 0.5초 안에 처음 본 물체가 이미 구역 안이면 '진입'이 아니라 이것으로 남긴다 — 시크·구역 편집·영상 열기 때마다 '진입'이 쏟아지지 않게(test4 의 멈춘 트럭 `#14` 가 이렇게 남는다).
+- **화면 전환 뒤엔 멈춘다**: 구역은 한 영상의 한 화면 기준이라 전환이 감지되면 이벤트를 멈추고 로그에 `화면 전환 — 구역 이벤트 멈춤 (뷰를 알 수 없음)` 표시 한 줄을 남긴다(구역이 있을 때만). 안에 있던 물체의 '나감'은 기록하지 않는다.
+  같은 뷰로 돌아와도 모른다 — **시크하면 다시 시작**한다(사용자가 지금 화면에 구역이 맞다고 보는 것). 2b(뷰 식별)가 이걸 풀어야 한다.
+- **앱 연결**(`PlaybackLoop`, 파일만): 추적기 뒤 `zoneEvents.Update(dets, _zoneShapes, posMs, w, h)` — 움직이는 동안(추적기에 안 넣는 프레임)은 부르지 않는다. 구역은 UI 스레드가 고치므로 루프는 **불변 스냅샷**(`RoiSet.Snapshot()` → `_zoneShapes`)을 읽고,
+  구역을 읽거나 고치면 깃발(`_zoneEventsReset`)을 꺼내 감지기를 비운다(`PublishZoneShapes` — `LoadRoi`·`ClearRoi`·`OnRoiZonesChanged`). 시크는 `resetTracker` 와 같은 자리에서 비운다. 이벤트는 그 프레임과 같은 디스패치에서 로그에 더한다.
+- **로그**(`MainWindow.Events.cs`): 영상 칸·재생 줄 아래 패널 — 헤더 `이벤트 N건`(N = 표시를 뺀 건수, 누르면 접고 펴기, 기본은 접힘) · `CSV 저장` · `비우기`, 펼치면 목록(112px, 최근이 위, 열: 시각 · `CAR #40`(클래스 색) · `Z1 차로`(구역 색) · 동작).
+  항목 UIA 이름 `00:11.2 CAR #40 Z1 차로 진입`. 최대 2000건(넘으면 오래된 것부터 버림). 소스를 내리면 비운다 — 남기려면 [CSV 저장].
+- **CSV**: `<영상>.events.csv`(있으면 덮어씀, UTF-8 BOM 없음, CRLF, 오래된 것부터) — 열 `ms,time,event,track,label,zone,zone_kind,dwell_ms`, event ∈ `enter` · `initial` · `exit` · `lost` · `view_changed`(표시 행은 track~zone_kind 가 빔), dwell_ms 는 나감·추적 끝 행만. 저장하면 상태바에 `이벤트 저장: …events.csv (N건)`. `.gitignore` 에 `*.events.csv`.
+- **확인**: `TrackerCheck selftest` ⑩(십자 통과의 시각·머문 시간, 경계 흔들림, 나감 확정, 추적 끊김·가림, 무시 구역, 겹친 구역, 이미 안에 있음·Reset, 화면 전환 멈춤, 번호 없는 박스, 구역 삭제 — 10개) +
+  `tests/ui/Test-ZoneEvents.ps1`(아래 '테스트'). 로그의 실제 모양은 스크린샷으로 봤다(접힘·펼침).
+- **남은 것**: 유고 규칙(정지 + 구역 유형 + 주변 흐름 — 4단계), 2b(뷰 식별 — 전환 뒤에도 이벤트를 이어 간다), 스냅샷 저장(사용자가 '화면 + CSV 버튼'을 골라 안 함), 이벤트 필터(클래스·구역), 항목을 눌러 그 시각으로 시크, 카메라·HUD 연결
 
 ## 도메인 지식 — NPU (AMD Ryzen AI — 왼쪽 패널 "추론 장치"에서 GPU/NPU 선택)
 
@@ -572,6 +593,7 @@ HUD 는 캡처 크기 — 크기 없는 판은 아래 '화면 가장자리' 문�
 ## 화면 디자인 (2026-11-01 개편 — 시안 B '관제 콘솔' · 색 조합 B2 '스틸 블루')
 
 사용자가 시안 셋(A Fluent · B 관제 콘솔 · C 미니멀) 중 B 를, B 의 색 조합 다섯 중 B2 를 골랐다 (시안 캔버스는 claude.ai 비공개 아티팩트 `SvZFt9Tv6q79nAoze7c1es`).
+- **이벤트 로그 패널**(2026-11-03): 영상 칸·재생 줄 **아래**, 영상(파일)일 때만 — 접으면 헤더 한 줄(`이벤트 N건` · `CSV 저장` · `비우기`, 영상 칸이 그만큼 줄어든다), 펼치면 목록 112px (아래 "구역 진입·나감 이벤트")
 - **배치**: 왼쪽 패널 232px(소스: 파일 열기 · 카메라 콤보 + 새로고침(아이콘만) + 카메라 시작 · 모니터 콤보 + 화면 HUD / 분석: SAHI / 구역: 목록 · 추가·지우기 · 선택한 구역 유형 (2026-11-03 — 아래 "관심 구역") / 추론 장치 / 맨 아래 정지). 기본 창 높이 820 에서 패널 전체가 스크롤 없이 보인다(구역 목록은 3줄까지, 그 위로는 목록 안에서 스크롤 — 목록 아래에 파일 이름 줄을 두면 '추론 장치' 콤보가 스크롤 아래로 밀려 개수 칸 툴팁으로 옮겼다)
   | 영상 칸(모서리 눈금은 영상 뒤 장식) + 재생 줄(재생/일시정지 · 슬라이더 · 시간), 맨 아래 창 전체 폭 상태바(상태 점 · 문구 · NPU 진행 · 해상도 · FPS · 검출 수 —
   FPS·검출 칸은 폭 고정, 값이 바뀌어도 다른 글자가 안 밀린다: '화면 HUD' 절의 상태바 항목).
@@ -690,6 +712,10 @@ pwsh tests/ui/Run-All.ps1
   (10.6~11.4초), 박스는 보이되 번호 없음 → 안정된 뒤 `화면 전환 · 번호 새로 매김` 배지(11.5~13.5초)와 돌기 전 최대 번호보다 큰 새 번호 → 13.9초부터 배지 없음·번호 있음(13.43초의 한 프레임 튐은 전환 아님) → 정지하면 배지 사라짐.
   **test5**(27초로 시크해 32.6초까지): 검은 끊김 동안(29.7~30.1초) `화면 끊김` 배지 — 이동 중·전환 배지는 한 번도 안 뜸, 끊김 앞뒤로 정지 번호(`#2`)가 그대로, 끊김 뒤 배지 없이 번호가 다시 붙음. 항목 수 21.
   전환 때 추적기를 비우는 줄 자체는 이 테스트로 못 가른다(위 '확인' — 그 줄을 뺀 변종도 통과) — 추적기 단위 selftest ⑨ 가 본다
+- `Test-ZoneEvents.ps1`(2026-11-03): 구역 진입·나감 이벤트 로그(위 "구역 진입·나감 이벤트"). test4.mp4 옆에 구역 파일(차로 Z1 하나 — 멈춘 덤프트럭의 발 위치를 품는다)을 미리 써 두고(끝나면 지움) 연다 — 소스 없음엔 패널이 없고 열면 접힌 헤더 한 줄
+  → 펼치면 목록 → 처음 1초 안에 `Z1 차로 이미 안에 있음` 으로 잡힌 트랙 중 도는 구간(10.5초)까지 나가지 않은 것이 있다(멈춘 트럭 `#14`; 같이 잡힌 지나가던 차는 곧 `나감`) → 카메라가 돈 뒤 `화면 전환 — 구역 이벤트 멈춤` 표시가 한 번(11.5초) 남고
+  그 뒤 이벤트는 없다 → 헤더 개수 = 표시를 뺀 항목 수 → `CSV 저장`: 영상 옆 events.csv(헤더·줄 수 = 항목 + 1·initial 행·view_changed 한 행)와 상태바 문구 → 5초로 시크하면 멈춘 트럭이 다시 기록된다(멈췄던 이벤트가 풀림) →
+  `비우기`(목록·개수 0, 저장 꺼짐) → 접으면 목록이 사라짐 → 정지하면 패널이 사라짐 → 구역 없는 영상(test1)은 4초 재생해도 0건. 로그 항목의 시각 범위·개수는 영상·검출에 따라 달라 성질만 본다. 항목 수 21
 - `Test-VfrPlayback.ps1`: 길이 정보 없는 60fps webm(`media/vfr60_nodur.webm`, 0.9 MB, 저장소에 포함)으로 VFR 경로 전체 —
   백그라운드 길이 분석, 재생 속도, 앞·뒤 시크(grab·다시 열기), **재생 중 뒤로 시크 직후 SAHI → 그 위치 분석**(2026-10-30 추가 — 14초를 넘긴 뒤 12.5초로 되감고 35ms 뒤에 누른다), EOF 뒤 처음부터. 이 파일은 OpenCV 로 만든 60fps VP8 webm 의
   Segment Info `Duration`(0x4489) 요소를 같은 길이의 `Void`(0xEC)로 덮은 것이다 (필요하면 같은 방법으로 다시 만든다).
@@ -730,7 +756,12 @@ pwsh tests/ui/Run-All.ps1
   옛 판 `UiLatency` 형식이 남은 PowerShell 세션에선 분명한 메시지로 멈춘다(Add-Type 형식은 못 바꿈 — 새 pwsh 에서 돌릴 것)
 - 종료 코드 = 실패 건수(`Run-All` 은 0/1). 파일 열기 대화상자 자동화 요령 등은 `Common.ps1` 머리말에 정리해 두었다.
   `Run-All` 은 테스트 파일이 try 밖에서 throw 해도(영상·빌드 없음) 그 파일만 실패로 세고 다음 파일을 돈다(2026-10-30 — 예전엔 거기서 통째로 멈췄다)
-- 마지막 전체 통과: 2026-11-03, Debug — 화면 전환 감지(위 "화면 전환 감지")를 더하고 구역 안내 문구(구역이 없으면 일시정지해도 안내를 안 띄움)를 정리한 뒤. 사용자가 PC 를 쓰는 중에 돌렸다(`Test-Roi` 는 실제 마우스를 움직인다).
+- 마지막 전체 통과: 2026-11-03, Debug — 구역 진입·나감 이벤트 로그(위 "구역 진입·나감 이벤트")를 더한 뒤. 사용자가 PC 를 쓰는 중에 돌렸다. `Run-All` 한 번에 `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 · `Test-SceneChange` 21 ·
+  `Test-VfrPlayback` 26 · `Test-ScreenHud` 39 · `Test-NpuSwitch` 28 통과, **`Test-ZoneEvents`(새 파일)는 21 중 '비우기' 1건 실패** — 시크 뒤 재생 중에 비웠더니 비운 직후에도 새 이벤트가 쌓여 0건을 못 봤다(테스트의 경쟁 조건 —
+  앱 동작은 맞다). 멈춘 채 비우도록 고쳐 따로 3번 연속 통과(21). 합계 208. `TrackerCheck selftest` 통과(새 ⑩ 구역 이벤트 10개 포함). Debug 빌드 경고 0.
+  스크린샷으로 로그 모양을 봤다(접힘: 재생 줄 아래 헤더 한 줄, 펼침: 시각 · `CAR #6`(클래스 색) · `Z1 차로`(구역 색) · 동작). 스크린샷 캡처는 `CopyFromScreen` 이 창을 흰색으로 찍는 일이 자주 있어(앱은 응답 중, 일시정지·앞으로 올리기·재시도로도 안 풀림)
+  `PrintWindow(hwnd, hdc, PW_RENDERFULLCONTENT)` 로 바꾸니 매번 정상이다. **배포본은 아직 `3939f40` 그대로**(다시 배포는 요청할 때만).
+- 그 전: 2026-11-03, Debug — 화면 전환 감지(위 "화면 전환 감지")를 더하고 구역 안내 문구(구역이 없으면 일시정지해도 안내를 안 띄움)를 정리한 뒤. 사용자가 PC 를 쓰는 중에 돌렸다(`Test-Roi` 는 실제 마우스를 움직인다).
   `Run-All` 한 번에 `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 · **`Test-SceneChange` 21(새 파일)** · `Test-VfrPlayback` 26 · `Test-ScreenHud` 39(DXGI, 박스 없음, 결함 주입 포함) · `Test-NpuSwitch` 28 항목 = 187
   (다시 NPU(캐시) 6.1초, ①② 창 응답 WM_NULL 최대 1 ms · UIA 최대 44 ms). `TrackerCheck selftest` 통과(새 ⑨ 화면 전환 감지 14개 포함). Debug 빌드 경고 0.
   스크린샷으로 배지 모양을 봤다(일시정지해 찍음 — 도는 중엔 호박색 `● 화면 이동 중`에 박스는 번호 없이, 안정된 직후엔 파란 `● 화면 전환 · 번호 새로 매김`에 새 번호 `#40`…). 재생 중 캡처는 창이 흰색으로 찍혔다(앱은 응답 중 — 캡처 쪽 문제, 일시정지 뒤 창을 앞으로 올리고 찍으면 정상).
@@ -898,6 +929,9 @@ pwsh tests/ui/Run-All.ps1
   2026-11-03 화면 전환 감지에선 이것들을 확인하지 않았다: 카메라 소스(적용하지 않음 — 웹캠의 d 분포), 조금만 도는 카메라(작은 팬)의 기준 거리, 밝기가 크게 흔들리는 영상(역광·터널 진출입·야간 — test1~5 는 낮 장면이고
   test5 는 터널 출구 근처지만 카메라가 고정이다), 아주 어두운 영상(모든 픽셀이 24 이하면 빈 프레임으로 봐 안정이 안 돼 번호가 안 붙을 수 있다 — `BlankMax`), 10fps 이하 파일의 회전, 60fps 를 넘는 소스에서 안정 3장이 너무 짧은지,
   시크 직후 첫 프레임의 배지, 100% 가 아닌 배율에서의 배지 모양, 전환 때 `tracker.Reset()` 호출 자체(위 '확인')
+  2026-11-03 구역 이벤트 로그에선 이것들을 확인하지 않았다: 구역이 여럿이거나 복잡한 다각형일 때의 경계 판정(selftest 는 직사각형), 이벤트가 수백 건 쌓였을 때의 목록 스크롤·성능(최대 2000건 — 항목마다 UIA 노드가 생긴다),
+  발 위치가 프레임 가장자리에 걸친 큰 물체(박스 아래가 잘려 발이 위로 보인다), 100% 가 아닌 배율에서의 로그 모양, CSV 를 엑셀로 열었을 때(ASCII 만 써서 BOM 없이도 열릴 것으로 보지만 확인 안 함), 읽기 전용 폴더의 'CSV 저장 실패' 문구,
+  클래스가 흔들리는 물체(car↔truck)의 로그 라벨(이벤트 시점의 라벨이라 같은 물체가 진입·나감에 다른 클래스로 찍힐 수 있다)
 - 스크립트는 UTF-8 **BOM** 으로 저장한다 (Windows PowerShell 5.1 이 한국어 문자열을 깨뜨리지 않게). PowerShell 7 에서 확인
 
 ### 테스트 영상 내용 (유고 감지 구상용 기준 사례, 2026-10-23 분석)

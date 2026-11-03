@@ -152,6 +152,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
                 <Border Grid.Row="0" Background="Black" BorderBrush="{StaticResource LineBrush}" BorderThickness="1">
@@ -223,6 +224,59 @@
                                VerticalAlignment="Center"
                                MinWidth="110" TextAlignment="Right"/>
                 </Grid>
+
+                <!-- ===== 구역 이벤트 로그 (MainWindow.Events.cs) =====
+                     구역에 들어오고 나간 물체가 최근 순으로 쌓인다. 접어 두면 헤더 한 줄(기본), 펼치면 목록이 영상 칸을 그만큼 줄인다.
+                     영상(파일)이 열려 있을 때만 보인다. [CSV 저장] 은 영상 옆 <영상>.events.csv. 시안: 영상 아래 접이식 로그 + 화면 + CSV 저장 버튼 -->
+                <Border x:Name="EventLogPanel" Grid.Row="2" Margin="0,8,0,0" Visibility="Collapsed"
+                        Background="{StaticResource SideBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="3">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid Margin="4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Button x:Name="Btn_EventToggle"
+                                    Content="이벤트 0건" local:Ui.Glyph="&#xE70E;"
+                                    Height="26" Style="{StaticResource SideButton}"
+                                    ToolTipService.ShowDuration="60000"
+                                    Click="Btn_EventToggle_Click"/>
+                            <Button x:Name="Btn_EventSave" Grid.Column="1" Margin="6,0,0,0"
+                                    Content="CSV 저장" local:Ui.Glyph="&#xE74E;"
+                                    Height="26" Style="{StaticResource SideButton}"
+                                    ToolTipService.ShowOnDisabled="True" ToolTipService.ShowDuration="60000"
+                                    IsEnabled="False"
+                                    Click="Btn_EventSave_Click"/>
+                            <Button x:Name="Btn_EventClear" Grid.Column="2" Margin="6,0,0,0"
+                                    Content="비우기" local:Ui.Glyph="&#xE74D;" local:Ui.GlyphBrush="{StaticResource DangerBrush}"
+                                    Height="26" Style="{StaticResource SideButton}"
+                                    ToolTip="이벤트 목록을 비웁니다 (저장한 CSV 는 그대로)"
+                                    IsEnabled="False"
+                                    Click="Btn_EventClear_Click"/>
+                        </Grid>
+                        <ListBox x:Name="EventList" Grid.Row="1" Height="112" Margin="4,0,4,4"
+                                 Style="{StaticResource LogListBox}" Visibility="Collapsed">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding Time}" Width="58" VerticalAlignment="Center"
+                                                   FontFamily="{StaticResource MonoFont}" FontSize="11" Foreground="{StaticResource SubTextBrush}"/>
+                                        <TextBlock Text="{Binding LabelText}" Width="124" VerticalAlignment="Center"
+                                                   FontFamily="{StaticResource MonoFont}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding LabelBrush}"/>
+                                        <TextBlock Text="{Binding ZoneText}" Width="118" VerticalAlignment="Center"
+                                                   FontFamily="{StaticResource MonoFont}" FontSize="11" Foreground="{Binding ZoneBrush}"/>
+                                        <TextBlock Text="{Binding ActionText}" VerticalAlignment="Center" FontSize="12"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+                </Border>
             </Grid>
         </Grid>
 

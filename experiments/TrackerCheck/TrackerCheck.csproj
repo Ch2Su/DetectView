@@ -19,6 +19,7 @@
     <Compile Include="..\..\Roi.cs" />
     <Compile Include="..\..\SceneThumbnail.cs" />
     <Compile Include="..\..\SceneChange.cs" />
+    <Compile Include="..\..\ZoneEvents.cs" />
   </ItemGroup>
 
   <ItemGroup>

@@ -45,6 +45,20 @@ namespace YOLO11_Test
         private static Brush Frozen(Brush b) { b.Freeze(); return b; }
 
         public static T Res<T>(string key, T fallback) => Application.Current?.TryFindResource(key) is T v ? v : fallback;
+
+        private static readonly Dictionary<string, Brush> BoxBrushes = [];
+
+        /// <summary>검출 클래스 색(App.xaml 의 Box.&lt;라벨&gt;, 목록에 없으면 Box.Other) — 이벤트 로그의 'CAR #40' 글자색</summary>
+        public static Brush BoxBrushOf(string label)
+        {
+            if (BoxBrushes.TryGetValue(label, out var b)) return b;
+            var app = Application.Current;
+            Color c = app?.TryFindResource("Box." + label) is Color found ? found
+                : app?.TryFindResource("Box.Other") is Color other ? other : Colors.White;
+            var brush = new SolidColorBrush(c);
+            brush.Freeze();
+            return BoxBrushes[label] = brush;
+        }
     }
 
     /// <summary>

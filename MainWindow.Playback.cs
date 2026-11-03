@@ -246,6 +246,10 @@ namespace YOLO11_Test
             var scene = new SceneChangeDetector();
             double sceneNoticeUntilMs = double.NegativeInfinity;   // '화면 전환' 배지를 보일 영상 시각(파일)의 끝
             var badge = SceneBadgeKind.None;
+
+            // 구역 진입·나감 이벤트 (파일 전용 — ZoneEvents.cs, 2026-11-03): 추적기를 거친 박스의 발 위치가 구역 안인지로 본다. 구역은 UI 스레드가 고치므로
+            // 불변 스냅샷(_zoneShapes)을 읽고, 구역이 바뀌었다는 깃발(_zoneEventsReset)을 꺼내면 감지기를 비운다. 시크·화면 전환 뒤엔 앞뒤가 이어지지 않아 비우거나 멈춘다
+            var zoneEvents = new ZoneEventDetector();
             try
             {
                 while (!ct.IsCancellationRequested)
@@ -447,10 +451,13 @@ namespace YOLO11_Test
                     {
                         tracker.Reset();
                         scene.Reset();
+                        zoneEvents.Reset();   // 시크는 사용자가 지금 화면에 구역이 맞다고 보는 것 — 멈췄던 이벤트도 다시 시작
                         sceneNoticeUntilMs = double.NegativeInfinity;
                         badge = SceneBadgeKind.None;
                         resetTracker = false;
                     }
+                    if (Interlocked.Exchange(ref _zoneEventsReset, 0) == 1) zoneEvents.Reset();   // 구역을 읽었거나 고쳤다
+                    List<ZoneEvent>? frameEvents = null;
                     bool feedTracker = true;
                     if (sceneThumbBytes != null)
                     {
@@ -466,6 +473,9 @@ namespace YOLO11_Test
                             {
                                 tracker.Reset();   // 직전과 다른 화면 — 이전 트랙은 이어지지 않는다 (번호는 이어서 센다)
                                 sceneNoticeUntilMs = posMs + SceneNoticeMs;
+                                // 구역은 그 구역을 그린 화면의 것 — 전환 뒤엔 같은 뷰인지 알 수 없어(2b) 이벤트를 멈춘다. 구역이 있을 때만 로그에 표시를 남긴다
+                                var marker = zoneEvents.Suspend(posMs);
+                                if (marker != null && _zoneShapes.Length > 0) frameEvents = [marker];
                             }
                             badge = posMs < sceneNoticeUntilMs ? SceneBadgeKind.Changed : SceneBadgeKind.None;
                         }
@@ -474,6 +484,16 @@ namespace YOLO11_Test
                     {
                         try { dets = tracker.UpdateTagged(dets, isCamera ? clock.Elapsed.TotalMilliseconds : posMs, width, height); }
                         catch (Exception ex) { Debug.WriteLine($"추적기 오류: {ex.Message}"); tracker.Reset(); }
+
+                        if (!isCamera)
+                        {
+                            try
+                            {
+                                var ze = zoneEvents.Update(dets, _zoneShapes, posMs, width, height);
+                                if (ze.Count > 0) (frameEvents ??= []).AddRange(ze);
+                            }
+                            catch (Exception ex) { Debug.WriteLine($"구역 이벤트 오류: {ex.Message}"); zoneEvents.Reset(); }
+                        }
                     }
                     var badgeNow = badge;
 
@@ -484,6 +504,7 @@ namespace YOLO11_Test
                         MainImage.Source = resultImage;
                         FrameBoxes.Show(dets, width, height);   // 영상과 같은 디스패치에서 — 박스가 다른 프레임 위에 남지 않게
                         ShowSceneBadge(badgeNow);
+                        if (frameEvents != null) AddZoneEvents(frameEvents);   // 이벤트 로그 — 이 프레임과 같은 디스패치에서
 
                         // 시크가 대기 중이면 이 프레임은 이전 위치의 것 → 진행 표시를 되돌리지 않는다
                         if (_mode == SourceMode.File && !_isUserDraggingSlider && !SeekPending)

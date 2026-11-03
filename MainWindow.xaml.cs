@@ -42,6 +42,7 @@ namespace YOLO11_Test
             InitializeYoloModel();
             InitHudTracking();
             InitRoi();
+            InitEvents();
             FrameBoxes.LegendTextChanged += ShowClassCounts;   // HUD 오버레이의 범례는 StartHud 에서 잇는다
             FrameBoxes.TrackTextChanged += ShowTrackMarks;
             Loaded += (_, _) => { RefreshCameras(); RefreshMonitors(); };
@@ -72,6 +73,7 @@ namespace YOLO11_Test
             DisposeCapture();
             CloseOverlay();
             ClearRoi();   // 구역은 열려 있던 영상의 것
+            ClearZoneEvents();   // 이벤트 로그도 (남기려면 [CSV 저장])
             ShowSceneBadge(SceneBadgeKind.None);
         }
 
@@ -86,6 +88,7 @@ namespace YOLO11_Test
             MainImage.Source = null;
             FrameBoxes.Clear();
             ClearRoi();   // 열기에 실패한 경우(구역을 읽은 뒤 실패)에도 구역이 남지 않게
+            ClearZoneEvents();
             ShowSceneBadge(SceneBadgeKind.None);
             PlaceholderText.Text = "파일을 열거나 카메라를 시작하세요";
 
@@ -196,6 +199,7 @@ namespace YOLO11_Test
             }
 
             UpdateRoiUi();   // 구역 편집 가능 여부는 모드·SAHI 중 여부를 따른다
+            UpdateEventPanel();   // 이벤트 로그 패널은 영상(파일)일 때만
         }
 
         // ---------- 제목 표시줄 ----------

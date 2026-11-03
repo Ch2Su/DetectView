@@ -71,6 +71,16 @@ namespace YOLO11_Test
     }
 
     /// <summary>
+    /// 구역 하나의 모양 스냅샷 — 재생 루프 스레드가 읽는 불변 값. UI 스레드가 구역을 고치는 동안 루프가 같은 목록을 읽지 않게
+    /// (구역은 멈춘 뒤에만 편집되지만 멈추는 순간 루프가 한 프레임을 더 처리 중일 수 있다) 바뀔 때마다 새로 만들어 참조를 바꾼다
+    /// </summary>
+    internal sealed record ZoneShape(int Id, RoiKind Kind, RoiPoint[] Points)
+    {
+        public string Name => $"Z{Id} {RoiKinds.Name(Kind)}";
+        public bool Contains(double x, double y) => RoiGeometry.Contains(Points, x, y);
+    }
+
+    /// <summary>
     /// 구역 순수 알고리즘 (WPF 없음 — experiments/TrackerCheck 가 소스로 링크해 selftest 로 본다)
     /// </summary>
     internal static class RoiGeometry
@@ -176,6 +186,12 @@ namespace YOLO11_Test
         public bool Remove(int id) => _zones.RemoveAll(z => z.Id == id) > 0;
 
         public RoiZone? Find(int id) => _zones.FirstOrDefault(z => z.Id == id);
+
+        /// <summary>
+        /// 지금 구역들의 불변 복사본 — 재생 루프 스레드가 구역 이벤트 감지(ZoneEvents.cs)에 쓴다. 이 객체의 점 목록은 UI 스레드가 고치므로
+        /// 루프는 원본을 읽지 않고 이 복사본을 읽는다 (바뀔 때마다 새로 만들어 참조를 바꾼다)
+        /// </summary>
+        public ZoneShape[] Snapshot() => _zones.Select(z => new ZoneShape(z.Id, z.Kind, z.Points.ToArray())).ToArray();
 
         /// <summary>
         /// (x, y) 를 품은 구역 중 가장 작은 것 — 큰 구역 안의 작은 구역(차로 안의 정지선·대기 등)도 고를 수 있게.
