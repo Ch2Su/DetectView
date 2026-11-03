@@ -24,7 +24,7 @@ dotnet publish YOLO11_Test.csproj -c Release -r win-x64 --self-contained true -p
 ```
 
 - 프로젝트 파일(`YOLO11_Test.csproj`)을 꼭 지정한다. 생략하면 폴더의 `.slnx` 가 잡혀 `NETSDK1194`(솔루션 + `--output`) 경고가 난다
-- 결과: `DetectView.exe` 126.4 MB (2026-10-24, Windows ML 런타임. 이전 DirectML 1.23 은 119.4 MB. 2026-10-30·10-31·11-01 다시 배포도 같은 크기 — 11-01 은 세 번: 이슈 수정판 `53db7ed`, 화면 개편판 `c274575`, 클래스별 검출 수 범례판 `fb06cf9` · 11-02 추적기 연결·라벨/꺾쇠·상태바판 `3939f40`). 테스트 영상(`test1~4.mp4`)은 같은 폴더에 있어도 덮어쓰지 않는다
+- 결과: `DetectView.exe` 126.4 MB (2026-10-24, Windows ML 런타임. 이전 DirectML 1.23 은 119.4 MB. 2026-10-30·10-31·11-01 다시 배포도 같은 크기 — 11-01 은 세 번: 이슈 수정판 `53db7ed`, 화면 개편판 `c274575`, 클래스별 검출 수 범례판 `fb06cf9` · 11-02 추적기 연결·라벨/꺾쇠·상태바판 `3939f40` · 11-03 관심 구역·화면 전환 감지·구역 이벤트 로그·유고 규칙·화면 식별판 `10f7b31`). 테스트 영상(`test1~4.mp4`)은 같은 폴더에 있어도 덮어쓰지 않는다
 - publish 뒤에는 배포본으로 UI 테스트를 돌린다: `pwsh tests\ui\Run-All.ps1 -ExeDir publish_gpu_ver`
 - **`publish_gpu_ver\best.onnx` 는 루트의 것과 다를 수 있고, 사용자가 수시로 바꾼다** (YOLO26s ↔ YOLO26x(COCO 80클래스),
   데이터셋이 다른 7클래스 모델 등 — 2026-09-23 한 세션 안에서도 바뀌었다). 건드리지 말 것.
@@ -816,33 +816,40 @@ pwsh tests/ui/Run-All.ps1
   옛 판 `UiLatency` 형식이 남은 PowerShell 세션에선 분명한 메시지로 멈춘다(Add-Type 형식은 못 바꿈 — 새 pwsh 에서 돌릴 것)
 - 종료 코드 = 실패 건수(`Run-All` 은 0/1). 파일 열기 대화상자 자동화 요령 등은 `Common.ps1` 머리말에 정리해 두었다.
   `Run-All` 은 테스트 파일이 try 밖에서 throw 해도(영상·빌드 없음) 그 파일만 실패로 세고 다음 파일을 돈다(2026-10-30 — 예전엔 거기서 통째로 멈췄다)
-- 마지막 전체 통과: 2026-11-03 오후, Debug — 화면 식별(2b, 위 "화면 식별")을 더한 뒤. 사용자가 PC 를 쓰는 중에 돌렸다(`Test-Roi`·`Test-ViewIdentity` 는 실제 마우스를 움직인다). `Run-All` 한 번에 `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 ·
+- 마지막 전체 통과: 2026-11-03 오후, **배포본 `publish_gpu_ver`** — `main`(`10f7b31`, 관심 구역·화면 전환 감지·구역 이벤트 로그·작은 물체 박스 조정·유고 규칙·화면 식별 — 앞 배포 `3939f40` 은 옛 기록의 해시라 `main` 의 조상이 아니다)으로 다시 배포
+  (exe 126.4 MB(132,572,382 바이트), pdb·lib·dll 없음, 배포 폴더 `best.onnx`(09-17 visible, MD5 `87D0E1CB…` — 루트(09-11)보다 새것이라 `PreserveNewest` 가 덮어쓰지 않음)·`best.npu.onnx`(`5CE87F90…`)·테스트 영상 그대로, 그래픽 설정 `GpuPreference=0` 그대로.
+  Release DLL 에 새 코드(`ViewRegistry`·`WarmUp`·`IncidentDetector`·`SceneChangeDetector`)가 있고 결함 이름(`hud-*-fail`)은 없음 — `strings` 가 없어 파이썬으로 바이트를 찾았다).
+  `Run-All -ExeDir publish_gpu_ver` 한 번에 `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 · `Test-SceneChange` 21 · `Test-ZoneEvents` 21 · `Test-Incident` 16 · `Test-ViewIdentity` 27 · `Test-VfrPlayback` 26 ·
+  `Test-ScreenHud` 25(DXGI, 박스 없음, 결함 주입은 Release 라 빠짐) · `Test-NpuSwitch` 28 항목 = 237 (NPU 첫 전환 4.0초(캐시), ①② 창 응답 WM_NULL 최대 1 ms · UIA 최대 7~9 ms,
+  캐시 키 `5CE87F90…_1.8.80.0_1.27.20260711.1.7b7c0e2` — 올라온 `onnxruntime.dll` 과 같음). 테스트가 찍은 재생 처리 GPU 95.3 · NPU 45.8 FPS, HUD 114.2 FPS(참고용).
+  HUD 대상 모니터에 물체가 없어 오버레이 범례·번호는 빈 채로만 봤다(이번 변경은 HUD 를 건드리지 않아 test4 장면을 띄운 재검사는 안 했다). 테스트가 남긴 구역·이벤트 파일 없음.
+- 그 전: 2026-11-03 오후, Debug — 화면 식별(2b, 위 "화면 식별")을 더한 뒤. 사용자가 PC 를 쓰는 중에 돌렸다(`Test-Roi`·`Test-ViewIdentity` 는 실제 마우스를 움직인다). `Run-All` 한 번에 `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 ·
   `Test-SceneChange` 21 · `Test-ZoneEvents` 21 · `Test-Incident` 16 · **`Test-ViewIdentity` 27(새 파일)** · `Test-VfrPlayback` 26 · `Test-ScreenHud` 39(DXGI, 박스 없음, 결함 주입 포함) · `Test-NpuSwitch` 28 항목 = 251
   (재생 처리 NPU 49.1 · GPU 96.9 FPS·HUD 112.4 FPS 는 참고용, ①② 창 응답 WM_NULL 최대 1 ms · UIA 최대 11 ms). `TrackerCheck selftest` 통과(새 ⑫ 화면 식별 11개 포함). Debug 빌드 경고 0.
   **고친 과정**: 첫 전체 실행은 2건 실패 — `Test-ViewIdentity` 표본 수 기준(150)이 빡빡했고(147개, 기준을 100 으로) `Test-VfrPlayback` 첫 '재생 속도'가 0.86배(두 번 더 돌려도 0.80·0.89 — 화면 식별을 넣기 전엔 안 나던 것, 첫 `Identify` 의 네이티브 초기화 지연 — 앱을 켤 때 워밍업하도록 고침, 위).
   2b 로 문구가 바뀐 기존 테스트 기대값은 고쳤다(구역 개수 칸 `V1 · 1개`, 전환 배지·표시 행 글자, CSV 머리 `…dwell_ms,note` 와 incident 행 끝의 빈 note 열). 합성 revisit 영상의 화면 전환 표시는 8.2·14.2·22.2·26.2초, 돌아온 A 의 유고는 19.4초(= 14.2 + 5.2)에 다시 선언됐다.
-  스크린샷으로 모양을 보지 않았다(UI 테스트는 UIA 글자만 본다). **배포본은 아직 `3939f40` 그대로**(다시 배포는 요청할 때만).
+  스크린샷으로 모양을 보지 않았다(UI 테스트는 UIA 글자만 본다). (배포본은 같은 날 `10f7b31` 로 다시 배포 — 위)
 - 그 전: 2026-11-03, Debug — 유고 규칙(위 "유고 규칙")을 더한 뒤. 사용자가 PC 를 쓰는 중에 돌렸다(`Test-Roi` 는 실제 마우스를 움직인다). `Run-All` 한 번에 `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 ·
   `Test-SceneChange` 21 · `Test-ZoneEvents` 21 · **`Test-Incident` 16(새 파일)** · `Test-VfrPlayback` 26 · `Test-ScreenHud` 39(DXGI, 박스 없음, 결함 주입 포함) · `Test-NpuSwitch` 28 항목 = 224
   (재생 처리 NPU 49.5 · GPU 93.8 FPS 는 참고용, ①② 창 응답 WM_NULL 최대 1 ms · UIA 최대 7 ms). `TrackerCheck selftest` 통과(새 ⑪ 유고 규칙 9개 포함). Debug 빌드 경고 0.
   시험한 빌드와 이 기록 사이에 바뀐 건 `IncidentRules.cs` 의 문서 주석뿐이고 다시 빌드해 경고 0 을 봤다. `Test-ZoneEvents` 의 로그엔 이제 유고 후보·해소 행이 섞여 나오지만(예: `유고 해소 (화면 전환)`) 그 검사들은 고치지 않고 통과한다.
-  스크린샷으로 빨간 박스(`TRUCK #14 유고? 0.96`)·헤더 `⚠ 유고 후보 1`·로그의 빨간 행을 봤다. **배포본은 아직 `3939f40` 그대로**(다시 배포는 요청할 때만).
+  스크린샷으로 빨간 박스(`TRUCK #14 유고? 0.96`)·헤더 `⚠ 유고 후보 1`·로그의 빨간 행을 봤다. (배포본은 같은 날 `10f7b31` 로 다시 배포 — 위)
 - 그 전: 2026-11-03, Debug — 구역 진입·나감 이벤트 로그(위 "구역 진입·나감 이벤트")를 더한 뒤. 사용자가 PC 를 쓰는 중에 돌렸다. `Run-All` 한 번에 `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 · `Test-SceneChange` 21 ·
   `Test-VfrPlayback` 26 · `Test-ScreenHud` 39 · `Test-NpuSwitch` 28 통과, **`Test-ZoneEvents`(새 파일)는 21 중 '비우기' 1건 실패** — 시크 뒤 재생 중에 비웠더니 비운 직후에도 새 이벤트가 쌓여 0건을 못 봤다(테스트의 경쟁 조건 —
   앱 동작은 맞다). 멈춘 채 비우도록 고쳐 따로 3번 연속 통과(21). 합계 208. `TrackerCheck selftest` 통과(새 ⑩ 구역 이벤트 10개 포함). Debug 빌드 경고 0.
   스크린샷으로 로그 모양을 봤다(접힘: 재생 줄 아래 헤더 한 줄, 펼침: 시각 · `CAR #6`(클래스 색) · `Z1 차로`(구역 색) · 동작). 스크린샷 캡처는 `CopyFromScreen` 이 창을 흰색으로 찍는 일이 자주 있었다(앱은 응답 중, 일시정지·앞으로 올리기·재시도로도 안 풀림 — **사용자가 짚었다: 노트북 덮개를 닫은 상태일 때 그렇다**. 화면이 꺼진 상태에선 데스크톱을 베끼는 캡처가 창 내용을 못 얻는다. 덮개가 열려 있을 때의 정상 캡처와 맞아떨어진다)
-  `PrintWindow(hwnd, hdc, PW_RENDERFULLCONTENT)` 로 바꾸니 매번 정상이다. **배포본은 아직 `3939f40` 그대로**(다시 배포는 요청할 때만).
+  `PrintWindow(hwnd, hdc, PW_RENDERFULLCONTENT)` 로 바꾸니 매번 정상이다. (배포본은 같은 날 `10f7b31` 로 다시 배포 — 위)
 - 그 전: 2026-11-03, Debug — 화면 전환 감지(위 "화면 전환 감지")를 더하고 구역 안내 문구(구역이 없으면 일시정지해도 안내를 안 띄움)를 정리한 뒤. 사용자가 PC 를 쓰는 중에 돌렸다(`Test-Roi` 는 실제 마우스를 움직인다).
   `Run-All` 한 번에 `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 · **`Test-SceneChange` 21(새 파일)** · `Test-VfrPlayback` 26 · `Test-ScreenHud` 39(DXGI, 박스 없음, 결함 주입 포함) · `Test-NpuSwitch` 28 항목 = 187
   (다시 NPU(캐시) 6.1초, ①② 창 응답 WM_NULL 최대 1 ms · UIA 최대 44 ms). `TrackerCheck selftest` 통과(새 ⑨ 화면 전환 감지 14개 포함). Debug 빌드 경고 0.
   스크린샷으로 배지 모양을 봤다(일시정지해 찍음 — 도는 중엔 호박색 `● 화면 이동 중`에 박스는 번호 없이, 안정된 직후엔 파란 `● 화면 전환 · 번호 새로 매김`에 새 번호 `#40`…). 재생 중 캡처는 창이 흰색으로 찍혔다(앱은 응답 중 — 캡처 쪽 문제, 일시정지 뒤 창을 앞으로 올리고 찍으면 정상).
-  **배포본은 아직 `3939f40` 그대로**(다시 배포는 요청할 때만).
+  (배포본은 같은 날 `10f7b31` 로 다시 배포 — 위)
 - 그 전: 2026-11-03, Debug — 관심 구역(ROI) 편집을 더한 뒤(위 "관심 구역"). 사용자가 PC 를 쓰는 중에 돌렸다(`Test-Roi` 는 실제 마우스를 움직인다). `Run-All` 한 번에
   `Test-FilePlayback` 34 · `Test-Tracking` 9 · **`Test-Roi` 30(새 파일)** · `Test-VfrPlayback` 26 · `Test-ScreenHud` 39(DXGI, 박스 없음, 결함 주입 포함) · `Test-NpuSwitch` 28 항목 = 166
   (NPU 전환 7.2초(캐시), 다시 고르면 5.5초, ①② 창 응답 WM_NULL 최대 1 ms · UIA 최대 20 ms). `TrackerCheck selftest` 통과(새 ⑧ 관심 구역 22개 포함).
   이어서 구역 읽기·저장의 예외 처리를 넓힌 최종 빌드(구역은 부가 기능이라 어떤 이유로든 영상 열기를 막지 않게)로 `Test-Roi` 30 · `Test-FilePlayback` 34 를 다시 돌려 통과. Debug 빌드 경고 0.
   스크린샷(구역 4개 · 하나 선택 · 새 구역 그리는 중)으로 모양을 봤다 — 시안 그대로이고 기본 창 높이 820 에서 패널 전체('추론 장치' 콤보까지)가 스크롤 없이 보인다
-  (처음엔 목록 아래 파일 이름 줄 때문에 그 콤보가 스크롤 아래로 밀려 줄였다). **배포본은 아직 `3939f40` 그대로**(다시 배포는 요청할 때만).
+  (처음엔 목록 아래 파일 이름 줄 때문에 그 콤보가 스크롤 아래로 밀려 줄였다). (배포본은 같은 날 `10f7b31` 로 다시 배포 — 위)
 - 그 전(배포본): 2026-11-02 오후, **배포본 `publish_gpu_ver`** — `main`(`3939f40`, 추적기 연결 · 박스·라벨 투명도와 작은 물체 라벨·꺾쇠 축소 · 상태바 칸 고정)으로 다시 배포
   (exe 126.4 MB, pdb·lib·dll 없음, 배포 폴더 `best.onnx`(09-17 visible, MD5 `87D0E1CB…`)·`best.npu.onnx`(`5CE87F90…`) 그대로, 그래픽 설정 `GpuPreference=0` 그대로.
   Release DLL 에 새 코드(`UpdateTagged`·`CornerPens`·`StatusFpsHudWidth`)가 있고 결함 이름 문자열은 없음).
