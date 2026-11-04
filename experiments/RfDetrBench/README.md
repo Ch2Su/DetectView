@@ -1,7 +1,7 @@
 # RfDetrBench — RF-DETR 를 앱의 런타임(DirectML)에서 돌려 보기
 
-RF-DETR(Roboflow, Nano·Small·Medium·Large 는 Apache 2.0)로 YOLO26s 를 바꾸거나 모델 종류로 더할 만한지 보는 실험의 **1단계**다 (2026-11-04).
-학습 없이 COCO 사전학습 가중치로, 앱과 같은 런타임 — Windows ML 의 ONNX Runtime 1.27 + DirectML(NVIDIA) — 에서
+RF-DETR(Roboflow, Nano·Small·Medium·Large 는 Apache 2.0)로 YOLO26s 를 바꾸거나 모델 종류로 더할 만한지 보는 실험이다. 2단계(같은 데이터로 학습해 시험 분할에서 비교, 2026-11-04~05)는 아래 '2단계' 절.
+**1단계**(2026-11-04)는 학습 없이 COCO 사전학습 가중치로, 앱과 같은 런타임 — Windows ML 의 ONNX Runtime 1.27 + DirectML(NVIDIA) — 에서
 
 1. **모든 노드가 GPU 에 올라가는지** — RF-DETR 디코더의 변형 어텐션(MSDeformAttn)은 GridSample 을 쓴다. DirectML EP 는 GridSample 을 지원(5D 만 빠짐)하지만 실제 배치는 프로파일로 본다
 2. **얼마나 빠른지** — `session.Run` 만, 앱의 YOLO26s(루트 `best.onnx`)와 같은 세션 설정·같은 GPU 에서
@@ -115,3 +115,128 @@ RF-DETR 는 세 크기 모두 **CPU 로 떨어진 노드가 없다**(전부 DmlE
 - 2단계 후보는 **RF-DETR-S**(FP16 9.1 ms). 비교 상대는 앱의 YOLO26s 와 같은 정확도 급인 **YOLO26m** — 셋 다 같은 데이터셋 백업으로 학습해야 공정하다(배포 YOLO26s 는 09-17 에 조금 다른 판으로 학습)
 - 확인 안 한 것: NPU(VitisAI — FP32 는 이 PC 에서 BF16 변환이 실패하는 경로(NpuBench README 함정 1)라 시도하지 않았고, 양자화한 트랜스포머도 안 해 봤다) ·
   같은 입력에서 DirectML 출력이 매번 같은지(HUD 의 '새 화면 고리'가 기대는 성질 — CLAUDE.md '화면 HUD') · YOLO FP16 · Large(704)
+
+## 2단계 — 같은 데이터로 학습해 시험 분할에서 비교 (2026-11-04~05)
+
+RF-DETR-S · YOLO26s · YOLO26m 을 데이터셋 백업(위)으로 **각자의 기본 조리법대로 100 epoch** 학습하고, 앱과 같은 전처리의 ONNX 로 시험 분할 973장을
+같은 평가기(pycocotools)로 견준다. 배포 YOLO26s(09-17 학습 — 조금 다른 판의 데이터)도 기준으로 같이 잰다. 학습은 WSL(Ubuntu · RTX 5060 Laptop 8 GB), 내보내기·평가는 Windows 에서 한다.
+
+| 모델 | 학습 환경 | 조리법 |
+|---|---|---|
+| RF-DETR-S | WSL `~/rfdetr_work/.venv` — rfdetr 1.11.2 · torch 2.11.0+cu130 | rfdetr 기본값: COCO 사전학습에서 · lr 1e-4(인코더 1.5e-4) · EMA · 배치마다 다른 입력 크기 352~672(평가 512) · bf16. 실제 배치 4 × 누적 4 = 실효 16 |
+| YOLO26s · YOLO26m | 라벨링 도구의 학습 환경(`yolo_final` — Ultralytics 8.4.142)과 `train_wsl.py` 를 **고치지 않고 실행만** | 웹 UI 'WSL 학습' 버튼과 같은 인자(cos_lr · box 7.5 · cls 1.5 · dfl 1.5 · HSV · 좌우 뒤집기)를 100 epoch 로(close_mosaic 은 끝 10% 라 10) · 640 · 배치 s 20 · m 10 · 이미지 RAM 캐시 |
+
+```powershell
+# 학습 — 몇 시간 걸려서 숨은 창으로 띄운다(띄운 쪽이 닫혀도 이어진다. 도는 동안 유휴 절전을 막는다). 이름은 rfdetr_s · y26s · y26m 중 고른다
+Start-Process pwsh -WindowStyle Hidden -ArgumentList '-NoProfile','-File','experiments\RfDetrBench\step2\Start-Step2.ps1','rfdetr_s','y26s','y26m'
+```
+
+- 진행은 WSL `~/rfdetr_work/runs/logs/`(`driver.log` 에 시작·끝, 모델마다 `<이름>.log`), 결과는 `~/rfdetr_work/runs/{rfdetr_s,yolo/<이름>}`.
+  `touch ~/rfdetr_work/runs/HALT` 면 지금 것이 끝난 뒤 멈추고, `touch ~/rfdetr_work/runs/yolo/STOP` 은 도는 YOLO 학습을 정상 중단한다(`train_wsl.py` 의 정지 파일)
+- 데이터는 백업의 작업 사본 `~/rfdetr_work/data/visible`(`data.yaml` 의 `path` 를 이 폴더로 바꿈) — `train_rfdetr.py` 가 path 가 이 폴더인지 확인한다
+- YOLO 결과를 라벨링 도구의 `runs_wsl` 에 두지 않는다 — 거기 있으면 웹 UI 'WSL 이어하기' 가 집어 가 운영 가중치(`models/best.pt`)를 바꿀 수 있다.
+  `YOLO_AUTOINSTALL=false` 로 Ultralytics 가 그 환경에 패키지를 깔지 못하게 한다
+- 이 WSL 에서 만난 함정 (모두 고침):
+  - **rfdetr 학습 매처(헝가리안)가 Triton 커널을 쓰는데 Triton 이 그 자리에서 C 모듈을 컴파일하려고 C 컴파일러를 찾는다** — gcc 가 없어(sudo 없이 못 깖) 첫 배치에서 멈췄다.
+    `train_rfdetr.py` 가 컴파일러가 없으면 그 라이브러리의 SciPy(CPU) 경로로 보낸다(DETR 원래 방식, 같은 최적 짝)
+  - **`batch_size='auto'` 가 WSL 의 CUDA 를 죽인다** — 배치를 2, 4, 8… 로 키우며 메모리가 넘칠 때까지 시험하는데, 한계에서 메모리 부족 대신 `CUDA error: device not ready` 가 나고
+    컨텍스트가 망가져 뒤이은 `empty_cache` 도 out of memory 로 죽었다(첫 시도, 3분). rfdetr 의 'auto' 가 맞추는 실효 배치 16 을 고정 4 × 누적 4 로 준다
+  - 런처가 띄운 `wsl.exe` 는 Windows 의 현재 폴더(저장소)에서 시작해서, Ultralytics 의 AMP 점검이 `yolo26n.pt` 를 저장소의 `weights/` 에 내려받았다 → 드라이버가 `~/rfdetr_work` 로 옮겨 간다
+  - Windows 런처는 `wsl.exe` 출력을 드라이버가 끝날 때에야 받는다(`out/step2_driver.log`) — 도는 동안의 진행은 WSL 쪽 `driver.log` 를 본다
+- 드라이버는 한 모델이 실패해도 다음 모델로 넘어간다(밤새 돌 때 하나 때문에 다 서지 않게)
+
+```powershell
+# 내보내기 (Windows, CPU) — out/step2_models/<이름>.onnx, RF-DETR 는 <이름>-fp16.onnx 도
+uv run --no-project --python 3.12 --with "rfdetr[onnx]==1.11.2" --with onnxruntime experiments/RfDetrBench/step2/export_trained.py rfdetr "\\wsl.localhost\Ubuntu\home\chisu\rfdetr_work\runs\rfdetr_s\checkpoint_best_total.pth" rfdetr_s
+uv run --no-project --python 3.12 --with "ultralytics==8.4.142" --with onnx --with onnxslim --with onnxruntime experiments/RfDetrBench/step2/export_trained.py yolo "\\wsl.localhost\Ubuntu\home\chisu\rfdetr_work\runs\yolo\y26s\weights\best.pt" y26s
+# (y26m 도 같게 — runs\yolo\y26m\weights\best.pt)
+# 평가 — 사용법은 eval_test.py 머리말 (모델을 나눠 돌려도 out/eval/results.json 에 쌓인다. --yolo-resize linear 는 YOLO 를 쌍선형으로 줄인다,
+#        --ep dml 은 DirectML(고성능 GPU), --ultra-json 은 Ultralytics val 의 검출을 같은 평가기로 채점)
+# 교차 확인 — 각 라이브러리의 자체 평가기로 (WSL, CPU): 사용법은 crosscheck_native.py 머리말
+```
+
+### 결과 (2026-11-05)
+
+**학습** (WSL, 전원 연결)
+
+| 모델 | 학습 시간 | 검증 최고 — 그 라이브러리의 평가기 | 쓴 가중치 |
+|---|---|---|---|
+| YOLO26s | 1.6시간 (배치 20) | 49 epoch: mAP50-95 0.688 · mAP50 0.868 (Ultralytics. 100 epoch 째 0.676) | `best.pt` |
+| YOLO26m | 3.3시간 (배치 10) | 75 epoch: mAP50-95 0.721 · mAP50 0.888 (Ultralytics. 100 epoch 째 0.717) | `best.pt` |
+| RF-DETR-S | 5.8시간 (배치 4 × 누적 4, 매처는 CPU) | 33 epoch: EMA mAP50-95 0.769 · mAP50 0.925 (rfdetr. 100 epoch 째 0.747) | `checkpoint_best_total.pth` |
+
+YOLO26s·RF-DETR-S 는 중간(49·33 epoch)에 검증 최고를 찍고 그 뒤로는 학습 손실만 내려갔다(YOLO26m 은 75 epoch). Ultralytics 8.4.142 의 `best.pt` 는 검증 mAP50-95 가 가장 높은 epoch 다
+— 그 검증은 앱이 쓰는 end-to-end 출력이 아니라 one-to-many 출력 + NMS 로 잰 값이다(아래 '두 평가기의 차이 나누기').
+rfdetr 기본 조리법은 학습률을 `lr_drop`(기본 100) epoch 째에야 1/10 로 내려서
+100 epoch 학습에선 끝까지 1e-4 다(`metrics.csv` 의 `train/lr` · rfdetr `training/module_model.py`). 일찍 내리면 나아질 수 있지만 해 보지 않았다
+
+**시험 분할 973장** (정답 6,471개 · 32² 미만 451개) — `eval_test.py`: ONNX · 앱과 같은 전처리 · pycocotools(이미지당 100개). 정밀도·재현율은 앱 임계 0.3 · IoU 0.5
+
+| 모델 | 전처리 | AP | AP50 | AP75 | APs | APm | APl | 임계 0.3 정밀도 | 재현율 |
+|---|---|---|---|---|---|---|---|---|---|
+| 배포 YOLO26s (09-17) | 레터박스 Nearest (앱 그대로) | 0.653 | 0.822 | 0.702 | 0.392 | 0.558 | 0.728 | 0.882 | 0.804 |
+| 배포 YOLO26s | 레터박스 쌍선형 | 0.672 | 0.845 | 0.722 | 0.416 | 0.594 | 0.734 | 0.894 | 0.817 |
+| YOLO26s (재학습) | 레터박스 Nearest | 0.640 | 0.827 | 0.684 | 0.357 | 0.559 | 0.715 | 0.878 | 0.831 |
+| YOLO26s (재학습) | 레터박스 쌍선형 | 0.660 | 0.849 | 0.710 | 0.402 | 0.590 | 0.722 | 0.881 | 0.841 |
+| YOLO26m (재학습) | 레터박스 Nearest | 0.677 | 0.842 | 0.727 | 0.390 | 0.590 | 0.758 | 0.897 | 0.855 |
+| YOLO26m (재학습) | 레터박스 쌍선형 | 0.708 | 0.875 | 0.763 | **0.430** | 0.640 | 0.767 | **0.902** | 0.875 |
+| **RF-DETR-S** FP32 | 정사각형 늘이기 쌍선형 (공식) | **0.742** | **0.921** | **0.790** | 0.403 | **0.665** | **0.832** | 0.886 | **0.920** |
+| RF-DETR-S FP16 (DirectML) | 같음 | 0.742 | 0.921 | 0.792 | 0.408 | 0.665 | 0.832 | 0.886 | 0.919 |
+
+FP32 모델은 CPU 로 쟀다. DirectML(`--ep dml`, NVIDIA)로 다시 재도 RF-DETR-S · YOLO26s · YOLO26m(Nearest) 모두 **넷째 자리까지 같았다**.
+
+클래스별 AP (YOLO 는 쌍선형):
+
+| 클래스 (시험 정답 수) | YOLO26s | YOLO26m | RF-DETR-S |
+|---|---|---|---|
+| car (1,591) | 0.799 | **0.832** | 0.815 |
+| truck (244) | 0.716 | 0.792 | **0.802** |
+| bus (149) | 0.849 | 0.868 | **0.903** |
+| motorcycle (205) | 0.532 | 0.610 | **0.614** |
+| scooter (156) | 0.537 | 0.556 | **0.675** |
+| bicycle (198) | 0.548 | 0.619 | **0.667** |
+| person (3,928) | 0.643 | 0.679 | **0.715** |
+
+- **RF-DETR-S 가 전체로는 가장 정확하다**: AP 0.742 — 쌍선형으로 잰 YOLO26m 보다 +0.034, YOLO26s 보다 +0.082(앱 그대로의 Nearest 와 견주면 +0.065 · +0.102).
+  앱 임계 0.3 에서 재현율 0.920(YOLO26m 0.875 · YOLO26s 0.841), 정밀도는 0.886 으로 YOLO(0.88~0.90)와 비슷하다
+- **앞서는 몫은 두 바퀴·사람·버스에서 나온다**(YOLO26m 대비 scooter +0.12 · bicycle +0.05 · person +0.04 · bus +0.035). **car 는 YOLO26m 이 낫고**(0.832 vs 0.815) truck·motorcycle 은 비슷하다.
+  **작은 물체(APs)도 YOLO26m 쌍선형이 낫다**(0.430 vs 0.403) — 도로 CCTV 의 먼 차가 여기 든다
+- **FP16 은 정확도를 잃지 않는다**: DirectML 에서 FP32 0.7417 → FP16 0.7416(재현율 0.920 → 0.919). 1단계의 FP16 속도(9.1 ms)를 그대로 쓸 수 있다
+- **앱의 Nearest 축소가 YOLO 의 AP 를 0.02~0.03 깎는다**: YOLO26s 0.640 → 0.660 · 배포 0.653 → 0.672 · YOLO26m 0.677 → 0.708(작은 물체 AP +0.02~0.045). Ultralytics 8.4.142 는 학습·검증 모두 쌍선형(`INTER_LINEAR`)으로 줄이는데
+  앱(YoloDotNet 기본값)은 Nearest 라 학습 때와 다른 입력을 넣는 셈이다. YoloDotNet 4.2.0 `YoloOptions.SamplingOptions` 로 바꿀 수 있어 보인다 — 앱엔 안 해 봤다(NPU 짝의 양자화 보정도 Nearest 기준이라 같이 다뤄야 한다)
+- **교차 확인 — 각 라이브러리의 자체 평가기**(`crosscheck_native.py`, WSL CPU): Ultralytics val(test) YOLO26s **0.674** · YOLO26m **0.725**(mAP50 0.870 · 0.897), rfdetr `evaluate(split="test")` RF-DETR-S **0.751**(mAP50 0.925).
+  RF-DETR-S 와의 차이는 0.077 · 0.026 — 우리 평가기(쌍선형)의 0.082 · 0.034 와 같은 쪽·비슷한 크기다. 우리 평가기는 자체 평가기보다 YOLO26s 0.014 · YOLO26m 0.017 · RF-DETR-S 0.009 낮게 잰다
+  — YOLO 몫은 아래처럼 다 나눴다(RF-DETR 몫은 나누지 않았다)
+- RF-DETR 는 학습 분할만 썼다(epoch 당 295 step × 실효 배치 16 = 4,708장). 로짓의 마지막 칸(클래스 수 + 1)은 rfdetr 의 YOLO 로더가 쓰지 않는 칸이라 뺀다 — rfdetr 자체 ONNX 추론도 같다(`background_class_id=-1`)
+- 평가의 시간(장당 CPU 210~390 · DirectML 130~280 ms — UNC 경로로 이미지 읽기·전처리 포함)은 속도 비교에 쓰지 않는다 — 속도는 1단계 표
+
+**YOLO — 두 평가기의 차이 나누기.** Ultralytics 의 검출(`save_json`)을 우리 평가기로 채점하면 Ultralytics 점수와 0.002 안에서 같다(0.673 · 0.723 — `--ultra-json`).
+그러니 차이는 점수 계산이 아니라 추론 경로에서 온다. 한 가지씩 바꿔 가며 쟀다(mAP50-95, 시험 분할):
+
+| 추론 경로 | YOLO26s | YOLO26m | 바꾼 것의 몫 |
+|---|---|---|---|
+| Ultralytics val 기본값 — rect 배치 · **one-to-many 출력 + NMS**(iou 0.7) | 0.674 | 0.725 | |
+| 〃 640×640 정사각형 입력 (`crosscheck_native.py --square`) | 0.672 | 0.717 | rect −0.002 · −0.008 |
+| 〃 + end-to-end 출력 (`--square --e2e` — 앱의 ONNX 와 같은 one-to-one 출력) | 0.662 | 0.710 | 출력 경로 −0.010 · −0.007 |
+| 우리 ONNX — 정사각 · 쌍선형 · 회색 여백 (`--yolo-pad 114`, DirectML) | 0.662 | 0.708 | (위와 같음) |
+| 〃 검은 여백 (앱) | 0.660 | 0.708 | 여백 색 ≈ 0 |
+| 〃 Nearest 축소 (앱 그대로) | 0.640 | 0.677 | 축소 −0.020 · −0.031 |
+
+- **Ultralytics 8.4.142 의 val 은 `nms` 를 안 주면 YOLO26 의 one-to-many 출력에 NMS 를 걸어 잰다** — `engine/validator.py` 가 `end2end=self.args.nms is False` 이고 기본값이 None 이다.
+  학습 중 검증과 `best.pt` 고르기도 그렇다. 그래서 **학습 로그의 mAP 는 앱이 쓰는 end-to-end 출력보다 0.007~0.010 높게 나온다**. 앱과 같은 것을 재려면 `nms=False`
+- 앱의 YOLO 경로가 Ultralytics 기본 val 보다 잃는 몫은 YOLO26s 0.034 · YOLO26m 0.048 이고, 대부분 Nearest 축소다. 되찾을 여지는 셋이다.
+  ① 쌍선형 축소(+0.02~0.03).
+  ② NMS 를 넣어 내보내기(Ultralytics `nms=True`, +0.007~0.010). DirectML 에서 도는지, 3번 항목의 중복 박스가 어떻게 바뀌는지는 안 봤다.
+  ③ 16:9 영상에 640×384 입력(+0.002~0.008, 계산량 40% 적음). 시험 분할은 비율이 섞여 있어 영상에선 따로 재야 한다
+
+### 판단 (2단계)
+
+- 3단계 기준(이길 때만 앱에)으로는 **RF-DETR-S 가 이긴다** — 같은 데이터·각자의 기본 조리법에서 전체 AP·재현율이 셋 중 가장 높고, FP16 이면 1단계 속도로 YOLO26m(FP32 14.0 ms — YOLO FP16 은 DirectML 에서 못 돌림)보다 빠르다(9.1 ms).
+  지금 앱 경로(배포 YOLO26s · Nearest, AP 0.653)보다 AP +0.09
+- 다만 이득이 고르지 않다: car·작은 물체는 YOLO26m(쌍선형)이 같거나 낫다 — 유고 규칙이 보는 차량만 보면 YOLO26m 과의 차이가 작다
+- 앱에 넣으려면(1단계에서 정리): YoloDotNet 밖의 새 추론 경로(정사각형 늘이기 전처리 — float 경로가 CPU 5~7 ms 라 줄여야 한다 · 후처리), 모델 파일 57 MB(FP16), NPU 는 YOLO 만(짝 모델이 YOLO 전용),
+  HUD 가 기대는 결정성(같은 입력에 같은 출력) 확인
+- 더 싼 길도 있다: ① 앱의 YOLO 축소를 쌍선형으로(새 모델 없이 AP +0.02~0.03 — 위 표의 나머지 몫까지 되찾으면 YOLO26m 은 0.72 안팎, RF-DETR-S 와 0.02~0.03 차이)
+  ② YOLO26m 으로 바꾸기(쌍선형이면 0.708, 추론은 2.2배) ③ **RF-DETR-N 을 같은 데이터로 학습**해 보기 — FP16 5.2 ms 로 지금 YOLO26s(6.4 ms)보다 빠른데 이번엔 재지 않았다
+- 확인 안 한 것: 학습을 한 번씩만 했다(시드 차이 모름) · 학습률을 일찍 내리는 조리법(rfdetr `lr_drop`) · 시험 분할은 학습 데이터와 같은 출처라 **앱의 CCTV 영상(test1~5)에서의 차이** ·
+  추적기·유고 규칙 위에서의 차이

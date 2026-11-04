@@ -37,7 +37,8 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
   `uv run --no-project --python 3.12 python -c "import re,sys;f=open(sys.argv[1],'rb');f.seek(-65536,2);t=f.read().decode('utf-8','ignore');[print(k,'=',v.strip()[:80]) for k,v in re.findall(r'(description|names|date)\x12.?([^\x00-\x08\x0e-\x1f]+)',t)]" publish/best.onnx`
 - 배포 폴더 모델을 바꾸면 NPU 짝도 다시 만든다: `pwsh tools\Make-NpuModel.ps1 -Model publish\best.onnx` (→ 그 옆 `best.npu.onnx`, 아래 "NPU")
 - **앱용 ONNX 를 새로 내보낼 땐 end-to-end(`[1,300,6]`)인지 본다** — Ultralytics 8.4.142(라벨링 도구가 쓰는 판)의 `export(format="onnx")` 기본값은 NMS 전 원출력 `[1,84,8400]`(메타데이터 `end2end False`)이다.
-  `nms=False`(또는 `end2end=True`)를 줄 것. 지금 `best.onnx` 는 8.4.31 기본값으로 end-to-end 였다 (2026-11-04 실측 — `experiments/RfDetrBench` README. 원출력 꼴을 앱이 어떻게 처리하는지는 확인 안 함 — 아래 3번의 전제가 깨진다)
+  `nms=False`(또는 `end2end=True`)를 줄 것. 지금 `best.onnx` 는 8.4.31 기본값으로 end-to-end 였다 (2026-11-04 실측 — `experiments/RfDetrBench` README. 원출력 꼴을 앱이 어떻게 처리하는지는 확인 안 함 — 아래 3번의 전제가 깨진다).
+  같은 판의 **val 도 `nms` 를 안 주면 one-to-many 출력 + NMS 로 잰다**(학습 중 검증·`best.pt` 고르기도) — 학습 로그의 mAP 는 앱이 쓰는 end-to-end 출력보다 0.007~0.010 높게 나온다(2026-11-05 실측). 앱과 같은 걸 재려면 val 에 `nms=False`
 - publish 는 `best.onnx` 를 `PreserveNewest` 로 복사한다 → **루트 `best.onnx` 가 배포 폴더의 것보다 새로우면 덮어쓴다**
 - `best.onnx` 는 단일 파일 exe에 포함되지 않는다. **exe 옆에 같이 놓아야** 실행된다.
   경로는 작업 디렉터리가 아니라 `AppContext.BaseDirectory`(exe 폴더) 기준이다. 예전엔 상대 경로라 바로가기의 "시작 위치"나
@@ -94,7 +95,7 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
 | `LICENSE` · `THIRD-PARTY-NOTICES.md` | 저장소 라이선스 GNU AGPL-3.0 (2026-11-02 — 들어 있는 `best.onnx` 가 Ultralytics YOLO26 파인튜닝이라 Ultralytics 가 프로젝트 전체에 AGPL-3.0 을 요구)과 저장소 안 남의 저작물 고지(모델 AGPL-3.0 · `WindowsMlExecutionProvider.cs` 의 바탕 YoloDotNet MIT · `.claude/` 의 graft 연동 파일 MIT — 각 전문). 남의 코드·파일을 가져오면 여기에 더한다 |
 | `tools/` | `Make-NpuModel.ps1`(+ `npu_quantize.py`): YOLO 모델의 NPU 용 짝 `<이름>.npu.onnx` 만들기 (아래 "NPU") |
 | `best.npu.onnx` | 루트 `best.onnx` 의 NPU 짝 (A16W8·가중치 채널별 QDQ, 10.4 MB, git 추적). 원본을 바꾸면 다시 만든다 |
-| `experiments/` | 따로 빌드하는 실험 프로젝트(각자 `.csproj`). 본 `.csproj` 의 `Compile/Page/None Remove` 로 빠져 있다. `NpuBench/`: AMD NPU 실험 — 짝 확인(`npu_quant`·`npu_source_md5`) 뒤에만 NPU 에 넣는다 (아래 "NPU"). `RuntimeParity/`: 런타임 교체 전후 검출 결과 비교 (1번 항목, GPU 선택은 두 빌드 모두 `GpuAdapters.cs` 링크). `TrackerCheck/`: 추적기 검증 (아래 "추적기")·테두리 멈춤 판정 합성 장면(`selftest` — 관심 구역 `Roi.cs` 의 판정·파일 검사 ⑧, 화면 전환 감지 합성 장면 ⑨, 구역 진입·나감 이벤트 ⑩, 유고 규칙 ⑪, 화면 식별 ⑫도 여기)·화면 식별 맞춤 실측(`views`)·화면 전환이 있는 합성 영상 만들기(`mkrevisit`)·화면 전환 감지 임계값 실측(`scene`)·GPU 고성능/저전력 판정(`gpu`)·중복 박스 필터 전후 비교 (3번 항목). `RfDetrBench/`: RF-DETR 를 앱 런타임(DirectML)에서 — 노드 배치·속도·결과 일치, 같은 COCO 정확도의 YOLO26 과 비교 (아래 "RF-DETR 검토"). 산출물 `*/out/`·`*/bin/`·`*/obj/`·`*/.venv/` 는 gitignore |
+| `experiments/` | 따로 빌드하는 실험 프로젝트(각자 `.csproj`). 본 `.csproj` 의 `Compile/Page/None Remove` 로 빠져 있다. `NpuBench/`: AMD NPU 실험 — 짝 확인(`npu_quant`·`npu_source_md5`) 뒤에만 NPU 에 넣는다 (아래 "NPU"). `RuntimeParity/`: 런타임 교체 전후 검출 결과 비교 (1번 항목, GPU 선택은 두 빌드 모두 `GpuAdapters.cs` 링크). `TrackerCheck/`: 추적기 검증 (아래 "추적기")·테두리 멈춤 판정 합성 장면(`selftest` — 관심 구역 `Roi.cs` 의 판정·파일 검사 ⑧, 화면 전환 감지 합성 장면 ⑨, 구역 진입·나감 이벤트 ⑩, 유고 규칙 ⑪, 화면 식별 ⑫도 여기)·화면 식별 맞춤 실측(`views`)·화면 전환이 있는 합성 영상 만들기(`mkrevisit`)·화면 전환 감지 임계값 실측(`scene`)·GPU 고성능/저전력 판정(`gpu`)·중복 박스 필터 전후 비교 (3번 항목). `RfDetrBench/`: RF-DETR 를 앱 런타임(DirectML)에서 — 노드 배치·속도·결과 일치, 같은 COCO 정확도의 YOLO26 과 비교. `step2/` 는 같은 데이터로 학습(WSL)·내보내기·시험 분할 평가 (아래 "RF-DETR 검토"). 산출물 `*/out/`·`*/bin/`·`*/obj/`·`*/.venv/` 는 gitignore |
 | `graft/` · `.claude/` | 코드 인덱스(graft)와 그 에이전트 연동. graft 는 CLI 로만 쓴다 — MCP 서버 등록은 2026-11-02 사용자 결정으로 전역(`~/.claude.json`)과 이 저장소(`.mcp.json` 삭제) 모두 뺐다. `graft/` 는 재생성 가능한 캐시라 커밋하지 않는다. `.claude/helpers/graft-statusline.cjs`(상태줄)는 graft 설치 경로를 `%APPDATA%\npm` 에서 계산한다(2026-11-02 — graft 가 박아 넣은 `C:\Users\<이름>\…` 경로를 저장소에서 뺌. graft 를 다시 설치해 박힌 경로로 돌아오면 다시 고칠 것). graft 훅은 전역 `~/.claude/settings.json` 에만 둔다 — 프로젝트에도 있으면 둘 다 돌아 세션마다 graft 안내문이 두 번 들어가고 도구마다 훅이 두 번 돈다(2026-11-02 프로젝트 쪽 훅과 `graft-hooks.cjs` 를 뺌. graft 를 이 저장소에 다시 설치해 돌아오면 다시 뺄 것) |
 
 ## 절대 건드리면 안 되는 것들 (실제로 한 번씩 터졌던 부분)
@@ -377,7 +378,10 @@ DXGI 와 GDI 캡처는 같은 영역에서 **픽셀이 완전히 동일**했고 
 - GDI `CAPTUREBLT` 플래그 제거: 효과 없음
 - 캡처 버퍼 알파 채널 보정: 불필요. 알파=0 버퍼를 넣어도 검출 결과 동일 (`SKAlphaType.Opaque` 로 넘김)
 
-남은 개선 후보(미구현): 모션 예측 외삽(비용 거의 0, 방향 전환 시 오버슈트).
+남은 개선 후보(미구현): 모션 예측 외삽(비용 거의 0, 방향 전환 시 오버슈트). **YOLO 입력 축소를 Nearest → 쌍선형으로** — 속도가 아니라 정확도:
+데이터셋 시험 분할에서 AP +0.02~0.03(배포 YOLO26s 0.653 → 0.672, 2026-11-05 `experiments/RfDetrBench` 2단계). Ultralytics 는 학습·검증 모두 쌍선형으로 줄인다.
+YoloDotNet 4.2.0 `YoloOptions.SamplingOptions` 로 바꿀 수 있어 보인다(확인 안 함). NPU 짝의 양자화 보정(`tools/npu_quantize.py`)도 Nearest 기준이라 같이 바꾸고 짝을 다시 만든다.
+위 '기각' 항목의 선축소와는 다른 얘기다 — 그건 속도를 보고 기각했고 결과가 달라진다는 것만 봤다.
 
 ## 도메인 지식 — SAHI (on-demand)
 
@@ -577,7 +581,7 @@ HUD 는 캡처 크기 — 크기 없는 판은 아래 '화면 가장자리' 문�
   `TrackerCheck views`(맞춤 행렬·흔들림·비용 내역), `TrackerCheck mkrevisit`(test4 조각 A 0~8 → B 12~18 → A 1~9 → C 22~26 → B 14~18 을 이은 30초 영상 `out/test4_revisit.mp4` 33 MB — 원본의 조각이라 저장소엔 없다), `tests/ui/Test-ViewIdentity.ps1`(아래 '테스트').
 - **남은 것**: 구역을 어긋남만큼 보정하기(호모그래피), 방문 사이에 번호·멈춘 시간 이어 붙이기, 기준 화면 갱신(느린 변화 따라가기), 뷰에 이름 붙이기·지우기·합치기, 카메라·HUD, 실제 PTZ 재방문 영상으로 임계값 확인
 
-## 도메인 지식 — RF-DETR 검토 (2026-11-04~, 1단계 끝)
+## 도메인 지식 — RF-DETR 검토 (2026-11-04~05, 2단계 끝 — 3단계는 사용자 결정 대기)
 
 사용자가 RF-DETR(Roboflow, N·S·M·L 은 Apache 2.0 — XL·2XL 은 PML 1.0)을 써 보자고 해서 세 단계로 나눴다: ① 학습 없이 COCO 사전학습으로 앱 런타임에서 노드 배치·속도·결과 일치 →
 ② 같은 데이터셋으로 파인튜닝해 같은 시험 분할에서 비교 → ③ 이길 때만 앱에 '모델 종류'로 추가(YOLO 는 남긴다 — NPU 짝 모델은 YOLO 전용). 자세한 건 `experiments/RfDetrBench/README.md`.
@@ -590,7 +594,12 @@ HUD 는 캡처 크기 — 크기 없는 판은 아래 '화면 가장자리' 문�
   출력은 이름(`dets`·`labels`)으로 고르고, 시그모이드 → 쿼리×클래스 상위 300 → 임계값. 모델 파일 108~121 MB(FP16 54~61 MB — YOLO26s 36 MB)
 - **데이터셋은 백업을 쓴다**: `/home/chisu/datasets_backup/visible_2026-11-04`(WSL — 원본 `~/datasets/visible` 의 09-18 동기화본 4,708 · 854 · 973장, SHA-256 으로 확인, 옆에 README).
   라벨링 도구의 'WSL 학습' 버튼이 원본을 DB 로 새로 만들어 `rsync --delete` 로 덮어써서 사용자가 백업해 쓰라고 했다. 백업 안 `data.yaml` 의 `path:` 는 원본 경로라 학습엔 path 를 바꾼 사본을 백업 밖에 만들어 쓴다
-- ② 진행 중(11-04 저녁 시작, `experiments/RfDetrBench/step2/`): RF-DETR-S·YOLO26s·YOLO26m 을 같은 백업의 작업 사본으로 각자 기본 조리법 100 epoch 학습 → 앱과 같은 전처리의 ONNX 로 시험 분할(973장)을 pycocotools 로 견준다
+- ② 끝(11-05, `experiments/RfDetrBench/step2/`): RF-DETR-S·YOLO26s·YOLO26m 을 같은 백업의 작업 사본으로 각자 기본 조리법 100 epoch 학습했다(WSL — 5.8 · 1.6 · 3.3시간).
+  앱과 같은 전처리의 ONNX 로 시험 분할 973장을 pycocotools 로 견줬다. AP 는 **RF-DETR-S 0.742**(FP16 도 0.742) · YOLO26m 0.708 · YOLO26s 0.660 이다.
+  YOLO 값은 쌍선형 축소로 잰 것이다. 앱 그대로의 Nearest 면 0.677 · 0.640 이고, 배포 YOLO26s 는 0.653.
+  각 라이브러리의 자체 평가기로 재면 0.751 · 0.725 · 0.674 로 순서가 같고 차이도 비슷하다. YOLO 쪽 평가기 차이(rect 배치·출력 경로)는 README 에서 다 나눴다.
+  RF-DETR 의 이득은 두 바퀴·사람·버스와 재현율(임계 0.3 에서 0.920 vs 0.875)에서 나온다. **car 와 작은 물체(APs)는 YOLO26m 이 같거나 낫다**(0.832 vs 0.815 · 0.430 vs 0.403).
+  다음 후보: 3단계(앱에 '모델 종류'로) · RF-DETR-N 도 학습(FP16 5.2 ms 로 YOLO26s 보다 빠름) · 앱 YOLO 쌍선형 축소('화면 HUD' 의 남은 개선 후보) — 사용자가 고른다
 
 ## 도메인 지식 — NPU (AMD Ryzen AI — 왼쪽 패널 "추론 장치"에서 GPU/NPU 선택)
 
