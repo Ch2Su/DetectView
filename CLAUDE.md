@@ -581,14 +581,16 @@ HUD 는 캡처 크기 — 크기 없는 판은 아래 '화면 가장자리' 문�
 
 사용자가 RF-DETR(Roboflow, N·S·M·L 은 Apache 2.0 — XL·2XL 은 PML 1.0)을 써 보자고 해서 세 단계로 나눴다: ① 학습 없이 COCO 사전학습으로 앱 런타임에서 노드 배치·속도·결과 일치 →
 ② 같은 데이터셋으로 파인튜닝해 같은 시험 분할에서 비교 → ③ 이길 때만 앱에 '모델 종류'로 추가(YOLO 는 남긴다 — NPU 짝 모델은 YOLO 전용). 자세한 건 `experiments/RfDetrBench/README.md`.
-- ① 결과(노트북이 배터리라 절대값은 30% 안팎 느리게 나왔다): **모든 노드가 DirectML** 에 올라간다(GridSample 도 — 다만 융합 그래프 밖이라 디코더 층마다 그래프가 쪼개진다).
-  C# 전처리·후처리로 낸 검출이 PyTorch `predict()` 와 100% 같다. `session.Run` 중앙 FP32: 앱 YOLO26s 8.2 · RF-DETR N 11.9 · S 20.8 · M 27.1 · YOLO26m(COCO) 18.0 ms —
-  **같은 COCO 정확도의 YOLO26 보다 15~35% 느리다**(N ≈ YOLO26s, S ≈ YOLO26m — T4·TensorRT 발표값과 순서가 뒤집힘). FP16 이면 RF-DETR N 6.2 · S 10.8 · M 15.8 ms(검출 98~99.5% 일치). YOLO FP16 은 DirectML 그래프 융합 실패로 못 쟀다
+- ① 결과(전원 연결 — 배터리면 모두 25% 안팎 느리다): **모든 노드가 DirectML** 에 올라간다(GridSample 도 — 다만 융합 그래프 밖이라 디코더 층마다 그래프가 쪼개진다).
+  C# 전처리·후처리로 낸 검출이 PyTorch `predict()` 와 100% 같다. `session.Run` 중앙 FP32: 앱 YOLO26s 6.4 · RF-DETR N 9.7 · S 16.8 · M 21.7 · YOLO26m(COCO) 14.0 ms —
+  **같은 COCO 정확도의 YOLO26 보다 20~50% 느리다**(N ≈ YOLO26s 1.5배, S ≈ YOLO26m 1.2배 — T4·TensorRT 발표값과 순서가 뒤집힘). FP16 이면 RF-DETR N 5.2 · S 9.1 · M 12.2 ms(검출 98~99.5% 일치). YOLO FP16 은 DirectML 그래프 융합 실패로 못 쟀다
+- **오래 도는 벤치·학습은 전원을 연결하고** — 이 노트북은 배터리일 때 20분 동안 입력이 없으면 유휴 절전(Modern Standby)에 들어가 GPU 작업도 멈춘다(11-04 실제로 벤치 한 회차가 멈춤, Kernel-Power 506 'Idle Timeout').
+  덮개 닫힘 동작은 사용자가 꺼 두었다. 멈춘 원인은 506(진입 이유)으로 볼 것 — 507(종료 이유 'Lid')을 보고 덮개 탓으로 짐작했다가 틀렸다
 - 앱에 넣을 때: YoloDotNet 으로는 못 돌린다. 전처리는 **정사각형으로 늘이기**(레터박스 아님) + ImageNet 정규화이고 **float 에서 리사이즈해야 공식과 같다**(uint8 에서 줄이면 임계값 근처 검출 1~2% 바뀜 — 대신 float 경로는 720p 한 장 5~7 ms CPU).
   출력은 이름(`dets`·`labels`)으로 고르고, 시그모이드 → 쿼리×클래스 상위 300 → 임계값. 모델 파일 108~121 MB(FP16 54~61 MB — YOLO26s 36 MB)
 - **데이터셋은 백업을 쓴다**: `/home/chisu/datasets_backup/visible_2026-11-04`(WSL — 원본 `~/datasets/visible` 의 09-18 동기화본 4,708 · 854 · 973장, SHA-256 으로 확인, 옆에 README).
   라벨링 도구의 'WSL 학습' 버튼이 원본을 DB 로 새로 만들어 `rsync --delete` 로 덮어써서 사용자가 백업해 쓰라고 했다. 백업 안 `data.yaml` 의 `path:` 는 원본 경로라 학습엔 path 를 바꾼 사본을 백업 밖에 만들어 쓴다
-- 다음(사용자 결정 대기): ② RF-DETR-S 를 백업으로 파인튜닝하고, 공정하게 YOLO26s·YOLO26m 도 같은 백업으로 다시 학습해 시험 분할의 mAP·작은 물체를 견준다
+- ② 진행 중(11-04 저녁 시작, `experiments/RfDetrBench/step2/`): RF-DETR-S·YOLO26s·YOLO26m 을 같은 백업의 작업 사본으로 각자 기본 조리법 100 epoch 학습 → 앱과 같은 전처리의 ONNX 로 시험 분할(973장)을 pycocotools 로 견준다
 
 ## 도메인 지식 — NPU (AMD Ryzen AI — 왼쪽 패널 "추론 장치"에서 GPU/NPU 선택)
 
