@@ -36,6 +36,8 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
   아니면 파일 끝의 Ultralytics 메타데이터를 읽는다:
   `uv run --no-project --python 3.12 python -c "import re,sys;f=open(sys.argv[1],'rb');f.seek(-65536,2);t=f.read().decode('utf-8','ignore');[print(k,'=',v.strip()[:80]) for k,v in re.findall(r'(description|names|date)\x12.?([^\x00-\x08\x0e-\x1f]+)',t)]" publish/best.onnx`
 - 배포 폴더 모델을 바꾸면 NPU 짝도 다시 만든다: `pwsh tools\Make-NpuModel.ps1 -Model publish\best.onnx` (→ 그 옆 `best.npu.onnx`, 아래 "NPU")
+- **앱용 ONNX 를 새로 내보낼 땐 end-to-end(`[1,300,6]`)인지 본다** — Ultralytics 8.4.142(라벨링 도구가 쓰는 판)의 `export(format="onnx")` 기본값은 NMS 전 원출력 `[1,84,8400]`(메타데이터 `end2end False`)이다.
+  `nms=False`(또는 `end2end=True`)를 줄 것. 지금 `best.onnx` 는 8.4.31 기본값으로 end-to-end 였다 (2026-11-04 실측 — `experiments/RfDetrBench` README. 원출력 꼴을 앱이 어떻게 처리하는지는 확인 안 함 — 아래 3번의 전제가 깨진다)
 - publish 는 `best.onnx` 를 `PreserveNewest` 로 복사한다 → **루트 `best.onnx` 가 배포 폴더의 것보다 새로우면 덮어쓴다**
 - `best.onnx` 는 단일 파일 exe에 포함되지 않는다. **exe 옆에 같이 놓아야** 실행된다.
   경로는 작업 디렉터리가 아니라 `AppContext.BaseDirectory`(exe 폴더) 기준이다. 예전엔 상대 경로라 바로가기의 "시작 위치"나
@@ -92,7 +94,7 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
 | `LICENSE` · `THIRD-PARTY-NOTICES.md` | 저장소 라이선스 GNU AGPL-3.0 (2026-11-02 — 들어 있는 `best.onnx` 가 Ultralytics YOLO26 파인튜닝이라 Ultralytics 가 프로젝트 전체에 AGPL-3.0 을 요구)과 저장소 안 남의 저작물 고지(모델 AGPL-3.0 · `WindowsMlExecutionProvider.cs` 의 바탕 YoloDotNet MIT · `.claude/` 의 graft 연동 파일 MIT — 각 전문). 남의 코드·파일을 가져오면 여기에 더한다 |
 | `tools/` | `Make-NpuModel.ps1`(+ `npu_quantize.py`): YOLO 모델의 NPU 용 짝 `<이름>.npu.onnx` 만들기 (아래 "NPU") |
 | `best.npu.onnx` | 루트 `best.onnx` 의 NPU 짝 (A16W8·가중치 채널별 QDQ, 10.4 MB, git 추적). 원본을 바꾸면 다시 만든다 |
-| `experiments/` | 따로 빌드하는 실험 프로젝트(각자 `.csproj`). 본 `.csproj` 의 `Compile/Page/None Remove` 로 빠져 있다. `NpuBench/`: AMD NPU 실험 — 짝 확인(`npu_quant`·`npu_source_md5`) 뒤에만 NPU 에 넣는다 (아래 "NPU"). `RuntimeParity/`: 런타임 교체 전후 검출 결과 비교 (1번 항목, GPU 선택은 두 빌드 모두 `GpuAdapters.cs` 링크). `TrackerCheck/`: 추적기 검증 (아래 "추적기")·테두리 멈춤 판정 합성 장면(`selftest` — 관심 구역 `Roi.cs` 의 판정·파일 검사 ⑧, 화면 전환 감지 합성 장면 ⑨, 구역 진입·나감 이벤트 ⑩, 유고 규칙 ⑪, 화면 식별 ⑫도 여기)·화면 식별 맞춤 실측(`views`)·화면 전환이 있는 합성 영상 만들기(`mkrevisit`)·화면 전환 감지 임계값 실측(`scene`)·GPU 고성능/저전력 판정(`gpu`)·중복 박스 필터 전후 비교 (3번 항목). 산출물 `*/out/`·`*/bin/`·`*/obj/`·`*/.venv/` 는 gitignore |
+| `experiments/` | 따로 빌드하는 실험 프로젝트(각자 `.csproj`). 본 `.csproj` 의 `Compile/Page/None Remove` 로 빠져 있다. `NpuBench/`: AMD NPU 실험 — 짝 확인(`npu_quant`·`npu_source_md5`) 뒤에만 NPU 에 넣는다 (아래 "NPU"). `RuntimeParity/`: 런타임 교체 전후 검출 결과 비교 (1번 항목, GPU 선택은 두 빌드 모두 `GpuAdapters.cs` 링크). `TrackerCheck/`: 추적기 검증 (아래 "추적기")·테두리 멈춤 판정 합성 장면(`selftest` — 관심 구역 `Roi.cs` 의 판정·파일 검사 ⑧, 화면 전환 감지 합성 장면 ⑨, 구역 진입·나감 이벤트 ⑩, 유고 규칙 ⑪, 화면 식별 ⑫도 여기)·화면 식별 맞춤 실측(`views`)·화면 전환이 있는 합성 영상 만들기(`mkrevisit`)·화면 전환 감지 임계값 실측(`scene`)·GPU 고성능/저전력 판정(`gpu`)·중복 박스 필터 전후 비교 (3번 항목). `RfDetrBench/`: RF-DETR 를 앱 런타임(DirectML)에서 — 노드 배치·속도·결과 일치, 같은 COCO 정확도의 YOLO26 과 비교 (아래 "RF-DETR 검토"). 산출물 `*/out/`·`*/bin/`·`*/obj/`·`*/.venv/` 는 gitignore |
 | `graft/` · `.claude/` | 코드 인덱스(graft)와 그 에이전트 연동. graft 는 CLI 로만 쓴다 — MCP 서버 등록은 2026-11-02 사용자 결정으로 전역(`~/.claude.json`)과 이 저장소(`.mcp.json` 삭제) 모두 뺐다. `graft/` 는 재생성 가능한 캐시라 커밋하지 않는다. `.claude/helpers/graft-statusline.cjs`(상태줄)는 graft 설치 경로를 `%APPDATA%\npm` 에서 계산한다(2026-11-02 — graft 가 박아 넣은 `C:\Users\<이름>\…` 경로를 저장소에서 뺌. graft 를 다시 설치해 박힌 경로로 돌아오면 다시 고칠 것). graft 훅은 전역 `~/.claude/settings.json` 에만 둔다 — 프로젝트에도 있으면 둘 다 돌아 세션마다 graft 안내문이 두 번 들어가고 도구마다 훅이 두 번 돈다(2026-11-02 프로젝트 쪽 훅과 `graft-hooks.cjs` 를 뺌. graft 를 이 저장소에 다시 설치해 돌아오면 다시 뺄 것) |
 
 ## 절대 건드리면 안 되는 것들 (실제로 한 번씩 터졌던 부분)
@@ -574,6 +576,19 @@ HUD 는 캡처 크기 — 크기 없는 판은 아래 '화면 가장자리' 문�
 - **확인**: `TrackerCheck selftest` ⑫(합성 화면 셋 + 같은 글자 고정 요소 · 차가 달라진 같은 화면 · 자세 어긋남(8·20px·확대·밝기) · 크게 옮기면 다른 뷰 · 특징 없는 화면 · 저장본으로 다시 시작 · 뷰 수 한도 · 구역 파일 판 2 왕복·판 1 읽기·잘못된 판 2 9가지 · test4·test1~5 실제 프레임 — 11개),
   `TrackerCheck views`(맞춤 행렬·흔들림·비용 내역), `TrackerCheck mkrevisit`(test4 조각 A 0~8 → B 12~18 → A 1~9 → C 22~26 → B 14~18 을 이은 30초 영상 `out/test4_revisit.mp4` 33 MB — 원본의 조각이라 저장소엔 없다), `tests/ui/Test-ViewIdentity.ps1`(아래 '테스트').
 - **남은 것**: 구역을 어긋남만큼 보정하기(호모그래피), 방문 사이에 번호·멈춘 시간 이어 붙이기, 기준 화면 갱신(느린 변화 따라가기), 뷰에 이름 붙이기·지우기·합치기, 카메라·HUD, 실제 PTZ 재방문 영상으로 임계값 확인
+
+## 도메인 지식 — RF-DETR 검토 (2026-11-04~, 1단계 끝)
+
+사용자가 RF-DETR(Roboflow, N·S·M·L 은 Apache 2.0 — XL·2XL 은 PML 1.0)을 써 보자고 해서 세 단계로 나눴다: ① 학습 없이 COCO 사전학습으로 앱 런타임에서 노드 배치·속도·결과 일치 →
+② 같은 데이터셋으로 파인튜닝해 같은 시험 분할에서 비교 → ③ 이길 때만 앱에 '모델 종류'로 추가(YOLO 는 남긴다 — NPU 짝 모델은 YOLO 전용). 자세한 건 `experiments/RfDetrBench/README.md`.
+- ① 결과(노트북이 배터리라 절대값은 30% 안팎 느리게 나왔다): **모든 노드가 DirectML** 에 올라간다(GridSample 도 — 다만 융합 그래프 밖이라 디코더 층마다 그래프가 쪼개진다).
+  C# 전처리·후처리로 낸 검출이 PyTorch `predict()` 와 100% 같다. `session.Run` 중앙 FP32: 앱 YOLO26s 8.2 · RF-DETR N 11.9 · S 20.8 · M 27.1 · YOLO26m(COCO) 18.0 ms —
+  **같은 COCO 정확도의 YOLO26 보다 15~35% 느리다**(N ≈ YOLO26s, S ≈ YOLO26m — T4·TensorRT 발표값과 순서가 뒤집힘). FP16 이면 RF-DETR N 6.2 · S 10.8 · M 15.8 ms(검출 98~99.5% 일치). YOLO FP16 은 DirectML 그래프 융합 실패로 못 쟀다
+- 앱에 넣을 때: YoloDotNet 으로는 못 돌린다. 전처리는 **정사각형으로 늘이기**(레터박스 아님) + ImageNet 정규화이고 **float 에서 리사이즈해야 공식과 같다**(uint8 에서 줄이면 임계값 근처 검출 1~2% 바뀜 — 대신 float 경로는 720p 한 장 5~7 ms CPU).
+  출력은 이름(`dets`·`labels`)으로 고르고, 시그모이드 → 쿼리×클래스 상위 300 → 임계값. 모델 파일 108~121 MB(FP16 54~61 MB — YOLO26s 36 MB)
+- **데이터셋은 백업을 쓴다**: `/home/chisu/datasets_backup/visible_2026-11-04`(WSL — 원본 `~/datasets/visible` 의 09-18 동기화본 4,708 · 854 · 973장, SHA-256 으로 확인, 옆에 README).
+  라벨링 도구의 'WSL 학습' 버튼이 원본을 DB 로 새로 만들어 `rsync --delete` 로 덮어써서 사용자가 백업해 쓰라고 했다. 백업 안 `data.yaml` 의 `path:` 는 원본 경로라 학습엔 path 를 바꾼 사본을 백업 밖에 만들어 쓴다
+- 다음(사용자 결정 대기): ② RF-DETR-S 를 백업으로 파인튜닝하고, 공정하게 YOLO26s·YOLO26m 도 같은 백업으로 다시 학습해 시험 분할의 mAP·작은 물체를 견준다
 
 ## 도메인 지식 — NPU (AMD Ryzen AI — 왼쪽 패널 "추론 장치"에서 GPU/NPU 선택)
 
