@@ -45,7 +45,7 @@ Windows ML(자체 `onnxruntime.dll` 1.27)과 한 프로세스에 섞을 수 없�
 ### 해석
 - 속도는 **GPU 가 약 2.5배 빠르다** (6.0 vs 15.4 ms). NPU 의 이점은 속도가 아니라 GPU 를 비워 두는 것과 배터리다.
   그래도 15.4 ms ≈ 65 FPS 라서 실시간 HUD 에는 충분하다
-- 여기 GPU 6.0 ms 는 `session.Run` 만 잰 값이다. CLAUDE.md 의 "추론 ~11 ms"는 YoloDotNet(ORT 1.23) 경로 전체라 직접 비교할 수 없다
+- 여기 GPU 6.0 ms 는 `session.Run` 만 잰 값이다. docs/screen-hud.md 성능 표의 "추론 ~11 ms"는 YoloDotNet(ORT 1.23) 경로 전체라 직접 비교할 수 없다
 - 정확도는 A16W8 이 실용 수준이다. A8W8 은 이 모델에서 신뢰도가 체계적으로 떨어진다
 
 ## 결과 2 — 짝 모델 `best.npu.onnx` (오후, 앱과 같은 전처리)

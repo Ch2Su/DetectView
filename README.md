@@ -108,7 +108,8 @@ pwsh tests/ui/Run-All.ps1
 | `tests/ui/` | UI 자동화 테스트 |
 | `tools/` | NPU 짝 모델 만들기 |
 | `experiments/` | 따로 빌드하는 실험 도구 — `NpuBench`(NPU 정확도·속도), `RuntimeParity`(런타임 교체 전후 검출 비교), `TrackerCheck`(추적기 검증) |
-| `CLAUDE.md` | 설계 결정 · 함정 · 실측 기록. 코드를 고치기 전에 읽을 것 |
+| `CLAUDE.md` | 설계 결정 · 함정 · 꼭 지킬 규칙. 코드를 고치기 전에 읽을 것 |
+| `docs/` | 기능별 자세한 설명 · 실측 · 지난 테스트 기록 (CLAUDE.md 에서 옮김) |
 
 폴더 · 프로젝트 · 네임스페이스 · 제품 · 실행 파일 이름이 모두 `DetectView` 입니다 (2026-11-03 정리 — 예전엔 폴더·프로젝트·네임스페이스가 옛 이름 `YOLO11_Test` 였습니다).
 

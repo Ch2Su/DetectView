@@ -1,0 +1,37 @@
+# RF-DETR 검토
+
+> CLAUDE.md 에서 옮긴 절이다(2026-11-05 — CLAUDE.md 가 매 세션 컨텍스트를 너무 많이 차지해서 내용은 글자 그대로 옮기고, CLAUDE.md 에는 같은 제목으로 요약·꼭 지킬 규칙만 남겼다).
+> 본문의 '위'·'아래'·'○○ 절'이 가리키는 곳은 이 문서나 CLAUDE.md, 또는 다른 `docs/` 문서다 — CLAUDE.md 의 '자세한 문서' 표에서 찾는다. 새로 알게 된 실측·경과는 여기에 더한다.
+
+## 도메인 지식 — RF-DETR 검토 (2026-11-04~05, 2단계 끝 — 3단계는 사용자 결정 대기)
+
+사용자가 RF-DETR(Roboflow, N·S·M·L 은 Apache 2.0 — XL·2XL 은 PML 1.0)을 써 보자고 해서 세 단계로 나눴다: ① 학습 없이 COCO 사전학습으로 앱 런타임에서 노드 배치·속도·결과 일치 →
+② 같은 데이터셋으로 파인튜닝해 같은 시험 분할에서 비교 → ③ 이길 때만 앱에 '모델 종류'로 추가(YOLO 는 남긴다 — NPU 짝 모델은 YOLO 전용). 자세한 건 `experiments/RfDetrBench/README.md`.
+- ① 결과(전원 연결 — 배터리면 모두 25% 안팎 느리다): **모든 노드가 DirectML** 에 올라간다(GridSample 도 — 다만 융합 그래프 밖이라 디코더 층마다 그래프가 쪼개진다).
+  C# 전처리·후처리로 낸 검출이 PyTorch `predict()` 와 100% 같다. `session.Run` 중앙 FP32: 앱 YOLO26s 6.4 · RF-DETR N 9.7 · S 16.8 · M 21.7 · YOLO26m(COCO) 14.0 ms —
+  **같은 COCO 정확도의 YOLO26 보다 20~50% 느리다**(N ≈ YOLO26s 1.5배, S ≈ YOLO26m 1.2배 — T4·TensorRT 발표값과 순서가 뒤집힘). FP16 이면 RF-DETR N 5.2 · S 9.1 · M 12.2 ms(검출 98~99.5% 일치). YOLO FP16 은 DirectML 그래프 융합 실패로 못 쟀다
+- **오래 도는 벤치·학습은 전원을 연결하고** — 이 노트북은 배터리일 때 20분 동안 입력이 없으면 유휴 절전(Modern Standby)에 들어가 GPU 작업도 멈춘다(11-04 실제로 벤치 한 회차가 멈춤, Kernel-Power 506 'Idle Timeout').
+  덮개 닫힘 동작은 사용자가 꺼 두었다. 멈춘 원인은 506(진입 이유)으로 볼 것 — 507(종료 이유 'Lid')을 보고 덮개 탓으로 짐작했다가 틀렸다
+- 앱에 넣을 때: YoloDotNet 으로는 못 돌린다. 전처리는 **정사각형으로 늘이기**(레터박스 아님) + ImageNet 정규화이고 **float 에서 리사이즈해야 공식과 같다**(uint8 에서 줄이면 임계값 근처 검출 1~2% 바뀜 — 대신 float 경로는 720p 한 장 5~7 ms CPU).
+  출력은 이름(`dets`·`labels`)으로 고르고, 시그모이드 → 쿼리×클래스 상위 300 → 임계값. 모델 파일 108~121 MB(FP16 54~61 MB — YOLO26s 36 MB)
+- **3단계 준비 (11-05, `experiments/RfDetrBench` 의 `pre` — README '3단계 준비')**: 전처리 비용은 풀렸다. 원본 uint8 에서 바로 쌍선형으로 보간하며 정규화·CHW 를 한 번에 하면(C2, OpenCV float 쌍선형과 같은 탭·가중치, 행 병렬)
+  720p 한 장 **0.29 ms**(공식 경로 3.86 ms)이고 검출이 공식 경로와 100% 같다(학습한 S, 132장 1,545개). 비용이 입력이 아니라 출력 크기에 비례해 HUD 2560×1440 도 0.25 ms.
+  전처리를 ONNX 앞에 붙여 GPU 에서 돌리는 길(D, `prep_graph.py` — 입력 uint8 [1,H,W,C] BGR·BGRA)도 검출 100% 같고 CPU 비용 0 이지만, 세션을 프레임 크기마다 고정해야 하고 HUD 크기에선 올리는 데이터가 커서 C2 보다 2 ms 느리다.
+  **DirectML 출력은 결정적이다** — S FP32·FP16, N FP16, D 모두 같은 입력 30회·새 세션까지 비트 단위로 같았다(HUD '새 화면 고리'가 기대는 성질).
+  프레임당 합계(C2 + session.Run + 후처리, 720p): S FP16 9.2 ms · N FP16(COCO) 5.5 ms · S FP32 15.7 ms
+- **데이터셋은 백업을 쓴다**: `/home/chisu/datasets_backup/visible_2026-11-04`(WSL — 원본 `~/datasets/visible` 의 09-18 동기화본 4,708 · 854 · 973장, SHA-256 으로 확인, 옆에 README).
+  라벨링 도구의 'WSL 학습' 버튼이 원본을 DB 로 새로 만들어 `rsync --delete` 로 덮어써서 사용자가 백업해 쓰라고 했다. 백업 안 `data.yaml` 의 `path:` 는 원본 경로라 학습엔 path 를 바꾼 사본을 백업 밖에 만들어 쓴다
+- ② 끝(11-05, `experiments/RfDetrBench/step2/`): RF-DETR-S·YOLO26s·YOLO26m 을 같은 백업의 작업 사본으로 각자 기본 조리법 100 epoch 학습했다(WSL — 5.8 · 1.6 · 3.3시간).
+  앱과 같은 전처리의 ONNX 로 시험 분할 973장을 pycocotools 로 견줬다. AP 는 **RF-DETR-S 0.742**(FP16 도 0.742) · YOLO26m 0.708 · YOLO26s 0.660 이다.
+  YOLO 값은 쌍선형 축소로 잰 것이다. 앱 그대로의 Nearest 면 0.677 · 0.640 이고, 배포 YOLO26s 는 0.653.
+  (11-05 고침: 이 Nearest·쌍선형 차이의 대부분은 평가기가 640 보다 작은 111장을 **키울 때** 생겼다 — 앱은 작은 이미지를 키우지 않아 앱이 얻는 몫은 +0.005~0.006. 아래 '화면 HUD' 의 '입력 축소')
+  각 라이브러리의 자체 평가기로 재면 0.751 · 0.725 · 0.674 로 순서가 같고 차이도 비슷하다. YOLO 쪽 평가기 차이(rect 배치·출력 경로)는 README 에서 다 나눴다.
+  RF-DETR 의 이득은 두 바퀴·사람·버스와 재현율(임계 0.3 에서 0.920 vs 0.875)에서 나온다. **car 와 작은 물체(APs)는 YOLO26m 이 같거나 낫다**(0.832 vs 0.815 · 0.430 vs 0.403).
+  다음 후보: 3단계(앱에 '모델 종류'로) · RF-DETR-N 도 학습(FP16 5.2 ms 로 YOLO26s 보다 빠름) — 사용자가 고른다. 앱 YOLO 쌍선형 축소는 11-05 에 했다('화면 HUD' 의 '입력 축소')
+- **YOLO 남은 여지 · 16:9 (11-05, `experiments/RfDetrBench` README 'YOLO 남은 여지')**: 2단계 모델을 다르게 내보내기만 해서 앱 경로(쌍선형 레터박스·키우지 않음·DirectML)로 쟀다.
+  ① NMS 를 넣어 내보내기(`nms=True`): AP −0.003~−0.005 · 작은 물체·AR100 손해, 앱 임계값 부근(중복 필터 뒤)에선 YOLO26s 만 같은 정밀도에서 재현율 +0.013, `session.Run` +1 ms(`NonMaxSuppression` 은 CPU) — 권하지 않음.
+  val 이 NMS 로 0.007~0.010 높던 건 multi-label 몫이다(val 을 single-label 로 돌리면 우리 NMS 판과 검출 수까지 같다 — `crosscheck_native.py --single-label`).
+  ② 640×384 입력: 16:9 이미지에서 AP 같음(±0.002), `session.Run` −31%(YOLO26s 4.39 · YOLO26m 9.14 ms), 16:9 가 아닌 이미지엔 손해.
+  ③ **16:9 이미지(356장)만 보면 RF-DETR-S 와 YOLO26m 의 AP 가 같다(0.695 · 0.696)** — RF-DETR-S 의 우위는 16:9 가 아닌 이미지에서 나온다. 16:9 에서 RF-DETR-S 는 IoU 0.5 재현율(중복 필터 뒤 같은 정밀도에서 약 +0.03)·사람·bicycle,
+  YOLO26m 은 작은 물체(APs 0.519 vs 0.379)·car·truck 이 낫다. 그래서 3단계 후보에 **YOLO26m 640×384**(9.14 ms — RF-DETR-S FP16 과 같은 속도, 지금 YOLO 경로·NPU 짝 그대로)가 더해졌다 — 사용자가 고른다.
+  평가기(`eval_test.py`)는 이제 앱 임계값 정밀도·재현율을 `DuplicateBoxes` 를 건 뒤로도 낸다(`app_dedup` — 앱 화면·추적기가 받는 박스)
