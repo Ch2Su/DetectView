@@ -38,7 +38,8 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
 - 배포 폴더 모델을 바꾸면 NPU 짝도 다시 만든다: `pwsh tools\Make-NpuModel.ps1 -Model publish\best.onnx` (→ 그 옆 `best.npu.onnx`, 아래 "NPU")
 - **앱용 ONNX 를 새로 내보낼 땐 end-to-end(`[1,300,6]`)인지 본다** — Ultralytics 8.4.142(라벨링 도구가 쓰는 판)의 `export(format="onnx")` 기본값은 NMS 전 원출력 `[1,84,8400]`(메타데이터 `end2end False`)이다.
   `nms=False`(또는 `end2end=True`)를 줄 것. 지금 `best.onnx` 는 8.4.31 기본값으로 end-to-end 였다 (2026-11-04 실측 — `experiments/RfDetrBench` README. 원출력 꼴을 앱이 어떻게 처리하는지는 확인 안 함 — 아래 3번의 전제가 깨진다).
-  같은 판의 **val 도 `nms` 를 안 주면 one-to-many 출력 + NMS 로 잰다**(학습 중 검증·`best.pt` 고르기도) — 학습 로그의 mAP 는 앱이 쓰는 end-to-end 출력보다 0.007~0.010 높게 나온다(2026-11-05 실측). 앱과 같은 걸 재려면 val 에 `nms=False`
+  같은 판의 **val 도 `nms` 를 안 주면 one-to-many 출력 + NMS 로 잰다**(학습 중 검증·`best.pt` 고르기도) — 학습 로그의 mAP 는 앱이 쓰는 end-to-end 출력보다 0.007~0.010 높게 나온다(2026-11-05 실측). 앱과 같은 걸 재려면 val 에 `nms=False`.
+  그 몫은 val 의 NMS 가 **multi-label**(한 박스가 여러 클래스로 남음)이라서다 — `nms=True` 로 내보낸 ONNX(박스마다 최고 클래스 하나)는 앱 경로에서 end-to-end 보다 AP 가 0.003~0.005 **낮다**(같은 날 — 아래 3번·"RF-DETR 검토")
 - publish 는 `best.onnx` 를 `PreserveNewest` 로 복사한다 → **루트 `best.onnx` 가 배포 폴더의 것보다 새로우면 덮어쓴다**.
   **worktree 에서 배포하면 거의 늘 그렇다**(루트 `best.onnx` 의 시각이 체크아웃한 때다) — 그땐 임시 폴더로 `-o` 를 주고 `DetectView.exe` 만 배포 폴더로 옮긴다(2026-11-05).
   worktree 에서 UI 테스트를 돌릴 때도 테스트가 `<저장소>\publish\test*.mp4` 를 찾으니 worktree 에 `publish` → `E:\DetectView\publish` 연결(junction)을 두고, 끝나면 링크만 지운다
@@ -98,7 +99,7 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
 | `LICENSE` · `THIRD-PARTY-NOTICES.md` | 저장소 라이선스 GNU AGPL-3.0 (2026-11-02 — 들어 있는 `best.onnx` 가 Ultralytics YOLO26 파인튜닝이라 Ultralytics 가 프로젝트 전체에 AGPL-3.0 을 요구)과 저장소 안 남의 저작물 고지(모델 AGPL-3.0 · `WindowsMlExecutionProvider.cs` 의 바탕 YoloDotNet MIT · `.claude/` 의 graft 연동 파일 MIT — 각 전문). 남의 코드·파일을 가져오면 여기에 더한다 |
 | `tools/` | `Make-NpuModel.ps1`(+ `npu_quantize.py`): YOLO 모델의 NPU 용 짝 `<이름>.npu.onnx` 만들기 (아래 "NPU") |
 | `best.npu.onnx` | 루트 `best.onnx` 의 NPU 짝 (A16W8·가중치 채널별 QDQ, 10.4 MB, git 추적 — 2026-11-05 쌍선형 입력으로 다시 보정, MD5 `0B58A84E…`). 원본을 바꾸면 다시 만든다 |
-| `experiments/` | 따로 빌드하는 실험 프로젝트(각자 `.csproj`). 본 `.csproj` 의 `Compile/Page/None Remove` 로 빠져 있다. `NpuBench/`: AMD NPU 실험 — 짝 확인(`npu_quant`·`npu_source_md5`) 뒤에만 NPU 에 넣는다 (아래 "NPU"). `RuntimeParity/`: 런타임 교체 전후 검출 결과 비교 (1번 항목, GPU 선택은 두 빌드 모두 `GpuAdapters.cs`, 레터박스는 `YoloLetterbox.cs` 링크 — 2026-11-05 부터 좌표가 실수라 그 전 CSV 와 견주지 말 것). `TrackerCheck/`: 추적기 검증 (아래 "추적기")·테두리 멈춤 판정 합성 장면(`selftest` — 관심 구역 `Roi.cs` 의 판정·파일 검사 ⑧, 화면 전환 감지 합성 장면 ⑨, 구역 진입·나감 이벤트 ⑩, 유고 규칙 ⑪, 화면 식별 ⑫도 여기)·화면 식별 맞춤 실측(`views`)·화면 전환이 있는 합성 영상 만들기(`mkrevisit`)·화면 전환 감지 임계값 실측(`scene`)·GPU 고성능/저전력 판정(`gpu`)·중복 박스 필터 전후 비교 (3번 항목)·YOLO 입력 축소 방식(`InputCheck.cs` — 데이터셋 시험 분할을 앱 경로로 검출하고 Skia·OpenCV 축소를 화소 비교 `testsplit`, 축소 시간·결정성 `inputbench`). `RfDetrBench/`: RF-DETR 를 앱 런타임(DirectML)에서 — 노드 배치·속도·결과 일치, 같은 COCO 정확도의 YOLO26 과 비교. `step2/` 는 같은 데이터로 학습(WSL)·내보내기·시험 분할 평가 (아래 "RF-DETR 검토"). 산출물 `*/out/`·`*/bin/`·`*/obj/`·`*/.venv/` 는 gitignore |
+| `experiments/` | 따로 빌드하는 실험 프로젝트(각자 `.csproj`). 본 `.csproj` 의 `Compile/Page/None Remove` 로 빠져 있다. `NpuBench/`: AMD NPU 실험 — 짝 확인(`npu_quant`·`npu_source_md5`) 뒤에만 NPU 에 넣는다 (아래 "NPU"). `RuntimeParity/`: 런타임 교체 전후 검출 결과 비교 (1번 항목, GPU 선택은 두 빌드 모두 `GpuAdapters.cs`, 레터박스는 `YoloLetterbox.cs` 링크 — 2026-11-05 부터 좌표가 실수라 그 전 CSV 와 견주지 말 것). `TrackerCheck/`: 추적기 검증 (아래 "추적기")·테두리 멈춤 판정 합성 장면(`selftest` — 관심 구역 `Roi.cs` 의 판정·파일 검사 ⑧, 화면 전환 감지 합성 장면 ⑨, 구역 진입·나감 이벤트 ⑩, 유고 규칙 ⑪, 화면 식별 ⑫도 여기)·화면 식별 맞춤 실측(`views`)·화면 전환이 있는 합성 영상 만들기(`mkrevisit`)·화면 전환 감지 임계값 실측(`scene`)·GPU 고성능/저전력 판정(`gpu`)·중복 박스 필터 전후 비교 (3번 항목)·YOLO 입력 축소 방식(`InputCheck.cs` — 데이터셋 시험 분할을 앱 경로로 검출하고 Skia·OpenCV 축소를 화소 비교 `testsplit`, 축소 시간·결정성 `inputbench`). `RfDetrBench/`: RF-DETR 를 앱 런타임(DirectML)에서 — 노드 배치·속도·결과 일치, 같은 COCO 정확도의 YOLO26 과 비교. `step2/` 는 같은 데이터로 학습(WSL)·내보내기·시험 분할 평가, YOLO 변형(NMS 내보내기·640×384 — 속도는 `yolo`)도 (아래 "RF-DETR 검토"). 산출물 `*/out/`·`*/bin/`·`*/obj/`·`*/.venv/` 는 gitignore |
 | `graft/` · `.claude/` | 코드 인덱스(graft)와 그 에이전트 연동. graft 는 CLI 로만 쓴다 — MCP 서버 등록은 2026-11-02 사용자 결정으로 전역(`~/.claude.json`)과 이 저장소(`.mcp.json` 삭제) 모두 뺐다. `graft/` 는 재생성 가능한 캐시라 커밋하지 않는다. `.claude/helpers/graft-statusline.cjs`(상태줄)는 graft 설치 경로를 `%APPDATA%\npm` 에서 계산한다(2026-11-02 — graft 가 박아 넣은 `C:\Users\<이름>\…` 경로를 저장소에서 뺌. graft 를 다시 설치해 박힌 경로로 돌아오면 다시 고칠 것). graft 훅은 전역 `~/.claude/settings.json` 에만 둔다 — 프로젝트에도 있으면 둘 다 돌아 세션마다 graft 안내문이 두 번 들어가고 도구마다 훅이 두 번 돈다(2026-11-02 프로젝트 쪽 훅과 `graft-hooks.cjs` 를 뺌. graft 를 이 저장소에 다시 설치해 돌아오면 다시 뺄 것) |
 
 ## 절대 건드리면 안 되는 것들 (실제로 한 번씩 터졌던 부분)
@@ -161,6 +162,9 @@ COCO-80에 없는 클래스처럼 보여도 **사용자가 의도한 것**이다
   SAHI(15프레임에 1장) 병합 결과 test4 2054 → 2028, test5 468 → 427 — 빠진 것은 모두 남은 박스의 중복이고 새로 생긴 박스 없음.
   앱으로 test4 를 1.1·4.9·23.9초에서 멈춰(SAHI 포함) 눈으로 봤을 때 겹친 라벨이 사라지고 빠진 차 없음
 - 한계(확인 안 함): 크기가 비슷한 두 물체가 앞뒤로 거의 다 겹치면(작은 쪽 80% 이상이 큰 쪽 안) 하나로 친다 — 사람 둘이 앞뒤로 선 경우 등
+- **NMS 를 넣어 내보낸 모델(Ultralytics `nms=True`)로 바꿔도 이 필터는 그대로 필요하다** (2026-11-05, 2단계 학습 YOLO26s 로 test1~5 모든 프레임 — `experiments/RfDetrBench` README 'YOLO 남은 여지'):
+  같은 클래스 IoU>0.7 쌍은 180~553 → 0~6 으로 거의 없어지지만, 클래스별 NMS 가 못 지우는 같은 자리 car+truck·범위만 다른 중복은 영상 5개 중 4개에서 늘고(test4 1,027 → 1,577쌍) 박스도 5~10% 많다.
+  그 모델 자체도 권하지 않았다 — 시험 분할 AP 가 오히려 0.003~0.005 낮고(작은 물체·AR100 손해) `NonMaxSuppression` 이 DirectML 에 없어 CPU 로 가 `session.Run` 이 1 ms 느리다
 
 ### 4. DXGI GPU 선택 시 `PointerUSize`
 어댑터 열거는 `GpuAdapters.Enumerate` 한 곳이다. `AdapterDescription1.DedicatedVideoMemory` 는 `SharpGen.Runtime.PointerUSize` 다.
@@ -383,7 +387,8 @@ DXGI 와 GDI 캡처는 같은 영역에서 **픽셀이 완전히 동일**했고 
 - GDI `CAPTUREBLT` 플래그 제거: 효과 없음
 - 캡처 버퍼 알파 채널 보정: 불필요. 알파=0 버퍼를 넣어도 검출 결과 동일 (`SKAlphaType.Opaque` 로 넘김)
 
-남은 개선 후보(미구현): 모션 예측 외삽(비용 거의 0, 방향 전환 시 오버슈트).
+남은 개선 후보(미구현): 모션 예측 외삽(비용 거의 0, 방향 전환 시 오버슈트) · 16:9 소스에 640×384 입력 모델(같은 가중치를 `--imgsz 384 640` 로 내보냄 — 16:9 이미지에서 AP 가 같고
+`session.Run` −31%: YOLO26s 6.34 → 4.39 ms. 소스 비율로 세션을 골라야 하고 SAHI 타일·다른 비율은 640×640 그대로 — 2026-11-05 `experiments/RfDetrBench` README 'YOLO 남은 여지').
 
 **입력 축소 — OpenCV 쌍선형 레터박스 (`YoloLetterbox.cs`, 2026-11-05, 속도가 아니라 정확도)**: Ultralytics 는 학습·검증 모두 쌍선형(`cv2.INTER_LINEAR`)으로 줄이는데,
 YoloDotNet 4.2.0 에 맡기면 기본값이 Nearest 다(`ImageConfig.DefaultSamplingOptions` — `YoloOptions.SamplingOptions` 의 XML 문서 주석은 Linear 라고 잘못 적혀 있다). 같은 날 두 단계로 바꿨다:
@@ -635,6 +640,13 @@ HUD 는 캡처 크기 — 크기 없는 판은 아래 '화면 가장자리' 문�
   각 라이브러리의 자체 평가기로 재면 0.751 · 0.725 · 0.674 로 순서가 같고 차이도 비슷하다. YOLO 쪽 평가기 차이(rect 배치·출력 경로)는 README 에서 다 나눴다.
   RF-DETR 의 이득은 두 바퀴·사람·버스와 재현율(임계 0.3 에서 0.920 vs 0.875)에서 나온다. **car 와 작은 물체(APs)는 YOLO26m 이 같거나 낫다**(0.832 vs 0.815 · 0.430 vs 0.403).
   다음 후보: 3단계(앱에 '모델 종류'로) · RF-DETR-N 도 학습(FP16 5.2 ms 로 YOLO26s 보다 빠름) — 사용자가 고른다. 앱 YOLO 쌍선형 축소는 11-05 에 했다('화면 HUD' 의 '입력 축소')
+- **YOLO 남은 여지 · 16:9 (11-05, `experiments/RfDetrBench` README 'YOLO 남은 여지')**: 2단계 모델을 다르게 내보내기만 해서 앱 경로(쌍선형 레터박스·키우지 않음·DirectML)로 쟀다.
+  ① NMS 를 넣어 내보내기(`nms=True`): AP −0.003~−0.005 · 작은 물체·AR100 손해, 앱 임계값 부근(중복 필터 뒤)에선 YOLO26s 만 같은 정밀도에서 재현율 +0.013, `session.Run` +1 ms(`NonMaxSuppression` 은 CPU) — 권하지 않음.
+  val 이 NMS 로 0.007~0.010 높던 건 multi-label 몫이다(val 을 single-label 로 돌리면 우리 NMS 판과 검출 수까지 같다 — `crosscheck_native.py --single-label`).
+  ② 640×384 입력: 16:9 이미지에서 AP 같음(±0.002), `session.Run` −31%(YOLO26s 4.39 · YOLO26m 9.14 ms), 16:9 가 아닌 이미지엔 손해.
+  ③ **16:9 이미지(356장)만 보면 RF-DETR-S 와 YOLO26m 의 AP 가 같다(0.695 · 0.696)** — RF-DETR-S 의 우위는 16:9 가 아닌 이미지에서 나온다. 16:9 에서 RF-DETR-S 는 IoU 0.5 재현율(중복 필터 뒤 같은 정밀도에서 약 +0.03)·사람·bicycle,
+  YOLO26m 은 작은 물체(APs 0.519 vs 0.379)·car·truck 이 낫다. 그래서 3단계 후보에 **YOLO26m 640×384**(9.14 ms — RF-DETR-S FP16 과 같은 속도, 지금 YOLO 경로·NPU 짝 그대로)가 더해졌다 — 사용자가 고른다.
+  평가기(`eval_test.py`)는 이제 앱 임계값 정밀도·재현율을 `DuplicateBoxes` 를 건 뒤로도 낸다(`app_dedup` — 앱 화면·추적기가 받는 박스)
 
 ## 도메인 지식 — NPU (AMD Ryzen AI — 왼쪽 패널 "추론 장치"에서 GPU/NPU 선택)
 

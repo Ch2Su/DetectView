@@ -1,6 +1,7 @@
 # RfDetrBench — RF-DETR 를 앱의 런타임(DirectML)에서 돌려 보기
 
-RF-DETR(Roboflow, Nano·Small·Medium·Large 는 Apache 2.0)로 YOLO26s 를 바꾸거나 모델 종류로 더할 만한지 보는 실험이다. 2단계(같은 데이터로 학습해 시험 분할에서 비교, 2026-11-04~05)는 아래 '2단계' 절.
+RF-DETR(Roboflow, Nano·Small·Medium·Large 는 Apache 2.0)로 YOLO26s 를 바꾸거나 모델 종류로 더할 만한지 보는 실험이다. 2단계(같은 데이터로 학습해 시험 분할에서 비교, 2026-11-04~05)는 아래 '2단계' 절,
+YOLO 쪽 남은 여지(NMS 를 넣어 내보내기 · 16:9 영상에 640×384 입력 — 16:9 이미지에서의 RF-DETR-S 비교 포함, 11-05)는 맨 아래 'YOLO 남은 여지' 절.
 **1단계**(2026-11-04)는 학습 없이 COCO 사전학습 가중치로, 앱과 같은 런타임 — Windows ML 의 ONNX Runtime 1.27 + DirectML(NVIDIA) — 에서
 
 1. **모든 노드가 GPU 에 올라가는지** — RF-DETR 디코더의 변형 어텐션(MSDeformAttn)은 GridSample 을 쓴다. DirectML EP 는 GridSample 을 지원(5D 만 빠짐)하지만 실제 배치는 프로파일로 본다
@@ -280,21 +281,24 @@ FP32 모델은 CPU 로 쟀다. DirectML(`--ep dml`, NVIDIA)로 다시 재도 RF-
 | 〃 Nearest 축소 (이 평가기 — 640 보다 작은 이미지도 키운다. 앱과 다르다: 아래 '앱의 쌍선형 축소') | 0.640 | 0.677 | 축소 −0.020 · −0.031 |
 
 - **Ultralytics 8.4.142 의 val 은 `nms` 를 안 주면 YOLO26 의 one-to-many 출력에 NMS 를 걸어 잰다** — `engine/validator.py` 가 `end2end=self.args.nms is False` 이고 기본값이 None 이다.
-  학습 중 검증과 `best.pt` 고르기도 그렇다. 그래서 **학습 로그의 mAP 는 앱이 쓰는 end-to-end 출력보다 0.007~0.010 높게 나온다**. 앱과 같은 것을 재려면 `nms=False`
+  학습 중 검증과 `best.pt` 고르기도 그렇다. 그래서 **학습 로그의 mAP 는 앱이 쓰는 end-to-end 출력보다 0.007~0.010 높게 나온다**. 앱과 같은 것을 재려면 `nms=False`.
+  그 몫은 val 의 NMS 가 multi-label(한 박스가 여러 클래스로 남는다)이라서 생긴다 — single-label 로 바꾸면 end-to-end 보다 오히려 낮다(아래 'YOLO 남은 여지')
 - 이 평가기로 흉내 낸 앱 경로가 Ultralytics 기본 val 보다 잃는 몫은 YOLO26s 0.034 · YOLO26m 0.048 이다. 그중 'Nearest 축소' 몫은 작은 이미지를 키운 이 평가기의 것이 대부분이었다(아래 '앱의 쌍선형 축소'). 되찾을 여지는 셋이다.
   ① 쌍선형 축소 — 앱 코드로 재면 +0.005~0.006, OpenCV 로 레터박스를 만들고 박스 +0.5 px 까지 하면 +0.010(11-05 앱에 넣었다 — 배포 YOLO26s 0.6555 → 0.6658).
-  ② NMS 를 넣어 내보내기(Ultralytics `nms=True`, +0.007~0.010). DirectML 에서 도는지, 3번 항목의 중복 박스가 어떻게 바뀌는지는 안 봤다.
-  ③ 16:9 영상에 640×384 입력(+0.002~0.008, 계산량 40% 적음). 시험 분할은 비율이 섞여 있어 영상에선 따로 재야 한다
+  ② NMS 를 넣어 내보내기(Ultralytics `nms=True`) — 처음엔 +0.007~0.010 으로 봤지만 그건 val 의 multi-label NMS 몫이었다. 내보낸 NMS 는 single-label 이라 앱 경로에서 AP 가 오히려 0.003~0.005 낮다(11-05, 아래 'YOLO 남은 여지').
+  ③ 16:9 영상에 640×384 입력 — 처음 적은 +0.002~0.008 은 val 의 rect 배치 몫이었고 16:9 이미지에선 AP 가 같다(±0.002). 대신 `session.Run` 이 31% 빠르다(같은 절 — 정확도가 아니라 속도)
 
 ### 판단 (2단계)
 
 - 3단계 기준(이길 때만 앱에)으로는 **RF-DETR-S 가 이긴다** — 같은 데이터·각자의 기본 조리법에서 전체 AP·재현율이 셋 중 가장 높고, FP16 이면 1단계 속도로 YOLO26m(FP32 14.0 ms — YOLO FP16 은 DirectML 에서 못 돌림)보다 빠르다(9.1 ms).
   지금 앱 경로(배포 YOLO26s — 11-05 쌍선형 레터박스로 바꾼 앱 코드로 잰 0.6658, 아래 '앱의 쌍선형 축소')보다 AP +0.076
 - 다만 이득이 고르지 않다: car·작은 물체는 YOLO26m(쌍선형)이 같거나 낫다 — 유고 규칙이 보는 차량만 보면 YOLO26m 과의 차이가 작다
+- **16:9 이미지(앱의 영상·화면)만 보면 AP 는 YOLO26m 과 같다**(0.695 vs 0.696 — 11-05, 아래 'YOLO 남은 여지' 의 덤). 앞서는 몫은 16:9 가 아닌 이미지에서 나온다.
+  16:9 에서도 RF-DETR-S 는 IoU 0.5 재현율·사람·bicycle 이 낫고, 작은 물체(APs 0.379 vs 0.519)·car·truck 은 YOLO26m 이 낫다
 - 앱에 넣으려면(1단계에서 정리): YoloDotNet 밖의 새 추론 경로(정사각형 늘이기 전처리 — float 경로가 CPU 5~7 ms 라 줄여야 한다 · 후처리), 모델 파일 57 MB(FP16), NPU 는 YOLO 만(짝 모델이 YOLO 전용),
   HUD 가 기대는 결정성(같은 입력에 같은 출력) 확인 — 둘 다 11-05 확인했다(위 '3단계 준비': 원본에서 바로 쌍선형 0.29 ms · 출력이 비트 단위로 같음)
 - 더 싼 길도 있다: ① 앱의 YOLO 축소를 쌍선형으로 — 11-05 넣었다. 앱 경로로 0.6555 → 0.6658(+0.010)이라 처음 적은 +0.02~0.03 보다 작았다(아래 '앱의 쌍선형 축소')
-  ② YOLO26m 으로 바꾸기(쌍선형이면 0.708, 추론은 2.2배) ③ **RF-DETR-N 을 같은 데이터로 학습**해 보기 — FP16 5.2 ms 로 지금 YOLO26s(6.4 ms)보다 빠른데 이번엔 재지 않았다(11-05 시작했다가 첫 epoch 뒤 멈춤 — 위 학습 절)
+  ② YOLO26m 으로 바꾸기(쌍선형이면 0.708, 추론은 2.2배 — 16:9 소스에 640×384 로 내보내면 1.44배(9.1 ms)로 RF-DETR-S FP16 과 같은 속도, 아래 'YOLO 남은 여지') ③ **RF-DETR-N 을 같은 데이터로 학습**해 보기 — FP16 5.2 ms 로 지금 YOLO26s(6.4 ms)보다 빠른데 이번엔 재지 않았다(11-05 시작했다가 첫 epoch 뒤 멈춤 — 위 학습 절)
 - 확인 안 한 것: 학습을 한 번씩만 했다(시드 차이 모름) · 학습률을 일찍 내리는 조리법(rfdetr `lr_drop`) · 시험 분할은 학습 데이터와 같은 출처라 **앱의 CCTV 영상(test1~5)에서의 차이** ·
   추적기·유고 규칙 위에서의 차이
 
@@ -344,4 +348,103 @@ uv run --no-project --python 3.12 --with onnxruntime --with pycocotools --with o
     --data '\\wsl.localhost\Ubuntu\home\chisu\rfdetr_work\data\visible' --out experiments\RfDetrBench\out\eval_app --subset resized `
     --app-json 'app_nearest:experiments\TrackerCheck\out\testsplit\app_deployed_nearest.json' --app-json 'app_linear:experiments\TrackerCheck\out\testsplit\app_deployed_linear.json' `
     --compare app_nearest:app_linear
+```
+
+## YOLO 남은 여지 — NMS 를 넣어 내보내기 · 16:9 영상에 640×384 입력 (2026-11-05)
+
+2단계 '두 평가기의 차이 나누기' 끝에 적은 되찾을 여지 중 ②·③ 을 앱 경로로 쟀다(① 쌍선형 축소는 앞 절 — 앱에 넣었다). 학습은 하지 않았다 — 2단계에서 학습한 YOLO26s·YOLO26m 의 `best.pt` 를 다르게 내보내기만 했다.
+
+- **NMS 를 넣어 내보내기** (`export_trained.py yolo <best.pt> <이름> --nms <conf>` = Ultralytics `nms=True` — exporter 의 `NMSModel`): one-to-many 출력 → 박스마다 최고 클래스 하나(single-label) → 신뢰도 > conf → 클래스별 NMS(IoU 0.7, ONNX `NonMaxSuppression`) → 상위 300개를 0 으로 채운 `[1,300,6]`.
+  출력 꼴은 지금의 end-to-end 와 같지만 메타데이터는 `end2end False` 다. 신뢰도 임계값이 모델에 박혀서 AP 를 잴 판(0.001)과 앱에 넣을 판(0.25)을 따로 만들었다
+- **640×384 입력** (`--imgsz 384 640`): 같은 가중치를 입력 크기만 바꿔 내보낸다(앵커 8,400 → 5,040개). 16:9 영상(1280×720 → 640×360)은 640×640 과 같은 배율 0.5 로 들어가고 위아래 여백만 준다
+
+평가는 앱 경로 그대로다 — `eval_test.py --ep dml --yolo-resize linear --yolo-no-upscale`(OpenCV 쌍선형 레터박스 · 검은 여백 · 640 보다 작은 이미지는 키우지 않음 · DirectML).
+그래서 YOLO26s 가 2단계 표(작은 이미지를 키운 0.660)와 조금 다른 0.664 다. **16:9** 는 가로/세로 1.65 이상인 356장(`--subset wide` — 정답 2,103개, 32² 미만 229개. 그중 640 보다 작아 키우지 않는 이미지는 10장)이다.
+정밀도·재현율은 앱 임계 0.3 · IoU 0.5 에서 **앱의 중복 박스 필터(`DuplicateBoxes`)를 건 뒤** — 앱 화면·추적기가 받는 박스다(`eval_test.py` 가 이제 걸기 전·뒤 둘 다 낸다.
+필터는 같은 자리 중복만 빼서 정밀도가 0.02~0.035 오르고 재현율은 0.003~0.008 내린다).
+
+| 모델 | 출력 | 입력 | 전체 973장 AP (APs · AR100) | 정밀도 / 재현율 | 16:9 356장 AP (APs · AR100) | 정밀도 / 재현율 |
+|---|---|---|---|---|---|---|
+| YOLO26s | end-to-end (지금 앱 꼴) | 640×640 | **0.664** (0.412 · 0.777) | 0.909 / 0.838 | 0.654 (0.453 · 0.778) | 0.908 / 0.828 |
+| YOLO26s | NMS | 640×640 | 0.660 (0.368 · 0.736) | 0.895 / 0.860 | 0.651 (0.384 · 0.728) | 0.901 / 0.849 |
+| YOLO26s | end-to-end | 640×384 | 0.645 (0.378 · 0.768) | 0.893 / 0.834 | **0.654** (0.481 · 0.779) | 0.911 / 0.828 |
+| YOLO26s | NMS | 640×384 | 0.646 (0.345 · 0.724) | 0.879 / 0.858 | 0.650 (0.381 · 0.723) | 0.902 / 0.850 |
+| YOLO26m | end-to-end | 640×640 | **0.708** (0.412 · 0.785) | 0.927 / 0.872 | **0.696** (0.519 · 0.778) | 0.928 / 0.873 |
+| YOLO26m | NMS | 640×640 | 0.703 (0.401 · 0.760) | 0.912 / 0.884 | 0.691 (0.504 · 0.755) | 0.918 / 0.883 |
+| YOLO26m | end-to-end | 640×384 | 0.700 (0.352 · 0.779) | 0.918 / 0.871 | 0.694 (0.520 · 0.776) | 0.927 / 0.869 |
+| YOLO26m | NMS | 640×384 | 0.697 (0.350 · 0.756) | 0.908 / 0.885 | 0.694 (0.498 · 0.759) | 0.912 / 0.882 |
+| RF-DETR-S FP16 (참고 — 2단계 검출을 다시 채점) | 쿼리 상위 300 | 512×512 늘이기 | 0.742 (0.408 · 0.832) | 0.905 / 0.913 | 0.695 (0.379 · 0.804) | 0.907 / 0.912 |
+
+**속도** — `RfDetrBench yolo`(`YoloBench.cs`): 앱 런타임(Windows ML ORT 1.27.1 + DirectML, NVIDIA, 전원 연결)에서 test4 프레임 30장을 앱처럼 레터박스해 워밍업 20회 뒤 150회. `session.Run`(입력 복사·출력 읽기 포함):
+
+| 모델 | 입력 | 중앙 | p95 | 노드 배치 |
+|---|---|---|---|---|
+| YOLO26s end-to-end | 640×640 | 6.34 ms | 7.06 | 모두 DirectML(융합 노드 2개 — CPU 는 모양 계산 Mod 1개) |
+| YOLO26s NMS (conf 0.25 · 0.001) | 640×640 | 7.30 · 7.11 | 8.42 · 8.21 | `NonMaxSuppression` 은 **CPU**(DirectML EP 에 없다)와 그 앞뒤 작은 연산 13개. DirectML 은 융합 노드 4개로 쪼개지고 NMS 앞의 동적 크기 연산(NonZero·GatherND·Pad 등)이 따로 돈다 |
+| YOLO26s end-to-end | 640×384 | **4.39** | 4.76 | 모두 DirectML |
+| YOLO26s NMS (conf 0.25) | 640×384 | 6.12 | 6.97 | 위 NMS 판과 같다 |
+| YOLO26m end-to-end | 640×640 | 13.16 | 15.68 | 모두 DirectML |
+| YOLO26m end-to-end | 640×384 | **9.14** | 10.24 | 모두 DirectML |
+
+**실제 영상** — `yolo_video_check.py`(test1~5 모든 프레임, 앱 전처리, 임계 0.3, YOLO26s — 정답이 없어 정확도가 아니라 무엇이 달라지는지를 본다):
+
+| 영상 | 프레임 | 박스 end-to-end → NMS(0.25) | `DuplicateBoxes` 규칙에 걸리는 쌍 | 그런 쌍이 있는 프레임 | 같은 클래스 IoU>0.7 쌍 | 640×384 박스 · 640 검출과 짝 |
+|---|---|---|---|---|---|---|
+| test1 | 929 | 7,019 → 7,478 | 259 → 350 | 212 → 252 | 180 → 0 | 7,134 · 99.2% |
+| test2 | 916 | 17,170 → 18,327 | 778 → 1,275 | 519 → 654 | 553 → 1 | 17,382 · 98.7% |
+| test3 | 914 | 14,567 → 15,996 | 461 → 408 | 386 → 323 | 380 → 6 | 14,321 · 95.3% |
+| test4 | 916 | 17,417 → 18,417 | 1,027 → 1,577 | 518 → 651 | 303 → 1 | 17,958 · 98.5% |
+| test5 | 2,821 | 6,199 → 6,531 | 260 → 375 | 238 → 318 | 38 → 0 | (16:9 아님) |
+
+(짝은 640 검출 중 같은 클래스·IoU 0.5 이상인 640×384 검출을 찾은 몫. NMS 판에 남은 같은 클래스 IoU>0.7 쌍 0~6 은 화면 밖으로 나간 박스를 프레임에 맞춰 자른 뒤 겹침이 커진 것으로 보인다)
+
+**읽은 것**
+- **NMS 판은 AP 를 올리지 않는다** — 전체 −0.003 · −0.005, 16:9 −0.004 · −0.005. 잃는 곳은 작은 물체(APs −0.010~−0.070)와 AR100(−0.023~−0.050)이다.
+  클래스별 NMS 는 IoU 0.7 넘게 겹친 서로 다른 물체(원근으로 겹친 먼 차 줄 등)도 지워서 임계값을 내려도 되찾지 못한다. end-to-end 출력은 NMS 없이 그런 물체를 따로 낸다
+- **앱 임계값 부근에선 YOLO26s 만 조금 낫다** — 중복 필터 뒤 임계 0.15~0.40 을 훑어 같은 정밀도끼리 맞대면(정밀도/재현율):
+  YOLO26s end-to-end 0.25: 0.897/0.846 · 0.30: 0.909/0.838 · 0.35: 0.917/0.828, NMS 0.30: 0.895/0.860 · 0.35: 0.905/0.851 · 0.40: 0.917/0.842 → **같은 정밀도에서 재현율 +0.013~0.014**(16:9 는 +0.008~0.013).
+  YOLO26m 은 end-to-end 0.20: 0.912/0.883 · 0.30: 0.927/0.872, NMS 0.30: 0.912/0.884 · 0.40: 0.927/0.873 → 같다. 임계 0.3 을 그대로 두고 바꿔 끼우면 재현율이 오르고 정밀도가 내린다(end-to-end 의 임계값을 0.05 쯤 낮춘 것과 비슷하다)
+- **NMS 판이어도 `DuplicateBoxes` 는 그대로 필요하다** — 같은 클래스 IoU 0.7 넘는 중복(CLAUDE.md 3번 항목에서 본 것)은 거의 없어지지만, 클래스별 NMS 가 못 지우는 같은 자리 car+truck·범위만 다른 중복은 5개 영상 중 4개에서 늘었고 박스도 5~10% 많다
+- NMS 판은 `session.Run` 이 1.0 ms(640) · 1.7 ms(640×384) 느리다 — `NonMaxSuppression` 이 CPU 라 GPU → CPU 복사가 끼고 그래프가 쪼개진다
+- **640×384 는 16:9 이미지에서 정확도가 같고**(AP ±0.002, 중복 필터 뒤 정밀도·재현율 ±0.004) **`session.Run` 이 31% 빠르다**(YOLO26s 6.34 → 4.39 ms · YOLO26m 13.16 → 9.14 ms). 실제 영상의 검출도 95~99% 같다.
+  16:9 가 아닌 이미지엔 손해다 — 전체 973장 AP 0.664 → 0.645 · 0.708 → 0.700(세로가 긴 이미지일수록 더 작게 들어간다). 앱에 넣으려면 소스 비율로 입력 크기를 골라야 한다(16:9 영상·HUD 화면 → 640×384, SAHI 타일·다른 비율 → 640×640)
+- **덤 — 16:9 이미지만 보면 RF-DETR-S 와 YOLO26m 의 AP 가 같다**(0.695 · 0.696). 2단계의 RF-DETR-S 우위(전체 0.742 vs 0.708)는 16:9 가 아닌 이미지(사람·두 바퀴를 가까이 찍은 세로·4:3 사진 등)에서 나온다.
+  16:9 에서 RF-DETR-S 는 IoU 0.5 기준 재현율이 높고(AP50 0.897 vs 0.875, 중복 필터 뒤 같은 정밀도 0.92 에서 재현율 0.906 vs 0.878 쯤) 사람·bicycle 이 낫지만,
+  작은 물체(APs 0.379 vs 0.519)와 car(0.784 vs 0.814)·truck(0.756 vs 0.785)·motorcycle(0.589 vs 0.613) AP 는 YOLO26m 이 낫다.
+  RF-DETR 는 이미지를 512×512 로 늘이므로 16:9 는 가로가 0.4배(YOLO 는 0.5배)로 줄어 먼 차가 더 작아진다(추정 — 따로 재지 않았다)
+
+**왜 Ultralytics val 에선 NMS 가 end-to-end 보다 높았나** (2단계에서 0.007~0.010 높다고 적었다)
+- 같은 전처리(정사각 · 회색 여백 · 작은 이미지도 키움 — `--yolo-pad 114`, `--yolo-no-upscale` 없이)로 우리 ONNX 를 돌리면 end-to-end 는 Ultralytics 와 같다(YOLO26s 0.6615 vs 0.6607 · YOLO26m 0.7077 vs 0.7083 — 둘 다 이 평가기로 채점, 임계 0.3 검출 99% 짝).
+  그런데 NMS 판은 **0.6585 vs 0.6708 · 0.7040 vs 0.7149** 로 0.011 낮다 — 이 몫이 앱 경로에서 NMS 와 end-to-end 의 순서를 뒤집었다
+- val 의 NMS 는 **multi-label** 이다 — `models/yolo/detect/val.py` 가 `multi_label=True` 를 박아 둬서 신뢰도 0.001 을 넘는 클래스마다 따로 후보가 되고 한 박스가 여러 클래스로 남는다(YOLO26s 검출 36,048개 중 2,155개 박스가 2~6개 클래스로 나왔다).
+  `nms=True` 로 내보낸 `NMSModel` 은 박스마다 최고 클래스 하나다. 그 밖(신뢰도 > 0.001 · IoU 0.7 · 상한 300 · 클래스별 · 앞에서 자르는 TopK 없음)은 그래프 상수로 확인해 val 과 같았다
+- **확인 — val 을 single-label 로 바꿔 돌리면**(`crosscheck_native.py --square --single-label`) **0.6551 · 0.7036**(Ultralytics 자체 점수 0.656 · 0.705)으로 우리 NMS 판과 같다 — 검출 수까지 31,331개로 같고 임계 0.3 검출이 99% 짝지어진다.
+  그러니 val 의 +0.007~0.010 은 모두 multi-label 몫이고(multi-label → single-label −0.016 · −0.011), single-label NMS 는 end-to-end 보다 낮다(Ultralytics 자체 점수로도 0.656 vs 0.662 · 0.705 vs 0.710)
+- 처음엔 multi-label 몫이 작아 보였다 — multi-label 검출에서 같은 박스의 여러 클래스 중 최고 하나만 남겨 채점하면 −0.001 뿐이다. 하지만 사후에 접는 것은 single-label NMS 와 다르다:
+  multi-label 에선 최고 클래스로는 NMS 에 지워진 박스가 둘째 클래스 후보로 살아남는다(옆 anchor 의 truck 박스에 지워진 박스가 car 로 남는 식)
+- multi-label 을 앱에 넣어도 이 이득은 거의 남지 않을 것이다 — 앱 임계값에서 같은 자리에 남는 다른 클래스 박스는 `DuplicateBoxes`(차량 6종은 한 묶음)가 신뢰도 높은 하나로 줄인다(추정 — 재지 않았다)
+
+**판단**
+- **NMS 판은 앱에 넣지 않는 쪽을 권한다** — AP·작은 물체·AR100 을 잃고, 얻는 건 YOLO26s 의 임계값 부근 재현율 +0.01 정도(YOLO26m 은 없음)인데 `session.Run` +1 ms(CPU NMS), `DuplicateBoxes` 는 그대로 필요하다.
+  넣으려면 배포 모델을 그 `.pt` 로 다시 내보내고 YoloDotNet 이 `end2end False` 인 `[1,300,6]` 를 어떻게 읽는지, NPU 짝(`NonMaxSuppression` 이 NPU 에서 어디로 가는지)도 봐야 한다 — 모두 확인 안 했다
+- **640×384 는 정확도가 아니라 속도다** — 16:9 소스에서 `session.Run` −31%. 지금 앱은 속도에 쫓기지 않아서(파일 재생 처리 95~99 FPS · HUD 박스 지연 약 9 ms) YOLO26s 로는 이득이 작다(프레임당 약 2 ms).
+  **YOLO26m 으로 갈 때 쓸모가 크다** — YOLO26m 640×384 는 9.14 ms 로 RF-DETR-S FP16(9.1 ms + 전처리 0.29 ms)과 같은 속도이고, 16:9 이미지에서 AP 도 같다(0.694 vs 0.695). 지금 YOLO 경로(YoloDotNet · `YoloLetterbox` · NPU 짝)를 그대로 쓴다.
+  앱 쪽 일: 소스 비율에 따라 세션 둘(640×640 · 640×384)을 고르기, NPU 짝도 둘. `YoloLetterbox` 는 모델 입력의 가로·세로를 따로 읽는다 — YoloDotNet 이 직사각형 입력을 그대로 받는지는 확인 안 했다
+- 3단계(RF-DETR-S 를 '모델 종류'로)는 사용자 결정 대기 그대로다. 다만 앱의 소스(16:9 CCTV·화면)만 보면 선택지가 가까워졌다: **RF-DETR-S FP16**(IoU 0.5 재현율 · 사람·두 바퀴 우위, 새 추론 경로, NPU 없음) vs **YOLO26m 640×384**(같은 AP · 작은 물체·차량 우위, 지금 경로)
+
+```powershell
+# 내보내기 — NMS 판(AP 용 0.001 · 앱용 0.25)과 640×384 (저장소 루트에서, Windows CPU)
+uv run --no-project --python 3.12 --with "ultralytics==8.4.142" --with onnx --with onnxslim --with onnxruntime experiments/RfDetrBench/step2/export_trained.py yolo "\\wsl.localhost\Ubuntu\home\chisu\rfdetr_work\runs\yolo\y26s\weights\best.pt" y26s-nms --nms 0.001
+uv run --no-project --python 3.12 --with "ultralytics==8.4.142" --with onnx --with onnxslim --with onnxruntime experiments/RfDetrBench/step2/export_trained.py yolo "\\wsl.localhost\Ubuntu\home\chisu\rfdetr_work\runs\yolo\y26s\weights\best.pt" y26s-384 --imgsz 384 640
+# (y26s-nms25 = --nms 0.25 · y26s-384-nms · y26m 도 같게)
+# 시험 분할 — 앱 경로 그대로. --subset wide 면 16:9 만 (모델을 다시 돌리지 않고 --det-json <이름>:<out>\det_<이름>.json 으로 다시 채점해도 된다)
+uv run --no-project --python 3.12 --with onnxruntime-directml --with pycocotools --with opencv-python --with numpy experiments/RfDetrBench/step2/eval_test.py `
+    --data '\\wsl.localhost\Ubuntu\home\chisu\rfdetr_work\data\visible' --out experiments\RfDetrBench\out\eval_yolo --ep dml --yolo-resize linear --yolo-no-upscale `
+    --model 'yolo:y26s:experiments\RfDetrBench\out\step2_models\y26s.onnx' --model 'yolo:y26s-nms:experiments\RfDetrBench\out\step2_models\y26s-nms.onnx'
+# 실제 영상 (DirectML — y26s · y26s-nms25 · y26s-384 를 쓴다)
+uv run --no-project --python 3.12 --with onnxruntime-directml --with opencv-python --with numpy experiments/RfDetrBench/step2/yolo_video_check.py experiments\RfDetrBench\out\step2_models
+# 속도·노드 배치 (앱 런타임)
+dotnet run --project experiments\RfDetrBench -c Release -- yolo experiments\RfDetrBench\out\step2_models\y26s.onnx experiments\RfDetrBench\out\step2_models\y26s-nms25.onnx experiments\RfDetrBench\out\step2_models\y26s-384.onnx
+# val 을 single-label NMS 로 (WSL, CPU — crosscheck_native.py 머리말)
+#   ... crosscheck_native.py yolo runs/yolo/y26s/weights/best.pt y26s_square_single --square --single-label
 ```

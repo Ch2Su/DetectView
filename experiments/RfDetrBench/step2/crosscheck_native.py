@@ -8,6 +8,7 @@ eval_test.py 는 모든 모델을 앱과 같은 전처리 + pycocotools 로 견�
     # YOLO — 라벨링 도구의 학습 환경(yolo_final)을 고치지 않고 실행만. 결과 폴더는 runs_wsl 이 아니라 여기
     OMP_NUM_THREADS=4 YOLO_AUTOINSTALL=false ~/miniconda3/envs/yolo_final/bin/python <이 파일> yolo runs/yolo/y26s/weights/best.pt y26s
     #   --square: rect 배치를 끄고 앱처럼 640×640 정사각형 입력으로 · --e2e: 앱처럼 end-to-end(one-to-one) 출력으로 (기본은 one-to-many + NMS)
+    #   --single-label: val 의 NMS 를 박스마다 최고 클래스 하나로 (기본은 multi-label — nms=True 로 내보낸 ONNX 는 single-label)
     #   (이름은 다르게 — 예: y26s_square_e2e)
     # RF-DETR — 학습한 venv
     OMP_NUM_THREADS=4 ~/rfdetr_work/.venv/bin/python <이 파일> rfdetr runs/rfdetr_s/checkpoint_best_total.pth rfdetr_s
@@ -24,8 +25,15 @@ DATA = W / "data" / "visible"            # 데이터셋 백업의 작업 사본 
 OUT = W / "runs" / "crosscheck"
 
 
-def check_yolo(weights: Path, name: str, rect: bool = True, e2e: bool = False) -> dict:
+def check_yolo(weights: Path, name: str, rect: bool = True, e2e: bool = False, single_label: bool = False) -> dict:
     from ultralytics import YOLO
+    if single_label:
+        # val 의 NMS 는 multi_label=True 가 박혀 있다(models/yolo/detect/val.py — 신뢰도 0.001 을 넘는 클래스마다 따로 남아 한 박스가 여러 클래스로 나온다).
+        # nms=True 로 내보낸 ONNX(exporter 의 NMSModel)는 박스마다 최고 클래스 하나라, 그 차이만 재려고 val 의 NMS 를 single-label 로 바꾼다
+        # (val 은 호출 때마다 nms.non_max_suppression 을 모듈에서 찾는다). README 'YOLO 남은 여지'
+        from ultralytics.utils import nms as nms_mod
+        orig = nms_mod.non_max_suppression
+        nms_mod.non_max_suppression = lambda *a, **k: orig(*a, **{**k, "multi_label": False})
     # save_json: 검출을 predictions.json 으로도 남긴다 — eval_test.py --ultra-json 이 같은 평가기(pycocotools)로 채점해서
     # 두 평가기의 차이가 점수 계산에서 오는지 Ultralytics 의 추론 경로에서 오는지 가른다.
     # rect: Ultralytics val 의 기본값(배치마다 비율에 맞춘 직사각형 입력 — 16:9 면 640×384). False 면 앱처럼 640×640 정사각형
@@ -53,7 +61,7 @@ def check_rfdetr(ckpt: Path, name: str) -> dict:
 def main() -> int:
     flags = {a for a in sys.argv[1:] if a.startswith("--")}
     argv = [a for a in sys.argv[1:] if not a.startswith("--")]
-    if len(argv) != 3 or argv[0] not in ("yolo", "rfdetr") or flags - {"--square", "--e2e"}:
+    if len(argv) != 3 or argv[0] not in ("yolo", "rfdetr") or flags - {"--square", "--e2e", "--single-label"}:
         print(__doc__)
         return 2
     kind, src, name = argv[0], Path(argv[1]), argv[2]
@@ -61,7 +69,7 @@ def main() -> int:
         src = W / src
     OUT.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
-    res = (check_yolo(src, name, rect="--square" not in flags, e2e="--e2e" in flags) if kind == "yolo"
+    res = (check_yolo(src, name, rect="--square" not in flags, e2e="--e2e" in flags, single_label="--single-label" in flags) if kind == "yolo"
            else check_rfdetr(src, name))
     res["seconds"] = round(time.time() - t0)
     path = OUT / "results.json"

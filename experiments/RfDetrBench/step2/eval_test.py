@@ -11,7 +11,8 @@ r"""2단계 평가: 학습한 모델들을 데이터셋 시험 분할(학습·be
   - RF-DETR ([1,Q,4] + [1,Q,C]): 정사각형으로 그냥 늘이기(float 쌍선형, antialias 없음) + ImageNet 정규화, 시그모이드 → 쿼리×클래스 상위 Q
 앱 경로 그대로의 검출(YoloDotNet + DirectML — TrackerCheck testsplit 이 쓴 JSON)은 --app-json 으로 같은 평가기에 넣고,
 --compare 로 두 검출 묶음을 앱 임계값(0.3)에서 박스 단위로 견준다.
-점수는 pycocotools(COCO mAP50-95 · mAP50 · 작은/중간/큰 물체 AP · 클래스별 AP)와, 앱의 신뢰도 임계 0.3 에서의 정밀도·재현율(IoU 0.5).
+점수는 pycocotools(COCO mAP50-95 · mAP50 · 작은/중간/큰 물체 AP · 클래스별 AP)와, 앱의 신뢰도 임계 0.3 에서의 정밀도·재현율(IoU 0.5) —
+그 정밀도·재현율은 앱의 중복 박스 필터(Detection.cs 의 DuplicateBoxes — app_dedup)를 걸기 전·건 뒤 둘 다 낸다(뒤의 것이 앱 화면·추적기가 받는 박스).
 추론은 ONNX Runtime CPU(실행 공급자 차이는 RfDetrBench ③ 에서 검출 단위로 같음을 봤다).
 
     # 저장소 루트에서 (Windows — 데이터는 WSL 작업 사본을 UNC 경로로 읽는다). 모델을 나눠 돌려도 out/eval/results.json 에 쌓인다
@@ -86,28 +87,31 @@ def build_gt(data: Path, names: list[str], cache: Path) -> dict:
 
 
 def letterbox(bgr: np.ndarray, side: int, interp: int = cv2.INTER_NEAREST_EXACT, pad: int = 0,
-              no_upscale: bool = False) -> tuple[np.ndarray, float, int, int]:
+              no_upscale: bool = False, side_h: int | None = None) -> tuple[np.ndarray, float, int, int]:
     """YoloDotNet ResizeImageProportional 과 같게 — 크기 (int)(w·s + 0.5), 가운데, 검은 여백.
     interp 는 INTER_LINEAR(지금 앱 · Ultralytics 와 같은 쌍선형) 또는 INTER_NEAREST_EXACT(2026-11-05 전의 앱 — 화소 중심을 맞추는 Nearest),
     pad 114 면 Ultralytics 의 여백 색(회색)이 된다 — 앱의 전처리가 정확도에서 잃는 몫을 나눠 재려고.
-    no_upscale 이면 YoloDotNet 처럼 모델보다 작은 이미지(가로·세로 모두 side 미만)는 키우지 않고 가운데에 그대로 둔다"""
+    no_upscale 이면 YoloDotNet 처럼 모델보다 작은 이미지(가로·세로 모두 입력 미만)는 키우지 않고 가운데에 그대로 둔다.
+    side_h 를 주면 입력이 side(가로) × side_h(세로) 직사각형이다 — 16:9 영상용 640×384 모델"""
     h, w = bgr.shape[:2]
-    if no_upscale and w < side and h < side:
+    sh = side_h or side
+    if no_upscale and w < side and h < sh:
         s, nw, nh = 1.0, w, h
     else:
-        s = min(side / w, side / h)
+        s = min(side / w, sh / h)
         nw, nh = int(w * s + 0.5), int(h * s + 0.5)
-    canvas = np.full((side, side, 3), pad, np.uint8)
-    px, py = (side - nw) // 2, (side - nh) // 2
+    canvas = np.full((sh, side, 3), pad, np.uint8)
+    px, py = (side - nw) // 2, (sh - nh) // 2
     canvas[py:py + nh, px:px + nw] = bgr if (nw, nh) == (w, h) else cv2.resize(bgr, (nw, nh), interpolation=interp)
     x = canvas[:, :, ::-1].transpose(2, 0, 1).astype(np.float32)[None] / 255.0
     return np.ascontiguousarray(x), s, px, py
 
 
 def run_yolo(sess, bgr: np.ndarray, interp: int = cv2.INTER_NEAREST_EXACT, pad: int = 0, no_upscale: bool = False) -> list[tuple]:
-    side = sess.get_inputs()[0].shape[2]
-    x, s, px, py = letterbox(bgr, side, interp, pad, no_upscale)
-    out = sess.run(None, {sess.get_inputs()[0].name: x})[0][0]   # [300, 6] = x1 y1 x2 y2 점수 클래스 (레터박스 좌표)
+    h_in, w_in = sess.get_inputs()[0].shape[2:4]   # 정사각형(640×640)이 아닐 수 있다 — 16:9 영상용 640×384
+    x, s, px, py = letterbox(bgr, w_in, interp, pad, no_upscale, side_h=h_in)
+    # [300, 6] = x1 y1 x2 y2 점수 클래스 (레터박스 좌표). end-to-end 출력이든 NMS 를 넣어 내보낸 출력(nms=True — 남는 줄은 0)이든 같은 꼴
+    out = sess.run(None, {sess.get_inputs()[0].name: x})[0][0]
     h, w = bgr.shape[:2]
     dets = []
     for x1, y1, x2, y2, sc, c in out:
@@ -155,8 +159,33 @@ def iou(a, b) -> float:
     return inter / u if u > 0 else 0.0
 
 
-def app_point(gt: dict, preds: dict[int, list], names: list[str]) -> dict:
-    """앱의 임계값(0.3)에서 정밀도·재현율 — 같은 클래스·IoU 0.5 이상을 신뢰도 높은 예측부터 탐욕적으로 짝짓는다"""
+VEHICLE_LABELS = {"car", "truck", "bus", "motorcycle", "scooter", "bicycle"}   # Detection.cs DuplicateBoxes 의 묶음 — 차량 6종은 한 묶음
+
+
+def app_dedup(dets: list, names: list[str]) -> list:
+    """앱의 DuplicateBoxes(루트 Detection.cs — CLAUDE.md '절대 건드리면 안 되는 것들' 3번)를 그대로: 같은 묶음 · 작은 박스의 80% 이상이 큰 박스 안 ·
+    넓이비 0.5 이상이면 신뢰도 높은 쪽만 남긴다. 신뢰도 순 대표와 직접 겹치는 것만 흡수하고 흡수된 박스는 다른 박스를 흡수하지 않는다(비이행)"""
+    group = ["vehicle" if names[d[4]] in VEHICLE_LABELS else names[d[4]] for d in dets]
+    area = [max(0.0, d[2] - d[0]) * max(0.0, d[3] - d[1]) for d in dets]
+    order = sorted(range(len(dets)), key=lambda i: -dets[i][5])
+    gone = [False] * len(dets)
+    for a, i in enumerate(order):
+        if gone[i]:
+            continue
+        for j in order[a + 1:]:
+            if gone[j] or group[i] != group[j]:
+                continue
+            small, large = min(area[i], area[j]), max(area[i], area[j])
+            ix = max(0.0, min(dets[i][2], dets[j][2]) - max(dets[i][0], dets[j][0]))
+            iy = max(0.0, min(dets[i][3], dets[j][3]) - max(dets[i][1], dets[j][1]))
+            if small > 0 and small >= 0.5 * large and ix * iy >= 0.8 * small:
+                gone[j] = True
+    return [d for k, d in enumerate(dets) if not gone[k]]
+
+
+def app_point(gt: dict, preds: dict[int, list], names: list[str], dedup: bool = False) -> dict:
+    """앱의 임계값(0.3)에서 정밀도·재현율 — 같은 클래스·IoU 0.5 이상을 신뢰도 높은 예측부터 탐욕적으로 짝짓는다.
+    dedup: 임계값을 넘은 검출에 앱의 중복 박스 필터(app_dedup)를 먼저 건다 — 앱 화면·추적기가 받는 박스"""
     by_img: dict[int, list] = {}
     for a in gt["annotations"]:
         x, y, w, h = a["bbox"]
@@ -168,7 +197,10 @@ def app_point(gt: dict, preds: dict[int, list], names: list[str]) -> dict:
         for gg in g:
             per[gg[4]][2] += 1
         used = [False] * len(g)
-        for d in sorted((d for d in preds.get(img["id"], []) if d[5] > THRESHOLD_APP), key=lambda d: -d[5]):
+        shown = [d for d in preds.get(img["id"], []) if d[5] > THRESHOLD_APP]
+        if dedup:
+            shown = app_dedup(shown, names)
+        for d in sorted(shown, key=lambda d: -d[5]):
             best, bi = 0.5, -1
             for j, gg in enumerate(g):
                 if not used[j] and gg[4] == d[4]:
@@ -265,9 +297,9 @@ def main() -> int:
     ap.add_argument("--yolo-no-upscale", action="store_true",
                     help="모델보다 작은 이미지를 키우지 않는다 — YoloDotNet(앱)과 같게. 안 주면 예전처럼 모든 이미지를 640 에 맞춘다")
     ap.add_argument("--yolo-pad", type=int, default=0, help="YOLO 레터박스 여백 값: 0 = 앱(검정), 114 = Ultralytics 의 회색")
-    ap.add_argument("--subset", choices=["all", "resized", "small"], default="all",
-                    help="채점할 이미지: resized = 가로나 세로가 640 이상(앱이 줄이는 이미지), small = 둘 다 640 미만(앱은 그대로 둔다). "
-                         "결과 이름에 @<subset> 이 붙는다")
+    ap.add_argument("--subset", choices=["all", "resized", "small", "wide"], default="all",
+                    help="채점할 이미지: resized = 가로나 세로가 640 이상(앱이 줄이는 이미지), small = 둘 다 640 미만(앱은 그대로 둔다), "
+                         "wide = 가로/세로 1.65 이상(16:9 등 — 640×384 입력이 640×640 과 같은 배율로 담는다). 결과 이름에 @<subset> 이 붙는다")
     ap.add_argument("--ep", choices=["cpu", "dml"], default="cpu",
                     help="dml = DirectML (onnxruntime-directml 패키지 필요). FP16 모델은 앱처럼 DirectML 로 잰다")
     args = ap.parse_args()
@@ -281,8 +313,12 @@ def main() -> int:
     gt = gt_all = build_gt(args.data, names, gt_path)
     if args.subset != "all":
         # 640 = 앱 YOLO 입력. 이미지 번호는 전체 분할 그대로 둔다(검출 JSON 의 image_id 가 같은 번호를 가리키게)
-        small = lambda im: im["width"] < 640 and im["height"] < 640   # noqa: E731
-        keep = {im["id"] for im in gt["images"] if small(im) == (args.subset == "small")}
+        def pick(im: dict) -> bool:
+            small = im["width"] < 640 and im["height"] < 640
+            if args.subset == "wide":   # 640/384 = 1.67 — 이보다 조금 좁은 16:10(1.6)은 세로에 맞춰 더 줄어서 뺀다
+                return im["width"] / im["height"] >= 1.65
+            return small == (args.subset == "small")
+        keep = {im["id"] for im in gt["images"] if pick(im)}
         gt = {"images": [im for im in gt["images"] if im["id"] in keep],
               "annotations": [a for a in gt["annotations"] if a["image_id"] in keep], "categories": gt["categories"]}
         gt_path = args.out / f"gt_test_{args.subset}.json"
@@ -318,13 +354,15 @@ def main() -> int:
         det_path.write_text(json.dumps(dets_json))
         r = coco_scores(gt_path, det_path, names)
         r["app_point"] = app_point(gt, preds, names)
+        r["app_point_dedup"] = app_point(gt, preds, names, dedup=True)
         r.update(extra)
         r["images"] = len(gt["images"])
         results[name] = r
-        a = r["app_point"]
+        a, b = r["app_point"], r["app_point_dedup"]
         tail = f" | {r['ep']} {r['ms_per_image']:.0f} ms/장" if "ms_per_image" in r else ""
         print(f"[{name}] AP {r['AP']:.4f} · AP50 {r['AP50']:.4f} · APs {r['APs']:.4f} · APm {r['APm']:.4f} · APl {r['APl']:.4f} · "
-              f"AR100 {r['AR100']:.4f} | 임계 0.3: 정밀도 {a['precision']:.3f} 재현율 {a['recall']:.3f}{tail}", flush=True)
+              f"AR100 {r['AR100']:.4f} | 임계 0.3: 정밀도 {a['precision']:.3f} 재현율 {a['recall']:.3f} "
+              f"(앱 중복 필터 뒤 {b['precision']:.3f} · {b['recall']:.3f}, 검출 {a['tp'] + a['fp']} → {b['tp'] + b['fp']}){tail}", flush=True)
         print("    클래스별 AP: " + " · ".join(f"{k} {v:.3f}" for k, v in r["AP_per_class"].items()), flush=True)
         results_path.write_text(json.dumps(results, ensure_ascii=False, indent=1))
 

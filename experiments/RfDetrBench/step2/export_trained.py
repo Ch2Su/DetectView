@@ -6,6 +6,9 @@
     # YOLO (학습한 Ultralytics 8.4.142 — 그 판은 nms=False 를 줘야 end-to-end [1,300,6])
     uv run --no-project --python 3.12 --with "ultralytics==8.4.142" --with onnx --with onnxslim --with onnxruntime `
         experiments/RfDetrBench/step2/export_trained.py yolo <best.pt> y26s
+    # YOLO 변형 (README 'YOLO 남은 여지'): 끝에 --nms <conf> 면 one-to-many 출력 + 클래스별 NMS(IoU 0.7)를 넣어 내보낸다
+    #   (신뢰도 임계값이 모델에 박힌다 — AP 를 재려면 0.001, 앱용이면 0.25). --imgsz <H> <W> 면 그 크기 입력 — 16:9 영상용 384 640
+        ... export_trained.py yolo <best.pt> y26s-384-nms --imgsz 384 640 --nms 0.001
 
 체크포인트는 out/step2_models/src 로 복사해서 쓴다(WSL 경로를 직접 열지 않게, Ultralytics 는 .pt 옆에 ONNX 를 쓴다).
 산출물: out/step2_models/<이름>.onnx (RF-DETR 는 <이름>-fp16.onnx 도)
@@ -51,9 +54,13 @@ def export_rfdetr(src: Path, name: str) -> None:
     print(f"  {fp16.name} ({fp16.stat().st_size / 1e6:.1f} MB)")
 
 
-def export_yolo(src: Path, name: str) -> None:
+def export_yolo(src: Path, name: str, imgsz: int | list[int] = 640, nms_conf: float | None = None) -> None:
     from ultralytics import YOLO
-    path = Path(YOLO(str(src)).export(format="onnx", imgsz=640, nms=False))
+    # nms=False → end-to-end(one-to-one 출력 + 상위 300) [1,300,6] — 앱이 쓰는 꼴.
+    # nms=True → one-to-many 출력에서 박스마다 최고 클래스 하나 → conf 초과만 → 클래스별 NMS(torchvision → ONNX NonMaxSuppression, IoU 0.7)
+    #   → 상위 300 을 [1,300,6](남는 줄은 0)으로. 8.4.142 exporter 의 NMSModel — conf 를 안 주면 0.25 가 박힌다
+    kw = dict(nms=True, conf=nms_conf) if nms_conf is not None else dict(nms=False)
+    path = Path(YOLO(str(src)).export(format="onnx", imgsz=imgsz, **kw))
     dst = OUT / f"{name}.onnx"
     shutil.move(str(path), dst)
     s = shape(dst)
@@ -63,16 +70,30 @@ def export_yolo(src: Path, name: str) -> None:
 
 
 def main() -> int:
-    if len(sys.argv) != 4 or sys.argv[1] not in ("rfdetr", "yolo"):
+    if len(sys.argv) < 4 or sys.argv[1] not in ("rfdetr", "yolo"):
         print(__doc__)
         return 2
     kind, src, name = sys.argv[1], Path(sys.argv[2]), sys.argv[3]
+    opts, nms_conf, imgsz = sys.argv[4:], None, 640
+    while opts:
+        if opts[0] == "--nms" and len(opts) >= 2:
+            nms_conf, opts = float(opts[1]), opts[2:]
+        elif opts[0] == "--imgsz" and len(opts) >= 3:
+            imgsz, opts = [int(opts[1]), int(opts[2])], opts[3:]
+        else:
+            print(__doc__)
+            return 2
+    if kind == "rfdetr" and (nms_conf is not None or imgsz != 640):
+        raise SystemExit("--nms · --imgsz 는 YOLO 에만")
     # 파일 이름은 그대로 둔다 — rfdetr 는 체크포인트에 model_name 이 없으면(배포용 시작 가중치) 파일 이름(rf-detr-small.pth)으로 크기를 안다
     (OUT / "src" / name).mkdir(parents=True, exist_ok=True)
     local = OUT / "src" / name / src.name
     shutil.copy2(src, local)
     t0 = time.time()
-    (export_rfdetr if kind == "rfdetr" else export_yolo)(local, name)
+    if kind == "rfdetr":
+        export_rfdetr(local, name)
+    else:
+        export_yolo(local, name, imgsz, nms_conf)
     print(f"  {time.time() - t0:.0f}초")
     return 0
 

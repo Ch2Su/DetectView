@@ -6,6 +6,7 @@
 //                   (b) C# 전처리(OpenCV)·후처리로 낸 검출 vs PyTorch predict() 검출 (rfdetr 공식 추론)
 // 사용: RfDetrBench.exe [회차=2] — 회차마다 ② 를 다시 잰다 (GPU 클럭·다른 부하로 흔들리는지 보려고)
 //       RfDetrBench.exe pre [영상당 프레임 수] — 3단계 준비: 전처리 비용·DirectML 결정성 (PreBench.cs)
+//       RfDetrBench.exe yolo <모델.onnx>... — YOLO 변형(NMS 를 넣어 내보냄 · 640×384)의 노드 배치·session.Run (YoloBench.cs)
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
@@ -20,6 +21,7 @@ const double PassMs = 12, StopMs = 25;
 int rounds = args.Length > 0 && int.TryParse(args[0], out var n0) && n0 > 0 ? n0 : 2;
 string here = FindHere();
 if (args.Length > 0 && args[0] == "pre") return PreBench.Run(here, args[1..]);
+if (args.Length > 0 && args[0] == "yolo") return YoloBench.Run(here, args[1..]);
 string outDir = Path.Combine(here, "out");
 string repo = Path.GetFullPath(Path.Combine(here, "..", ".."));
 string manifestPath = Path.Combine(outDir, "ref", "manifest.json");
