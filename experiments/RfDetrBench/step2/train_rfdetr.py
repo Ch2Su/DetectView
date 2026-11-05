@@ -38,8 +38,9 @@ def main() -> int:
     from rfdetr import RFDETRNano, RFDETRSmall
 
     # rfdetr 1.11.2 의 학습 매처(헝가리안)는 torch_linear_assignment 의 Triton 커널을 쓰는데, Triton 이 그 자리에서 C 모듈을
-    # 컴파일하려고 C 컴파일러를 찾는다 — 이 WSL 엔 gcc 가 없어(sudo 없이 못 깖) 첫 배치에서 멈췄다 (2026-11-04).
-    # 그럴 땐 그 라이브러리가 Triton 을 못 쓸 때 가는 SciPy(CPU) 경로로 보낸다 — DETR·LW-DETR 의 원래 방식이고 결과는 같은 최적 짝이다
+    # 컴파일하려고 C 컴파일러를 찾는다 — 그때 이 WSL 엔 gcc 가 없어(sudo 없이 못 깖) 첫 배치에서 멈췄다 (2026-11-04).
+    # 그럴 땐 그 라이브러리가 Triton 을 못 쓸 때 가는 SciPy(CPU) 경로로 보낸다 — DETR·LW-DETR 의 원래 방식이고 결과는 같은 최적 짝이다.
+    # 11-05 밤 사용자가 gcc 를 깔아 이제는 Triton 으로 간다(첫 호출 컴파일 9.4초). 매칭은 스텝의 7% 안팎이라 epoch 이 6% 쯤 줄 뿐이다 (README '2단계')
     if not any(shutil.which(c) for c in (os.environ.get("CC", ""), "cc", "gcc", "clang") if c):
         import torch_linear_assignment.assignment as tla
         tla._cuda_uses_triton = lambda cost: False

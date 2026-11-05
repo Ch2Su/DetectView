@@ -189,16 +189,21 @@ Start-Process pwsh -WindowStyle Hidden -ArgumentList '-NoProfile','-File','exper
   `YOLO_AUTOINSTALL=false` 로 Ultralytics 가 그 환경에 패키지를 깔지 못하게 한다
 - 이 WSL 에서 만난 함정 (모두 고침):
   - **rfdetr 학습 매처(헝가리안)가 Triton 커널을 쓰는데 Triton 이 그 자리에서 C 모듈을 컴파일하려고 C 컴파일러를 찾는다** — gcc 가 없어(sudo 없이 못 깖) 첫 배치에서 멈췄다.
-    `train_rfdetr.py` 가 컴파일러가 없으면 그 라이브러리의 SciPy(CPU) 경로로 보낸다(DETR 원래 방식, 같은 최적 짝)
+    `train_rfdetr.py` 가 컴파일러가 없으면 그 라이브러리의 SciPy(CPU) 경로로 보낸다(DETR 원래 방식, 같은 최적 짝). RF-DETR-S 와 11-05 21:21 의 RF-DETR-N 은 이 경로로 학습했다.
+    11-05 밤 사용자가 WSL 에 gcc 13.3 을 깔아 이제는 Triton 경로로 간다(첫 호출 컴파일 9.4초) — 빨라지는 몫은 아래 RF-DETR-N 항목의 매처 실측
   - **`batch_size='auto'` 가 WSL 의 CUDA 를 죽인다** — 배치를 2, 4, 8… 로 키우며 메모리가 넘칠 때까지 시험하는데, 한계에서 메모리 부족 대신 `CUDA error: device not ready` 가 나고
     컨텍스트가 망가져 뒤이은 `empty_cache` 도 out of memory 로 죽었다(첫 시도, 3분). rfdetr 의 'auto' 가 맞추는 실효 배치 16 을 고정 4 × 누적 4 로 준다
   - 런처가 띄운 `wsl.exe` 는 Windows 의 현재 폴더(저장소)에서 시작해서, Ultralytics 의 AMP 점검이 `yolo26n.pt` 를 저장소의 `weights/` 에 내려받았다 → 드라이버가 `~/rfdetr_work` 로 옮겨 간다
   - Windows 런처는 `wsl.exe` 출력을 드라이버가 끝날 때에야 받는다(`out/step2_driver.log`) — 도는 동안의 진행은 WSL 쪽 `driver.log` 를 본다
 - 드라이버는 한 모델이 실패해도 다음 모델로 넘어간다(밤새 돌 때 하나 때문에 다 서지 않게)
-- **RF-DETR-N**(`rfdetr_n` = `train_rfdetr.py --size n`, 2단계 뒤에 더함)은 같은 조리법(배치 4 × 누적 4)에서 epoch 당 약 2.8분이다.
-  S 는 3.5분이었다. GPU 사용률 45%·메모리 3.4 GB 라 CPU 매칭이 병목이다. 100 epoch 이면 약 4.7시간.
-  11-05 10:48 에 시작했다가 사용자 요청으로 첫 epoch(검증 mAP50-95 0.564) 뒤 멈췄다(Ctrl+C — Lightning 이 정리하고 끝냈다).
+- **RF-DETR-N**(`rfdetr_n` = `train_rfdetr.py --size n`, 2단계 뒤에 더함)은 같은 조리법(배치 4 × 누적 4)에서 epoch 당 약 2.6분(검증 포함 157~161초)이다.
+  S 는 3.5분이었다. 100 epoch 이면 약 4.4시간. GPU 사용률이 45~50%(메모리 3.4 GB)라 처음엔 'CPU 매칭이 병목'이라고 적었는데 **재 보니 매칭은 작은 몫이다**
+  (11-05 — 학습 라벨의 객체 수로 한 스텝의 문제 156개 = (마지막 층 + 보조 1 + 인코더) × 4장 × 13그룹을 `_solve_to_indices` 와 같은 꼴 [156, 300, K] 로 풀었다.
+  K 는 배치 4장 중 가장 많은 객체 수 — 중앙 10 · p90 19 · p99 38): SciPy 9.4~14 ms · Triton 1.0~1.8 ms, 고른 짝의 총비용은 같다.
+  학습 스텝(약 120 ms)의 7% 안팎이라 Triton 으로 가도 epoch 이 6% 쯤 줄 뿐이다. 남은 GPU 유휴가 어디서 오는지는 재지 않았다.
+  11-05 10:48 에 처음 시작했다가 사용자 요청으로 첫 epoch(검증 mAP50-95 0.564) 뒤 멈췄다(Ctrl+C — Lightning 이 정리하고 끝냈다).
   그 결과는 `~/rfdetr_work/runs/rfdetr_n_stopped_1105`(로그 `logs/rfdetr_n_stopped_1105.log`)로 옮겨 두었다. 다시 할 땐 위 명령에 `rfdetr_n` 을 주고 처음부터 돌린다.
+  같은 날 21:21 에 처음부터 다시 돌렸다(SciPy 매처 — gcc 는 그 뒤에 깔았다). 같은 시드·조리법인데 첫 epoch 검증이 0.596 으로 멈춘 실행(0.564)과 달랐다 — GPU 학습이 결정적이지 않다.
   이어서 하려면 `train_rfdetr.py --size n --resume <그 폴더>/last.ckpt` 를 직접 실행한다(rfdetr 1.11.2 가 Lightning `Trainer.fit(ckpt_path=...)` 로 넘기고 `metrics.csv` 기록도 이어 쓴다)
 
 ```powershell
@@ -298,7 +303,7 @@ FP32 모델은 CPU 로 쟀다. DirectML(`--ep dml`, NVIDIA)로 다시 재도 RF-
 - 앱에 넣으려면(1단계에서 정리): YoloDotNet 밖의 새 추론 경로(정사각형 늘이기 전처리 — float 경로가 CPU 5~7 ms 라 줄여야 한다 · 후처리), 모델 파일 57 MB(FP16), NPU 는 YOLO 만(짝 모델이 YOLO 전용),
   HUD 가 기대는 결정성(같은 입력에 같은 출력) 확인 — 둘 다 11-05 확인했다(위 '3단계 준비': 원본에서 바로 쌍선형 0.29 ms · 출력이 비트 단위로 같음)
 - 더 싼 길도 있다: ① 앱의 YOLO 축소를 쌍선형으로 — 11-05 넣었다. 앱 경로로 0.6555 → 0.6658(+0.010)이라 처음 적은 +0.02~0.03 보다 작았다(아래 '앱의 쌍선형 축소')
-  ② YOLO26m 으로 바꾸기(쌍선형이면 0.708, 추론은 2.2배 — 16:9 소스에 640×384 로 내보내면 1.44배(9.1 ms)로 RF-DETR-S FP16 과 같은 속도, 아래 'YOLO 남은 여지') ③ **RF-DETR-N 을 같은 데이터로 학습**해 보기 — FP16 5.2 ms 로 지금 YOLO26s(6.4 ms)보다 빠른데 이번엔 재지 않았다(11-05 시작했다가 첫 epoch 뒤 멈춤 — 위 학습 절)
+  ② YOLO26m 으로 바꾸기(쌍선형이면 0.708, 추론은 2.2배 — 16:9 소스에 640×384 로 내보내면 1.44배(9.1 ms)로 RF-DETR-S FP16 과 같은 속도, 아래 'YOLO 남은 여지') ③ **RF-DETR-N 을 같은 데이터로 학습**해 보기 — FP16 5.2 ms 로 지금 YOLO26s(6.4 ms)보다 빠른데 이번엔 재지 않았다(11-05 첫 epoch 뒤 멈췄다가 같은 날 21:21 처음부터 다시 — 위 학습 절)
 - 확인 안 한 것: 학습을 한 번씩만 했다(시드 차이 모름) · 학습률을 일찍 내리는 조리법(rfdetr `lr_drop`) · 시험 분할은 학습 데이터와 같은 출처라 **앱의 CCTV 영상(test1~5)에서의 차이** ·
   추적기·유고 규칙 위에서의 차이
 
