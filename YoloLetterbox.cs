@@ -39,9 +39,7 @@ namespace DetectView
         /// </summary>
         public List<Box> Detect(Yolo yolo, Mat bgra, double confidence, double iou)
         {
-            // 모델 입력 크기 [1,3,H,W] — 사용자가 모델을 바꿔 쓰므로 고정하지 않는다
-            var shape = yolo.OnnxModel.InputShapes.First().Value;
-            int mw = (int)shape[3], mh = (int)shape[2];
+            var (mw, mh) = InputSize(yolo);
             if (_canvas == null || _canvas.Width != mw || _canvas.Height != mh) CreateCanvas(mw, mh);
 
             int w = bgra.Width, h = bgra.Height, nw = w, nh = h;
@@ -78,6 +76,16 @@ namespace DetectView
                 list.Add(new Box(r.Label.Name, r.Confidence, x1, y1, x2 - x1, y2 - y1));
             }
             return list;
+        }
+
+        /// <summary>
+        /// 모델 입력 크기 (가로, 세로) — ONNX 입력 [1,3,H,W]. 사용자가 모델을 바꿔 쓰므로 고정하지 않는다.
+        /// 정사각형이 아닐 수 있다 — 지금 루트 모델은 16:9 영상용 640×384 (2026-11-06, YOLO26m. YoloDotNet 이 직사각형 입력을 그대로 받는 것은 TrackerCheck testsplit 으로 확인)
+        /// </summary>
+        public static (int W, int H) InputSize(Yolo yolo)
+        {
+            var shape = yolo.OnnxModel.InputShapes.First().Value;
+            return ((int)shape[3], (int)shape[2]);
         }
 
         private void CreateCanvas(int mw, int mh)

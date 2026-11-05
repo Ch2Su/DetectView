@@ -29,7 +29,7 @@ namespace DetectView
 
         private const string ModelFileName = "best.onnx";
 
-        // YOLO 입력(640×640 레터박스)은 YoloLetterbox 가 OpenCV 쌍선형으로 직접 만들어 넘긴다 — 그 파일 머리말 (2026-11-05).
+        // YOLO 입력 레터박스(모델 입력 크기 — 지금 루트 모델은 640×384)는 YoloLetterbox 가 OpenCV 쌍선형으로 직접 만들어 넘긴다 — 그 파일 머리말 (2026-11-05).
         // 그래서 YoloDotNet 은 모델 입력과 같은 크기를 받아 배율 1 로 그대로 그리고, 아래 축소 방식은 듣지 않는다. 그래도 쌍선형으로 둔다 —
         // 다른 크기를 YoloDotNet 에 바로 넘기는 코드가 생기면 학습(Ultralytics INTER_LINEAR)과 같은 쪽이게.
         // YoloDotNet 기본값은 Nearest 다(문서 주석은 Linear 라고 잘못 적혀 있다). 앱이 Nearest 로 줄이던 때보다 시험 분할 AP 가
@@ -101,6 +101,10 @@ namespace DetectView
                           && Regex.Match(desc, @"Ultralytics\s+(\S+)\s+model") is { Success: true } m
                 ? m.Groups[1].Value
                 : yolo.ModelInfo;   // 메타데이터가 없는 모델
+
+            // 입력 크기 — 같은 가중치를 640×640 과 16:9 영상용 640×384 로 내보내면 이름·학습일이 같은데 속도는 31% 다르다 (2026-11-06)
+            var (inW, inH) = YoloLetterbox.InputSize(yolo);
+            name += $" {inW}×{inH}";
 
             // 크기가 같은 모델이 여럿이라(데이터셋만 다른 YOLO26s 등) 학습일로 구분한다
             if (meta != null && meta.TryGetValue("date", out var date)

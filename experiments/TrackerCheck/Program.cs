@@ -1077,11 +1077,12 @@ int Dedup(string[] opts)
             double ms = cap.Get(VideoCaptureProperties.PosMsec);
             var raw = new List<Det>();
             var filtered = new List<Det>();
-            int step = (int)(640 * (1 - 0.3));
-            foreach (int oy in Sahi.TileOrigins(frame.Height, 640, step))
-                foreach (int ox in Sahi.TileOrigins(frame.Width, 640, step))
+            var (tileW, tileH) = YoloLetterbox.InputSize(yolo);   // 본 앱 RunSahi 처럼 타일 = 모델 입력 크기 (2026-11-06 — 그 전엔 640 정사각형)
+            int stepX = (int)(tileW * (1 - 0.3)), stepY = (int)(tileH * (1 - 0.3));
+            foreach (int oy in Sahi.TileOrigins(frame.Height, tileH, stepY))
+                foreach (int ox in Sahi.TileOrigins(frame.Width, tileW, stepX))
                 {
-                    using var roi = new Mat(frame, new Rect(ox, oy, Math.Min(640, frame.Width - ox), Math.Min(640, frame.Height - oy)));
+                    using var roi = new Mat(frame, new Rect(ox, oy, Math.Min(tileW, frame.Width - ox), Math.Min(tileH, frame.Height - oy)));
                     var tile = DetectTile(yolo, roi, ox, oy);
                     raw.AddRange(tile);
                     filtered.AddRange(DuplicateBoxes.Remove(tile));
@@ -1205,14 +1206,14 @@ int SahiCompare(string[] opts)
 // Sources: 병합 전 입력 (어디서 나왔는지 — "전체" 또는 타일 원점, 경계에 잘렸는지) — 새 박스가 왜 그렇게 생겼는지 풀어 보이는 데 쓴다
 (List<Det> Old, List<Det> New, List<(Det D, string From)> Sources) SahiBoth(Yolo yolo, Mat frame, string variant)
 {
-    const int tile = 640;
-    int step = (int)(tile * (1 - 0.3));
+    var (tileW, tileH) = YoloLetterbox.InputSize(yolo);   // 본 앱 RunSahi 처럼 타일 = 모델 입력 크기 (2026-11-06 — 그 전엔 640 정사각형)
+    int stepX = (int)(tileW * (1 - 0.3)), stepY = (int)(tileH * (1 - 0.3));
     var tiles = new List<(Det D, bool Cut)>();
     var sources = new List<(Det D, string From)>();
-    foreach (int oy in Sahi.TileOrigins(frame.Height, tile, step))
-        foreach (int ox in Sahi.TileOrigins(frame.Width, tile, step))
+    foreach (int oy in Sahi.TileOrigins(frame.Height, tileH, stepY))
+        foreach (int ox in Sahi.TileOrigins(frame.Width, tileW, stepX))
         {
-            int tw = Math.Min(tile, frame.Width - ox), th = Math.Min(tile, frame.Height - oy);
+            int tw = Math.Min(tileW, frame.Width - ox), th = Math.Min(tileH, frame.Height - oy);
             using var roi = new Mat(frame, new Rect(ox, oy, tw, th));
             foreach (var d in DetectTile(yolo, roi, ox, oy))
             {
@@ -1221,7 +1222,7 @@ int SahiCompare(string[] opts)
                 sources.Add((d, $"타일({ox},{oy}){(cut ? " 잘림" : "")}"));
             }
         }
-    List<Det> full = frame.Width > tile || frame.Height > tile ? DetectTile(yolo, frame, 0, 0) : new List<Det>();
+    List<Det> full = frame.Width > tileW || frame.Height > tileH ? DetectTile(yolo, frame, 0, 0) : new List<Det>();
     sources.AddRange(full.Select(d => (d, "전체")));
     var oldList = DuplicateBoxes.Remove(Sahi.MergeNms(tiles.Select(t => t.D).ToList(), 0.45, 0.6));
     var newList = variant == "cut"

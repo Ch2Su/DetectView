@@ -10,7 +10,7 @@ WPF(.NET 10) 실시간 객체 검출 애플리케이션. YOLO ONNX 모델을 **D
 | 폴더 | `E:\DetectView` | 예전 `E:\VS_E\YOLO11_Test` — 2026-11-03 옮김 (옛 폴더는 사용자가 백업한 뒤 지웠다 — 2026-11-04 무렵) |
 | 프로젝트·솔루션 / 네임스페이스 / `AssemblyName` / 제품명 / 창 제목 | `DetectView` (`DetectView.csproj`·`DetectView.slnx`·`namespace DetectView`) | 예전엔 `YOLO11_Test` 였다 — 옛 이름은 `old/`·git 기록·`old-history` 태그 안에만 남는다 |
 | 배포 폴더 | `publish` | 예전 `publish_gpu_ver` |
-| 모델 | YOLO**26s** 파인튜닝 ONNX (`best.onnx`, 36 MB, **7클래스**) | YOLO11 아님. 2026-09-11 교체 (이전: 9.5 MB 모델) |
+| 모델 | YOLO**26m** 파인튜닝 ONNX, 입력 **640×384**(16:9 영상용) (`best.onnx`, 78 MB, **7클래스**) | 2026-11-06 교체 — 아래 "RF-DETR 검토" 3단계에서 사용자가 골랐다. 이전: YOLO26s 640×640(36 MB, 2026-09-11~ · 그 전엔 9.5 MB 모델). YOLO11 아님 |
 
 원래 학교 과제로 시작해(제출 완료) 지금은 개인 취미 프로젝트다. CPU 추론 → GPU(DirectML) 전환이 끝난 상태.
 **이 문서·`docs/`·메모의 옛 서술(날짜가 붙은 기록)에는 `YOLO11_Test`·`publish_gpu_ver` 대신 새 이름이 들어가 있다** — 이름만 일괄로 바꿨고 그때 폴더가 달랐다는 건 위 표가 말해 준다.
@@ -34,10 +34,11 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
   데이터셋이 다른 7클래스 모델 등 — 2026-09-23 한 세션 안에서도 바뀌었다). 건드리지 말 것.
   **성능을 재거나 비교하기 전엔 그 순간 어떤 모델인지 확인한다** — 앱이 떠 있으면 창 제목에 보이고(아래),
   아니면 파일 끝의 Ultralytics 메타데이터를 읽는다:
-  `uv run --no-project --python 3.12 python -c "import re,sys;f=open(sys.argv[1],'rb');f.seek(-65536,2);t=f.read().decode('utf-8','ignore');[print(k,'=',v.strip()[:80]) for k,v in re.findall(r'(description|names|date)\x12.?([^\x00-\x08\x0e-\x1f]+)',t)]" publish/best.onnx`
+  `uv run --no-project --python 3.12 python -c "import re,sys;f=open(sys.argv[1],'rb');f.seek(-65536,2);t=f.read().decode('utf-8','ignore');[print(k,'=',v.strip()[:80]) for k,v in re.findall(r'(description|names|date|imgsz)\x12.?([^\x00-\x08\x0e-\x1f]+)',t)]" publish/best.onnx`
+  (`imgsz` 가 `[384, 640]` 이면 16:9 영상용 640×384 판 — 같은 가중치의 640×640 판과 이름·날짜가 같을 수 있다)
 - 배포 폴더 모델을 바꾸면 NPU 짝도 다시 만든다: `pwsh tools\Make-NpuModel.ps1 -Model publish\best.onnx` (→ 그 옆 `best.npu.onnx`, 아래 "NPU")
 - **앱용 ONNX 를 새로 내보낼 땐 end-to-end(`[1,300,6]`)인지 본다** — Ultralytics 8.4.142(라벨링 도구가 쓰는 판)의 `export(format="onnx")` 기본값은 NMS 전 원출력 `[1,84,8400]`(메타데이터 `end2end False`)이다.
-  `nms=False`(또는 `end2end=True`)를 줄 것. 지금 `best.onnx` 는 8.4.31 기본값으로 end-to-end 였다 (2026-11-04 실측 — `experiments/RfDetrBench` README. 원출력 꼴을 앱이 어떻게 처리하는지는 확인 안 함 — 아래 3번의 전제가 깨진다).
+  `nms=False`(또는 `end2end=True`)를 줄 것. 지금 루트 `best.onnx`(YOLO26m 640×384, 11-06)는 8.4.142 에서 `nms=False` 로 내보낸 end-to-end 다. 그 전 YOLO26s 는 8.4.31 기본값으로 end-to-end 였다 (2026-11-04 실측 — `experiments/RfDetrBench` README. 원출력 꼴을 앱이 어떻게 처리하는지는 확인 안 함 — 아래 3번의 전제가 깨진다).
   같은 판의 **val 도 `nms` 를 안 주면 one-to-many 출력 + NMS 로 잰다**(학습 중 검증·`best.pt` 고르기도) — 학습 로그의 mAP 는 앱이 쓰는 end-to-end 출력보다 0.007~0.010 높게 나온다(2026-11-05 실측). 앱과 같은 걸 재려면 val 에 `nms=False`.
   그 몫은 val 의 NMS 가 **multi-label**(한 박스가 여러 클래스로 남음)이라서다 — `nms=True` 로 내보낸 ONNX(박스마다 최고 클래스 하나)는 앱 경로에서 end-to-end 보다 AP 가 0.003~0.005 **낮다**(같은 날 — 아래 3번·"RF-DETR 검토")
 - publish 는 `best.onnx` 를 `PreserveNewest` 로 복사한다 → **루트 `best.onnx` 가 배포 폴더의 것보다 새로우면 덮어쓴다**.
@@ -47,9 +48,11 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
   경로는 작업 디렉터리가 아니라 `AppContext.BaseDirectory`(exe 폴더) 기준이다. 예전엔 상대 경로라 바로가기의 "시작 위치"나
   다른 폴더에서 실행하면 모델을 못 찾고 엉뚱하게 "GPU 드라이버 확인" 오류를 냈다 (2026-09-23 수정, 실측 확인)
 - `.csproj` 의 `ExcludeSymbolsFromPublish` 타깃이 publish 출력에서 pdb(~92 MB, exe 밖에 따로 생기던 것)와 `.lib` 를 뺀다. 배포물은 `DetectView.exe` + `best.onnx` 뿐이다.
-- 실행 시 창 제목이 `DetectView — <모델> (<학습일> 학습) — <GPU 이름> (DirectML)` 로 바뀌면 GPU 초기화 성공이다.
-  예: `DetectView — YOLO26s (2026-09-17 학습) — NVIDIA GeForce RTX 5060 Laptop GPU (DirectML)`. 스모크 테스트는 이걸로 확인하면 된다.
-  모델 이름은 ONNX 메타데이터 `description`("Ultralytics YOLO26s model …")에서, 학습일은 `date` 에서 뽑는다(`DescribeModel`).
+- 실행 시 창 제목이 `DetectView — <모델> <입력 가로×세로> (<학습일> 학습) — <GPU 이름> (DirectML)` 로 바뀌면 GPU 초기화 성공이다.
+  예: `DetectView — YOLO26m 640×384 (2026-11-05 학습) — NVIDIA GeForce RTX 5060 Laptop GPU (DirectML)`. 스모크 테스트는 이걸로 확인하면 된다.
+  모델 이름은 ONNX 메타데이터 `description`("Ultralytics YOLO26m model …")에서, 입력 크기는 ONNX 입력 꼴에서, 학습일은 `date` 에서 뽑는다(`DescribeModel`).
+  입력 크기는 2026-11-06 더했다 — 같은 가중치의 640×640 판과 640×384 판은 이름·학습일이 같은데 속도가 31% 다르다.
+  `date` 는 Ultralytics 가 **내보낸 때**를 쓴다(지금 모델은 11-05 학습을 마치고 같은 날 내보냄 — 배포 YOLO26s 도 학습한 날 내보냈다)
   YoloDotNet 의 `ModelInfo` 에는 s/x 크기가 없어서 쓰지 않는다. 메타데이터가 없는 모델이면 `ModelInfo` 로 대신한다
 
 ## 파일 구조
@@ -64,7 +67,7 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
 | `MainWindow.Playback.cs` | 파일/카메라 공용 재생 루프, 재생 시계(원본 속도), 시크(`SeekToMs`→`ApplyPendingSeek`), EOF·카메라 유실. 보이는 프레임마다 추적기(`Tracker`)를 돌려 박스에 번호를 붙인다 |
 | `MainWindow.Screen.cs` | 화면 HUD: 모니터 선택, 캡처 루프(`ScreenLoop` — 첫 캡처 결과 보고·캡처 복구·모니터 배치 감시·추적기), 오버레이 갱신, 상태바 무시 영역, FPS 칸 문제 표시, UIA 진단 값 |
 | `MainWindow.Inference.cs` | 모델 로드, GPU 선택(`SelectBestGpu`·`CreateGpuYolo` — 판정은 `GpuAdapters`), `ProcessFrame`, `DetectTile`/`DetectBgra`(검출이 모두 여기로 — 레터박스는 `YoloLetterbox`, `_yoloLock` 안에서). YoloDotNet 의 축소 방식 `InputSampling`(쌍선형 — GPU·NPU 세션 모두 `YoloOptionsFor`, 레터박스 경로엔 듣지 않는 대비) |
-| `YoloLetterbox.cs` | YOLO 입력 레터박스를 OpenCV 쌍선형(`INTER_LINEAR`)으로 직접 만들어 YoloDotNet 에 넘기고(배율 1), 박스를 +0.5 해 그린 자리 그대로의 여백·배율로 되돌린다(2026-11-05 — 아래 '화면 HUD' 성능 절의 '입력 축소'). WPF 없음 — TrackerCheck·RuntimeParity 가 소스로 링크 |
+| `YoloLetterbox.cs` | YOLO 입력 레터박스를 OpenCV 쌍선형(`INTER_LINEAR`)으로 직접 만들어 YoloDotNet 에 넘기고(배율 1), 박스를 +0.5 해 그린 자리 그대로의 여백·배율로 되돌린다(2026-11-05 — 아래 '화면 HUD' 성능 절의 '입력 축소'). 크기는 모델 입력(`InputSize` — 정사각형이 아닐 수 있다. SAHI 타일·창 제목도 이걸 읽는다). WPF 없음 — TrackerCheck·RuntimeParity 가 소스로 링크 |
 | `MainWindow.Npu.cs` | 추론 장치 GPU ↔ NPU: 왼쪽 패널 "추론 장치" 선택, 짝 모델 확인 → VitisAI EP 준비 → 백그라운드 컴파일 → `_yolo` 교체 (아래 "NPU") |
 | `MainWindow.Roi.cs` | 왼쪽 패널 '구역' 절(목록·추가/지우기·유형)과 `RoiLayer` 를 잇고 구역 파일에 바로 저장. 편집 가능 여부는 `UpdateRoiUi` 한 곳 (파일 + 멈춤 + SAHI 아님) |
 | `WindowsMlExecutionProvider.cs` | YoloDotNet 실행 공급자 — Windows ML 의 ONNX Runtime 으로 DirectML(나중에 NPU) 세션을 돌린다. `FindDmlDevice` 로 PCI ID 매칭 |
@@ -99,7 +102,7 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
 | `docs/` | CLAUDE.md 에서 옮긴 긴 설명·실측·지난 기록(2026-11-05) — 아래 '자세한 문서' 표. 세션마다 자동으로 읽히지 않는다 |
 | `LICENSE` · `THIRD-PARTY-NOTICES.md` | 저장소 라이선스 GNU AGPL-3.0 (2026-11-02 — 들어 있는 `best.onnx` 가 Ultralytics YOLO26 파인튜닝이라 Ultralytics 가 프로젝트 전체에 AGPL-3.0 을 요구)과 저장소 안 남의 저작물 고지(모델 AGPL-3.0 · `WindowsMlExecutionProvider.cs` 의 바탕 YoloDotNet MIT · `.claude/` 의 graft 연동 파일 MIT — 각 전문). 남의 코드·파일을 가져오면 여기에 더한다 |
 | `tools/` | `Make-NpuModel.ps1`(+ `npu_quantize.py`): YOLO 모델의 NPU 용 짝 `<이름>.npu.onnx` 만들기 (아래 "NPU") |
-| `best.npu.onnx` | 루트 `best.onnx` 의 NPU 짝 (A16W8·가중치 채널별 QDQ, 10.4 MB, git 추적 — 2026-11-05 쌍선형 입력으로 다시 보정, MD5 `0B58A84E…`). 원본을 바꾸면 다시 만든다 |
+| `best.npu.onnx` | 루트 `best.onnx` 의 NPU 짝 (A16W8·가중치 채널별 QDQ, 21.4 MB, git 추적 — 2026-11-06 YOLO26m 640×384 로 다시 만듦, MD5 `BD18D32C…`). 원본을 바꾸면 다시 만든다 |
 | `experiments/` | 따로 빌드하는 실험 프로젝트(각자 `.csproj`). 본 `.csproj` 의 `Compile/Page/None Remove` 로 빠져 있다. `NpuBench/`: AMD NPU 실험 — 짝 확인(`npu_quant`·`npu_source_md5`) 뒤에만 NPU 에 넣는다 (아래 "NPU"). `RuntimeParity/`: 런타임 교체 전후 검출 결과 비교 (1번 항목, GPU 선택은 두 빌드 모두 `GpuAdapters.cs`, 레터박스는 `YoloLetterbox.cs` 링크 — 2026-11-05 부터 좌표가 실수라 그 전 CSV 와 견주지 말 것). `TrackerCheck/`: 추적기 검증 (아래 "추적기")·테두리 멈춤 판정 합성 장면(`selftest` — 관심 구역 `Roi.cs` 의 판정·파일 검사 ⑧, 화면 전환 감지 합성 장면 ⑨, 구역 진입·나감 이벤트 ⑩, 유고 규칙 ⑪, 화면 식별 ⑫도 여기)·화면 식별 맞춤 실측(`views`)·화면 전환이 있는 합성 영상 만들기(`mkrevisit`)·화면 전환 감지 임계값 실측(`scene`)·GPU 고성능/저전력 판정(`gpu`)·중복 박스 필터 전후 비교 (3번 항목)·YOLO 입력 축소 방식(`InputCheck.cs` — 데이터셋 시험 분할을 앱 경로로 검출하고 Skia·OpenCV 축소를 화소 비교 `testsplit`, 축소 시간·결정성 `inputbench`). `RfDetrBench/`: RF-DETR 를 앱 런타임(DirectML)에서 — 노드 배치·속도·결과 일치, 같은 COCO 정확도의 YOLO26 과 비교. `step2/` 는 같은 데이터로 학습(WSL)·내보내기·시험 분할 평가, YOLO 변형(NMS 내보내기·640×384 — 속도는 `yolo`)도 (아래 "RF-DETR 검토"). 산출물 `*/out/`·`*/bin/`·`*/obj/`·`*/.venv/` 는 gitignore |
 | `graft/` · `.claude/` | 코드 인덱스(graft)와 그 에이전트 연동. graft 는 CLI 로만 쓴다 — MCP 서버 등록은 2026-11-02 사용자 결정으로 전역(`~/.claude.json`)과 이 저장소(`.mcp.json` 삭제) 모두 뺐다. `graft/` 는 재생성 가능한 캐시라 커밋하지 않는다. `.claude/helpers/graft-statusline.cjs`(상태줄)는 graft 설치 경로를 `%APPDATA%\npm` 에서 계산한다(2026-11-02 — graft 가 박아 넣은 `C:\Users\<이름>\…` 경로를 저장소에서 뺌. graft 를 다시 설치해 박힌 경로로 돌아오면 다시 고칠 것). graft 훅은 전역 `~/.claude/settings.json` 에만 둔다 — 프로젝트에도 있으면 둘 다 돌아 세션마다 graft 안내문이 두 번 들어가고 도구마다 훅이 두 번 돈다(2026-11-02 프로젝트 쪽 훅과 `graft-hooks.cjs` 를 뺌. graft 를 이 저장소에 다시 설치해 돌아오면 다시 뺄 것) |
 
@@ -162,7 +165,8 @@ COCO-80에 없는 클래스처럼 보여도 **사용자가 의도한 것**이다
 모델을 바꿔 쓸 때의 안전장치다 — 실제로 배포 폴더에 COCO 80클래스 YOLO26x 를 넣어 쓴 적이 있고, 그땐 이 필터가 6개 클래스만 남긴다(COCO 엔 scooter 없음).
 
 ### 3. 모델은 end-to-end NMS 내장
-출력 `[1,300,6]`, 입력 고정 `[1,3,640,640]`(`dynamic:False`). 추론 해상도는 **모델이 결정**하며 코드로 바꿀 수 없다.
+출력 `[1,300,6]`, 입력 고정(`dynamic:False`) — 지금 루트 모델은 `[1,3,384,640]`(16:9 영상용 640×384, 2026-11-06. 그 전 YOLO26s 는 `[1,3,640,640]`). 추론 해상도는 **모델이 결정**하며 코드로 바꿀 수 없다 —
+레터박스(`YoloLetterbox`)·SAHI 타일·NPU 짝 보정은 모델 입력 크기를 읽어 따른다. 16:9 가 아닌 소스(test5 1280×854 · 4:3 웹캠)는 640×640 판보다 작게 들어간다(소스 비율로 세션을 고르지 않는다 — "RF-DETR 검토").
 따라서 단일 프레임 추론 후 **일반 NMS(교차 클래스 포함)는 다시 돌리지 않는다**(SAHI 타일 병합은 별개).
 단, **같은 자리 중복 박스는 실제로 나와서 그것만 뺀다** (2026-10-24 실측: test4 916 프레임 중 466 프레임에 같은 묶음 IoU>0.7 쌍, 대부분 **같은 클래스 IoU≈1.0** —
 `RunObjectDetection` 의 `iou` 인자가 이 end-to-end 모델엔 걸리지 않는 것으로 보인다. 범위만 다른 중복(짐칸·탑승자 포함/제외, IoU 0.5~0.7)과 같은 자리 car+truck 도 있다).
@@ -218,13 +222,13 @@ SDK 기본 글롭이 `old/**` 의 소스와 생성 `.g.cs` 까지 끌어와 **72
   **자주 바뀌는 표시는 `StatusBarPanel` 안에만** 둔다(그 밖에 두면 HUD 대상 모니터에서 추론을 깨운다)
 - 루프 → UI 는 latest-wins(`_uiUpdatePending` — UI 콜백은 맨 앞에서 깃발을 내린다). HUD FPS 의 역수 ≈ 박스 지연
 - **측정으로 기각된 아이디어 — 다시 제안하지 말 것**: GDI `CAPTUREBLT` 제거, 캡처 버퍼 알파 보정, (Nearest 때의) 긴 변 640 선축소. UI 테스트가 보고하는 HUD FPS 는 벤치마크로 쓰지 말 것
-- YOLO 입력 레터박스는 `YoloLetterbox`(OpenCV 쌍선형, 박스 +0.5 — 빼면 AP 가 쌍선형 이득보다 크게 떨어진다). 남은 개선 후보: 모션 예측 외삽 · 16:9 소스에 640×384 입력
+- YOLO 입력 레터박스는 `YoloLetterbox`(OpenCV 쌍선형, 박스 +0.5 — 빼면 AP 가 쌍선형 이득보다 크게 떨어진다). 남은 개선 후보: 모션 예측 외삽 (16:9 소스에 640×384 입력은 2026-11-06 루트 모델로 들어갔다 — YOLO26m)
 
 ## 도메인 지식 — SAHI (on-demand)
 
 재생을 멈춘 상태에서 현재 프레임 1장에만 실행한다 (실시간 경로에는 넣지 않음 — 타일 수만큼 추론이 늘어남).
-- 타일 640, `overlap = 0.3`
-- 병합(2026-10-30 바꿈, 사용자 결정): **전체 프레임 검출 1회**(원본 SAHI 의 perform_standard_pred — 겹침 192px 보다 넓은 큰 물체는 어느 타일에도 온전히 안 들어온다)와
+- 타일 = **모델 입력 크기**(지금 640×384), `overlap = 0.3`(가로·세로 각각). 2026-11-06 전엔 640 정사각형 고정이었다 — 640×384 모델에 640×640 타일을 넣으면 0.6배로 줄어 작은 물체를 원래 크기로 보려는 뜻이 사라진다
+- 병합(2026-10-30 바꿈, 사용자 결정): **전체 프레임 검출 1회**(원본 SAHI 의 perform_standard_pred — 겹침(640 이면 192px · 384 면 116px)보다 큰 물체는 어느 타일에도 온전히 안 들어온다)와
   타일 검출을 `Sahi.MergeCutPieces(all, 0.45, 0.6)` 로 병합 → 그 결과에서 `DuplicateBoxes.Remove`(같은 자리 car/truck 등, 3번 항목. 타일마다 먼저 빼지 말 것).
   묶음은 예전 `MergeNms` 와 같다(같은 라벨, 신뢰도 순 대표와 IoU 0.45 또는 IoS 0.6 — 대표하고만 비교). 묶이는 두 박스 중 하나라도 **타일 안쪽 경계에 닿은 박스**
   (`TouchesInnerEdge`, 2px — 물체가 잘렸을 수 있음)면 대표를 합집합으로 넓히고, 둘 다 온전하면 예전처럼 대표만 남긴다. 전체 프레임 박스는 잘리지 않은 것으로 넣는다
@@ -281,11 +285,12 @@ SDK 기본 글롭이 `old/**` 의 소스와 생성 `.g.cs` 까지 끌어와 **72
 - 영상을 열 때·시크 뒤·전환이 안정된 뒤에만 식별한다. 첫 호출이 느려 **앱을 켤 때 `ViewMatcher.WarmUp`** 을 돌린다(빼면 세션 첫 재생이 0.8배속 안팎). 구역 파일은 구역을 편집할 때만 저장한다
 - 뷰로 돌아올 때마다 번호·유고 5초를 새로 센다(방문 사이 이어 붙이기는 미구현)
 
-## 도메인 지식 — RF-DETR 검토 (2026-11-04~06, 2단계 끝 — 3단계는 사용자 결정 대기)
+## 도메인 지식 — RF-DETR 검토 (2026-11-04~06 — 3단계: 사용자가 YOLO26m 640×384 를 골라 루트 모델을 바꿨다)
 
 경과·수치는 [docs/rf-detr.md](docs/rf-detr.md)와 `experiments/RfDetrBench/README.md`. 요점:
 - 시험 분할 AP: RF-DETR-S 0.742(FP16 같음) · YOLO26m 0.708 · 배포 YOLO26s(앱 경로) 0.6658 · RF-DETR-N 0.665(11-06). **16:9 이미지만 보면 RF-DETR-S = YOLO26m(0.695 · 0.696)** — RF-DETR-S 는 재현율·사람·두 바퀴, YOLO26m 은 작은 물체·car·truck 이 낫다
-- 3단계(앱에 '모델 종류'로 더하기)는 사용자 결정 대기 — 후보: RF-DETR-S FP16(`session.Run` 9.1 ms + 전처리 0.29 ms, YoloDotNet 밖의 새 추론 경로) · YOLO26m 640×384(9.14 ms, 지금 경로).
+- 3단계(2026-11-06): 후보 RF-DETR-S FP16(새 추론 경로) · YOLO26m 640×384(지금 경로) 중 **사용자가 YOLO26m 640×384 를 골랐다** — 루트 `best.onnx`·NPU 짝을 바꾸고 SAHI 타일을 모델 입력 크기로.
+  앱 경로(C# — YoloDotNet 정수 좌표라 파이썬 평가기보다 0.006 낮다) 시험 분할 AP **0.694 · 16:9 0.687**(배포 YOLO26s 0.666 · 0.631). 소스 비율로 640×640 세션을 고르는 일(README 에 적었던 '세션 둘')은 하지 않았다.
   RF-DETR-N 은 YOLO26s 급이고 16:9 에선 더 낮아(0.611 vs 0.654) 권하지 않았다 — 이점은 속도뿐
 - 학습·평가 데이터는 WSL 백업 `/home/chisu/datasets_backup/visible_2026-11-04` 를 쓴다(원본은 라벨링 도구의 'WSL 학습' 버튼이 덮어쓴다). 오래 도는 벤치·학습은 전원을 연결한다(배터리 20분 무입력이면 GPU 작업도 멈춘다)
 
@@ -297,7 +302,7 @@ SDK 기본 글롭이 `old/**` 의 소스와 생성 `.g.cs` 까지 끌어와 **72
 - 확인 · EP 준비 · 컴파일은 모두 스레드 풀에서(UI 스레드에서 EP 카탈로그를 조회하면 창이 수 초 멈췄다), 진행은 상태바 `Txt_Device`. 컴파일은 한 번에 하나 — 진행 중 다시 고르면 기다린다
 - VitisAI `cache_key` = NPU 모델 MD5 `_` EP 패키지 버전 `_` ONNX Runtime 파일 버전 — 기본 키는 다른 모델에도 옛 컴파일 결과를 재사용한다(틀린 결과·크래시 실측).
   캐시는 `%LOCALAPPDATA%\DetectView\npu_cache`(Claude 도구로 띄우면 패키지 폴더로 돌려질 수 있다)
-- `_yolo` 교체는 `SwapYolo`(락 안에서 바꾸고 옛 것은 백그라운드 해제). 속도는 GPU 가 2.5배 빠르다 — NPU 의 이점은 GPU 를 비워 두는 것과 전력
+- `_yolo` 교체는 `SwapYolo`(락 안에서 바꾸고 옛 것은 백그라운드 해제). 속도는 GPU 가 2.3~2.5배 빠르다(지금 YOLO26m 640×384 `session.Run` 8.8 vs 20.4 ms — 11-06) — NPU 의 이점은 GPU 를 비워 두는 것과 전력
 
 ## 화면 디자인 (2026-11-01 개편 — 시안 B '관제 콘솔' · 색 조합 B2 '스틸 블루')
 
@@ -365,8 +370,8 @@ pwsh tests/ui/Run-All.ps1
   `Test-VfrPlayback`(VFR webm 두 개) · `Test-ScreenHud`(HUD·캡처 방식·결함 주입) · `Test-NpuSwitch`(NPU 전환·창 응답·실패 경로)
 - `Measure-Fps.ps1 -ExeDir <폴더>` 는 테스트가 아니라 A/B 계측이다 — 실행 묶음끼리 수 FPS 흔들리니 기준선을 앞뒤로 두 번 잰다
 - 종료 코드 = 실패 건수(`Run-All` 은 0/1). 스크립트는 UTF-8 **BOM** 으로 저장한다(Windows PowerShell 5.1 이 한국어를 깨뜨리지 않게). 파일 열기 대화상자 자동화 요령은 `Common.ps1` 머리말
-- 마지막 전체 통과: 2026-11-05 낮, 배포본 `publish`(`f863585`) — `Run-All` 237 항목 중 236 통과, 남은 1건(`Test-Incident`)은 테스트 쪽 문제라 고친 뒤 그 파일만 다시 돌려 16 항목 통과.
-  자세한 기록과 그 전 기록은 docs/testing.md
+- 마지막 전체 통과: 2026-11-06 아침, Debug — 루트 모델을 YOLO26m 640×384 로 바꾼 뒤 `Run-All` 251 항목 모두 통과(테스트는 고치지 않았다).
+  배포본 `publish` 의 마지막 기록은 2026-11-05 `f863585`(237 항목 중 236 — 남은 1건은 테스트 쪽 문제라 고침). 자세한 기록과 그 전 기록은 docs/testing.md
 
 ### 테스트 영상 내용 (유고 감지 구상용 기준 사례, 2026-10-23 분석)
 

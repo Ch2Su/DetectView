@@ -1,7 +1,8 @@
 # RfDetrBench — RF-DETR 를 앱의 런타임(DirectML)에서 돌려 보기
 
 RF-DETR(Roboflow, Nano·Small·Medium·Large 는 Apache 2.0)로 YOLO26s 를 바꾸거나 모델 종류로 더할 만한지 보는 실험이다. 2단계(같은 데이터로 학습해 시험 분할에서 비교, 2026-11-04~05 · RF-DETR-N 은 11-06)는 아래 '2단계' 절,
-YOLO 쪽 남은 여지(NMS 를 넣어 내보내기 · 16:9 영상에 640×384 입력 — 16:9 이미지에서의 RF-DETR-S 비교 포함, 11-05)는 맨 아래 'YOLO 남은 여지' 절.
+YOLO 쪽 남은 여지(NMS 를 넣어 내보내기 · 16:9 영상에 640×384 입력 — 16:9 이미지에서의 RF-DETR-S 비교 포함, 11-05)는 'YOLO 남은 여지' 절,
+**3단계**(11-06 — 사용자가 YOLO26m 640×384 를 골라 앱의 루트 모델로 넣음)는 맨 끝 '3단계' 절.
 **1단계**(2026-11-04)는 학습 없이 COCO 사전학습 가중치로, 앱과 같은 런타임 — Windows ML 의 ONNX Runtime 1.27 + DirectML(NVIDIA) — 에서
 
 1. **모든 노드가 GPU 에 올라가는지** — RF-DETR 디코더의 변형 어텐션(MSDeformAttn)은 GridSample 을 쓴다. DirectML EP 는 GridSample 을 지원(5D 만 빠짐)하지만 실제 배치는 프로파일로 본다
@@ -452,7 +453,7 @@ uv run --no-project --python 3.12 --with onnxruntime --with pycocotools --with o
 - **640×384 는 정확도가 아니라 속도다** — 16:9 소스에서 `session.Run` −31%. 지금 앱은 속도에 쫓기지 않아서(파일 재생 처리 95~99 FPS · HUD 박스 지연 약 9 ms) YOLO26s 로는 이득이 작다(프레임당 약 2 ms).
   **YOLO26m 으로 갈 때 쓸모가 크다** — YOLO26m 640×384 는 9.14 ms 로 RF-DETR-S FP16(9.1 ms + 전처리 0.29 ms)과 같은 속도이고, 16:9 이미지에서 AP 도 같다(0.694 vs 0.695). 지금 YOLO 경로(YoloDotNet · `YoloLetterbox` · NPU 짝)를 그대로 쓴다.
   앱 쪽 일: 소스 비율에 따라 세션 둘(640×640 · 640×384)을 고르기, NPU 짝도 둘. `YoloLetterbox` 는 모델 입력의 가로·세로를 따로 읽는다 — YoloDotNet 이 직사각형 입력을 그대로 받는지는 확인 안 했다
-- 3단계(RF-DETR-S 를 '모델 종류'로)는 사용자 결정 대기 그대로다. 다만 앱의 소스(16:9 CCTV·화면)만 보면 선택지가 가까워졌다: **RF-DETR-S FP16**(IoU 0.5 재현율 · 사람·두 바퀴 우위, 새 추론 경로, NPU 없음) vs **YOLO26m 640×384**(같은 AP · 작은 물체·차량 우위, 지금 경로)
+- 3단계(RF-DETR-S 를 '모델 종류'로)는 사용자 결정 대기 그대로다(→ 11-06 사용자가 YOLO26m 640×384 를 골랐다 — 맨 끝 '3단계'). 다만 앱의 소스(16:9 CCTV·화면)만 보면 선택지가 가까워졌다: **RF-DETR-S FP16**(IoU 0.5 재현율 · 사람·두 바퀴 우위, 새 추론 경로, NPU 없음) vs **YOLO26m 640×384**(같은 AP · 작은 물체·차량 우위, 지금 경로)
 
 ```powershell
 # 내보내기 — NMS 판(AP 용 0.001 · 앱용 0.25)과 640×384 (저장소 루트에서, Windows CPU)
@@ -469,4 +470,52 @@ uv run --no-project --python 3.12 --with onnxruntime-directml --with opencv-pyth
 dotnet run --project experiments\RfDetrBench -c Release -- yolo experiments\RfDetrBench\out\step2_models\y26s.onnx experiments\RfDetrBench\out\step2_models\y26s-nms25.onnx experiments\RfDetrBench\out\step2_models\y26s-384.onnx
 # val 을 single-label NMS 로 (WSL, CPU — crosscheck_native.py 머리말)
 #   ... crosscheck_native.py yolo runs/yolo/y26s/weights/best.pt y26s_square_single --square --single-label
+```
+
+## 3단계 — YOLO26m 640×384 를 앱에 (2026-11-06)
+
+'YOLO 남은 여지' 끝의 두 후보(RF-DETR-S FP16 · YOLO26m 640×384) 중 사용자가 **YOLO26m 640×384** 를 골랐다 — 지금 YOLO 경로(YoloDotNet · `YoloLetterbox` · NPU 짝)를 그대로 쓴다.
+
+**한 일**
+- 루트 `best.onnx` ← `out/step2_models/y26m-384.onnx`(2단계 YOLO26m 의 `best.pt` 를 `--imgsz 384 640` 로 내보낸 end-to-end — Ultralytics 8.4.142 `nms=False`, 81.7 MB, MD5 `94A26C12…`,
+  메타데이터 `imgsz [384, 640]` · `end2end True` · 날짜 2026-11-05. 7클래스 이름·순서는 배포 모델과 같다)
+- NPU 짝 `best.npu.onnx` 다시 만들기(`tools\Make-NpuModel.ps1` — 보정 test1~5 100장을 640×384 로, 43초, 21.4 MB — `experiments/NpuBench` README 결과 4)
+- 앱: SAHI 타일 = 모델 입력 크기(`RunSahi` — 예전엔 640 정사각형 고정이라 640×384 모델에 넣으면 0.6배로 줄어들었다), 창 제목에 입력 크기(`DescribeModel` — `YOLO26m 640×384 (2026-11-05 학습)`).
+  레터박스(`YoloLetterbox`)·NPU 보정(`tools/npu_quantize.py`)은 이미 모델 입력의 가로·세로를 따로 읽었다. `TrackerCheck` 의 SAHI 사본 둘과 `NpuBench`(640 상수였다)도 모델 입력 크기를 읽게 했다
+- **소스 비율로 세션 둘(640×640 · 640×384)을 고르는 일은 하지 않았다**('YOLO 남은 여지' 판단에 적은 앱 쪽 일). 앱의 소스(16:9 CCTV 영상 · HUD 2560×1440)는 640×384 가 640×640 과 같은 배율이고,
+  SAHI 는 타일을 모델 크기로 바꾸면 배율 1 이다. 세션을 둘 두면 모델 파일·NPU 짝이 둘(YOLO26m 이면 모델만 160 MB 남짓)이 되고, 사용자가 `best.onnx` 를 바꿔 쓸 때 두 판이 어긋날 위험도 생긴다.
+  대가: 16:9 가 아닌 소스는 640×640 판보다 작게 들어간다 — test5(1280×854)는 0.45배(640×640 이면 0.5배), 4:3 웹캠 640×480 은 0.8배(1배)
+
+**확인 — YoloDotNet 이 직사각형 입력을 그대로 받는다**: 앱과 같은 길(`TrackerCheck testsplit` — YoloDotNet + `YoloLetterbox` + DirectML)로 시험 분할 973장을 검출해 이 평가기로 채점했다(`--app-json`).
+정밀도·재현율은 앱 임계 0.3 · IoU 0.5 에서 앱의 중복 박스 필터를 건 뒤다.
+
+| 모델 (앱 경로) | 전체 973장 AP (APs · AR100) | 정밀도 / 재현율 | 16:9 356장 AP (APs) | 정밀도 / 재현율 |
+|---|---|---|---|---|
+| 배포 YOLO26s 640×640 (09-17 — 11-05 에 낸 검출) | 0.6658 (0.388 · 0.747) | 0.924 / 0.813 | 0.6306 (0.502) | 0.902 / 0.738 |
+| YOLO26m 640×640 | 0.7024 (0.395 · 0.778) | 0.927 / 0.871 | 0.6892 (0.511) | 0.929 / 0.874 |
+| **YOLO26m 640×384 (새 루트 모델)** | **0.6942** (0.340 · 0.772) | 0.918 / 0.870 | **0.6865** (0.498) | 0.926 / 0.868 |
+
+- 두 YOLO26m 판이 파이썬 평가기(실수 좌표 — 'YOLO 남은 여지' 표의 0.708 · 0.700, 16:9 0.696 · 0.694)보다 **똑같이** 0.006~0.007 낮다 — YoloDotNet 이 박스를 정수로 내리는 몫이다
+  (배포 YOLO26s 도 실수 좌표 0.6725 → 앱 0.6658 — '앱의 쌍선형 축소'). 짝지은 박스(임계 0.3, 같은 클래스 IoU 0.5 이상 — 6,275 · 6,386쌍)의 변별 **부호 있는** 평균 차(앱 − 파이썬)도
+  두 판 모두 ±0.33 px 안이라(16:9 에서 640×640 은 아래 변 +0.18 · 640×384 는 +0.33, 나머지 ±0.07) 직사각형 입력을 되돌리며 치우치는 것은 없다
+- 16:9 에서 640×384 는 640×640 과 같다(−0.003). 배포 YOLO26s 보다 16:9 AP **+0.056**, 같은 임계값에서 재현율 0.738 → 0.868(정밀도 0.902 → 0.926)
+- 16:9 클래스별 AP (640×384 · 배포 YOLO26s): car 0.795 · 0.716 · truck 0.776 · 0.725 · bus 0.904 · 0.882 · motorcycle 0.609 · 0.559 · scooter 0.620 · 0.561 · person 0.624 · 0.483 · bicycle 0.477 · 0.490 — bicycle 만 조금 낮다
+- 16:9 가 아닌 이미지(617장)에선 640×384 가 640×640 보다 작은 물체에서 잃는다(전체 APs 0.395 → 0.340) — 위 '대가'
+- 같은 입력을 두 번 넣으면 비트 단위로 같다(앞 25장 × 두 모델)
+- 주의: 배포 YOLO26s 는 이 백업과 조금 다른 판의 데이터로 학습됐을 수 있다(위 '데이터셋 백업') — 이 비교에서 배포 모델이 불리하거나 유리할 수 있다
+
+**속도**
+- `session.Run`(NpuBench, test1~5 100장): GPU 중앙 8.82 ms(YOLO26s 640×640 6.2 ms) · NPU 20.37 ms(15.1 ms)
+- 앱의 파일 재생 처리 FPS(`tests/ui/Measure-Fps.ps1`, test1.mp4 720p, Release 단일 파일, 5회씩 번갈아 두 번): 배포본(YOLO26s) **92.5 · 90.5** → 새 모델 **77.5 · 78.0** — 프레임당 약 2 ms 더 든다(30·60fps 영상엔 여유가 있다)
+
+```powershell
+# 루트 모델 바꾸기 — y26m-384.onnx 는 위 'YOLO 남은 여지'의 내보내기 명령(y26m · --imgsz 384 640)으로 만든 것
+Copy-Item <out\step2_models\y26m-384.onnx> best.onnx
+pwsh tools\Make-NpuModel.ps1
+# 앱 경로 검출 (GPU, 약 3분) → 채점 (16:9 만이면 --subset wide)
+experiments\TrackerCheck\bin\Release\net10.0-windows10.0.19041.0\TrackerCheck.exe testsplit '\wsl.localhost\Ubuntu\home\chisu\rfdetr_work\data\visible' `
+    experiments\TrackerCheck\out\testsplit_y26m 'y26m=<y26m.onnx>' 'y26m384=<y26m-384.onnx>'
+uv run --no-project --python 3.12 --with onnxruntime --with pycocotools --with opencv-python --with numpy experiments/RfDetrBench/step2/eval_test.py `
+    --data '\wsl.localhost\Ubuntu\home\chisu\rfdetr_work\data\visible' --out experiments\RfDetrBench\out\eval_app_y26m `
+    --app-json 'app_y26m:experiments\TrackerCheck\out\testsplit_y26m\app_y26m_prelb.json' --app-json 'app_y26m384:experiments\TrackerCheck\out\testsplit_y26m\app_y26m384_prelb.json'
 ```

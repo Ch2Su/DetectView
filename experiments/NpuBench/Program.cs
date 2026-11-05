@@ -23,7 +23,6 @@ using Microsoft.ML.OnnxRuntime;
 using Microsoft.Windows.AI.MachineLearning;
 using OpenCvSharp;
 
-const int Side = 640;          // 모델 입력 고정 [1,3,640,640] (CLAUDE.md 3번)
 
 string repo = FindRepoRoot();
 // 위치 인자(기준 모델·NPU 모델·영상당 프레임 수)는 예전 그대로다 — tools/Make-NpuModel.ps1 -Bench 가 셋 다 넘긴다. -- 옵션은 어디에 둬도 된다
@@ -60,7 +59,8 @@ var runOptions = new RunOptions();
 // ── 1. 모델 정보 · 짝 확인 ──
 // EP 준비(처음엔 내려받느라 수 분)보다 먼저 본다 — 모델을 잘못 줬으면 기다리지 않고 바로 알린다
 string refMd5 = Md5(refModel);
-if (DescribeModel(refModel, refMd5) is not { } refMeta) return 1;
+// 모델 입력 크기는 기준 모델에서 읽는다 — 16:9 영상용 640×384 모델이 있다(2026-11-06 루트 모델. 그 전엔 640×640 고정이라 상수였다)
+if (DescribeModel(refModel, refMd5, out int inW, out int inH) is not { } refMeta) return 1;
 if (refMeta.TryGetValue("npu_quant", out var refQuant))
     Console.WriteLine($"  ※ 기준 모델이 양자화 모델입니다 (npu_quant = {refQuant}). 첫 인자는 FP32 원본, NPU 모델은 두 번째 인자입니다");
 string npuMd5 = "";
@@ -69,7 +69,12 @@ if (npuModel != null)
 {
     npuMd5 = Md5(npuModel);
     if (npuMd5 == refMd5) npuMeta = refMeta;   // 같은 파일이면 한 번만 보인다
-    else if (DescribeModel(npuModel, npuMd5) is { } meta) npuMeta = meta;
+    else if (DescribeModel(npuModel, npuMd5, out int npuW, out int npuH) is { } meta)
+    {
+        npuMeta = meta;
+        // 같은 입력 텐서를 모든 백엔드에 넣으므로 입력 크기가 같아야 한다 (짝이면 늘 같다 — 양자화는 입력 꼴을 바꾸지 않는다)
+        if ((npuW, npuH) != (inW, inH)) { Console.WriteLine($"  ※ 입력 크기가 다릅니다: 기준 {inW}×{inH} · NPU 모델 {npuW}×{npuH}"); return 1; }
+    }
     else return 1;
 }
 
@@ -175,7 +180,7 @@ foreach (var v in new[] { "test4.mp4", "test5.mp4", "test1.mp4", "test2.mp4", "t
     {
         int idx = (int)((i + 0.5) * count / perVideo);
         cap.Set(VideoCaptureProperties.PosFrames, idx);
-        if (cap.Read(raw) && !raw.Empty()) frames.Add((v, idx, Letterbox(raw)));
+        if (cap.Read(raw) && !raw.Empty()) frames.Add((v, idx, Letterbox(raw, inW, inH)));
     }
 }
 Console.WriteLine($"\n[프레임] {frames.Count}장 ({string.Join(", ", frames.GroupBy(f => f.Video).Select(g => $"{g.Key} {g.Count()}"))})");
@@ -238,7 +243,7 @@ RunResult? Bench(string name, string tag, string model, Func<SessionOptions> mak
 {
     Console.WriteLine($"\n[{name}]");
     var r = new RunResult { Name = name, Tag = tag, Outputs = new float[frames.Count][] };
-    var input = new float[3 * Side * Side];
+    var input = new float[3 * inW * inH];
     try
     {
         var sw = Stopwatch.StartNew();
@@ -250,7 +255,7 @@ RunResult? Bench(string name, string tag, string model, Func<SessionOptions> mak
             using var s = new InferenceSession(model, so);
             r.LoadSec = sw.Elapsed.TotalSeconds;
             Console.WriteLine($"  세션 생성 {r.LoadSec:F1}초");
-            using var v = OrtValue.CreateTensorValueFromMemory(input, [1, 3, Side, Side]);
+            using var v = OrtValue.CreateTensorValueFromMemory(input, [1, 3, inH, inW]);
             Fill(frames[0].Img, input);
             for (int i = 0; i < 5; i++) RunOnce(s, v);
             r.Placement = SummarizeProfile(s.EndProfiling(), 5);
@@ -261,7 +266,7 @@ RunResult? Bench(string name, string tag, string model, Func<SessionOptions> mak
         using var so2 = make();
         using var session = new InferenceSession(model, so2);
         r.ReloadSec = sw.Elapsed.TotalSeconds;
-        using var value = OrtValue.CreateTensorValueFromMemory(input, [1, 3, Side, Side]);
+        using var value = OrtValue.CreateTensorValueFromMemory(input, [1, 3, inH, inW]);
 
         Fill(frames[0].Img, input);
         for (int i = 0; i < 10; i++) RunOnce(session, value);   // 워밍업
@@ -327,25 +332,25 @@ float[] RunOnce(InferenceSession s, OrtValue input)
 // 앱도 이 보간으로 레터박스를 만들어 넘기므로 모델 입력이 같다 (2026-11-05 — 그날 잠깐 쓴 YoloDotNet 의 Skia 쌍선형과도 화소마다 많아야 1 차이).
 // 2026-11-05 전엔 앱이 Nearest 라 여기도 INTER_NEAREST_EXACT 였다(OpenCV 의 INTER_NEAREST 는 화소 중심을 안 맞춰 Skia 와 한 칸씩 어긋난다).
 // tools/npu_quantize.py 의 letterbox 와 같아야 한다
-static Mat Letterbox(Mat src)
+static Mat Letterbox(Mat src, int inW, int inH)
 {
     int w = src.Width, h = src.Height;
-    if (w >= Side || h >= Side)
+    if (w >= inW || h >= inH)
     {
-        float s = Math.Min((float)Side / src.Width, (float)Side / src.Height);
+        float s = Math.Min((float)inW / src.Width, (float)inH / src.Height);
         (w, h) = ((int)(src.Width * s + 0.5f), (int)(src.Height * s + 0.5f));
     }
-    var dst = new Mat(Side, Side, MatType.CV_8UC3, Scalar.All(0));
+    var dst = new Mat(inH, inW, MatType.CV_8UC3, Scalar.All(0));
     using var resized = (w, h) == (src.Width, src.Height) ? src.Clone() : src.Resize(new OpenCvSharp.Size(w, h), 0, 0, InterpolationFlags.Linear);
-    using var roi = new Mat(dst, new Rect((Side - w) / 2, (Side - h) / 2, w, h));
+    using var roi = new Mat(dst, new Rect((inW - w) / 2, (inH - h) / 2, w, h));
     resized.CopyTo(roi);
     return dst;
 }
 
-// BGR HWC byte → RGB CHW float(0~1). tools/npu_quantize.py 의 letterbox 와 같아야 한다
+// BGR HWC byte(모델 입력 크기의 레터박스) → RGB CHW float(0~1). tools/npu_quantize.py 의 letterbox 와 같아야 한다
 static unsafe void Fill(Mat bgr, float[] dst)
 {
-    const int plane = Side * Side;
+    int plane = bgr.Width * bgr.Height;
     byte* p = (byte*)bgr.DataPointer;
     for (int i = 0; i < plane; i++, p += 3)
     {
@@ -381,8 +386,9 @@ static string SummarizeProfile(string file, int runs)
 
 // 모델 정보를 보이고 메타데이터를 돌려준다 (열지 못하면 사유를 찍고 null).
 // 메타데이터만 읽으므로 CPU·그래프 최적화 끔 — 앱의 CheckNpuModel 과 같게
-static Dictionary<string, string>? DescribeModel(string path, string md5)
+static Dictionary<string, string>? DescribeModel(string path, string md5, out int inW, out int inH)
 {
+    (inW, inH) = (640, 640);
     Console.WriteLine($"\n[모델] {path} ({new FileInfo(path).Length / 1e6:F1} MB, MD5 {md5})");
     try
     {
@@ -393,6 +399,8 @@ static Dictionary<string, string>? DescribeModel(string path, string md5)
         foreach (var key in new[] { "description", "date", "names", "npu_quant", "npu_source_md5", "npu_calib", "npu_resize", "npu_quantizer" })
             if (meta.TryGetValue(key, out var v)) Console.WriteLine($"  {key} = {v}");
         foreach (var (n, m) in probe.InputMetadata) Console.WriteLine($"  입력 {n} [{string.Join(",", m.Dimensions)}] {m.ElementDataType}");
+        var dims = probe.InputMetadata.First().Value.Dimensions;   // [1,3,H,W]
+        if (dims.Length == 4 && dims[2] > 0 && dims[3] > 0) (inW, inH) = (dims[3], dims[2]);
         foreach (var (n, m) in probe.OutputMetadata) Console.WriteLine($"  출력 {n} [{string.Join(",", m.Dimensions)}] {m.ElementDataType}");
         return meta;
     }
@@ -494,7 +502,7 @@ readonly record struct Det(float X1, float Y1, float X2, float Y2, float Score, 
 
     public static List<Det> Decode(float[] o, float min)
     {
-        // end-to-end 출력 [1,300,6] = x1,y1,x2,y2,score,class (640 입력 좌표)
+        // end-to-end 출력 [1,300,6] = x1,y1,x2,y2,score,class (모델 입력 좌표)
         var list = new List<Det>();
         for (int i = 0; i + 5 < o.Length; i += 6)
             if (o[i + 4] >= min) list.Add(new Det(o[i], o[i + 1], o[i + 2], o[i + 3], o[i + 4], (int)o[i + 5]));
@@ -565,7 +573,7 @@ sealed class Stats
 
     public string Detail() =>
         $"신뢰도 차 평균 {(_matched > 0 ? _sumDScore / _matched : 0):F3} / 최대 {_maxDScore:F3} · " +
-        $"작은 물체(640 입력 32×32 미만) {_smallMatched}/{_smallRef} ({Pct(_smallMatched, _smallRef)}) · " +
+        $"작은 물체(모델 입력 32×32 미만) {_smallMatched}/{_smallRef} ({Pct(_smallMatched, _smallRef)}) · " +
         $"놓친 {_ref - _matched}개 중 임계값 바로 아래 {_missNear} · 더 잡은 {_test - _matched}개 중 기준 쪽 임계값 바로 아래 {_extraNear}";
 
     static string Pct(int a, int b) => b > 0 ? $"{100.0 * a / b:F1}%" : "-";

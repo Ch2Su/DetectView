@@ -137,8 +137,10 @@ DXGI 와 GDI 캡처는 같은 영역에서 **픽셀이 완전히 동일**했고 
 - GDI `CAPTUREBLT` 플래그 제거: 효과 없음
 - 캡처 버퍼 알파 채널 보정: 불필요. 알파=0 버퍼를 넣어도 검출 결과 동일 (`SKAlphaType.Opaque` 로 넘김)
 
-남은 개선 후보(미구현): 모션 예측 외삽(비용 거의 0, 방향 전환 시 오버슈트) · 16:9 소스에 640×384 입력 모델(같은 가중치를 `--imgsz 384 640` 로 내보냄 — 16:9 이미지에서 AP 가 같고
-`session.Run` −31%: YOLO26s 6.34 → 4.39 ms. 소스 비율로 세션을 골라야 하고 SAHI 타일·다른 비율은 640×640 그대로 — 2026-11-05 `experiments/RfDetrBench` README 'YOLO 남은 여지').
+남은 개선 후보(미구현): 모션 예측 외삽(비용 거의 0, 방향 전환 시 오버슈트).
+16:9 소스에 640×384 입력 모델(같은 가중치를 `--imgsz 384 640` 로 내보냄 — 16:9 이미지에서 AP 가 같고 `session.Run` −31%: YOLO26s 6.34 → 4.39 ms · YOLO26m 13.16 → 9.14 ms,
+2026-11-05 `experiments/RfDetrBench` README 'YOLO 남은 여지')은 **2026-11-06 루트 모델로 들어갔다**(YOLO26m 640×384 — CLAUDE.md "RF-DETR 검토" 3단계). 그때 적은 '소스 비율로 세션 둘'은 하지 않았다 —
+모델 하나(640×384)로 두고 SAHI 타일을 모델 입력 크기로 바꿨다. HUD(2560×1440)·720p 영상은 640×640 과 같은 배율로 들어가고, 16:9 가 아닌 소스(test5 1280×854 · 4:3 웹캠)는 더 작게 들어간다
 
 **입력 축소 — OpenCV 쌍선형 레터박스 (`YoloLetterbox.cs`, 2026-11-05, 속도가 아니라 정확도)**: Ultralytics 는 학습·검증 모두 쌍선형(`cv2.INTER_LINEAR`)으로 줄이는데,
 YoloDotNet 4.2.0 에 맡기면 기본값이 Nearest 다(`ImageConfig.DefaultSamplingOptions` — `YoloOptions.SamplingOptions` 의 XML 문서 주석은 Linear 라고 잘못 적혀 있다). 같은 날 두 단계로 바꿨다:

@@ -18,7 +18,7 @@ WPF(.NET 10)로 만들었고, 추론은 Windows ML 의 ONNX Runtime 으로 **GPU
 - **유고 후보** — 그려 둔 차로 구역에 차량이 정지한 채 5초 넘게 머물면 영상 속 그 차의 박스가 빨갛게(`TRUCK #14 유고?`) 바뀌고 이벤트 로그 헤더에 `⚠ 유고 후보 1` 이 뜨며 로그에 행이 남습니다. 정지선·대기 구역 안의 정차와 줄지어 선 정체는 후보로 보지 않습니다.
 - **구역 진입·나감 로그** — 그려 둔 구역에 물체가 들어오고 나갈 때마다 영상 아래 이벤트 로그에 한 줄(`00:11.2 CAR #40 Z1 차로 진입`)이 쌓이고, [CSV 저장]으로 영상 옆 `<영상>.events.csv` 에 남길 수 있습니다. 화면이 전환되면 구역이 맞는지 알 수 없어 이벤트를 멈추고, 시크하면 다시 시작합니다.
 - **관심 구역** — 동영상을 멈춘 채 영상 위를 클릭해 구역(다각형)을 그리고, 점을 끌어 고치고, 차로·갓길·정지선·대기·무시 유형을 붙입니다. 구역은 영상 옆 `<영상 파일>.roi.json` 에 바로 저장되고 다시 열면 돌아옵니다. (아직 편집·표시만 합니다 — 구역을 쓰는 유고 감지는 앞으로 붙일 예정입니다.)
-- **정밀 분석(SAHI)** — 멈춘 프레임 한 장을 640px 타일로 나눠 다시 검출하고, 전체 프레임 검출과 합칩니다. 멀리 있는 작은 물체를 찾을 때 씁니다.
+- **정밀 분석(SAHI)** — 멈춘 프레임 한 장을 모델 입력 크기(지금 640×384)의 타일로 나눠 다시 검출하고, 전체 프레임 검출과 합칩니다. 멀리 있는 작은 물체를 찾을 때 씁니다.
 - **추론 장치 선택** — 기본은 GPU(DirectML)이고, AMD Ryzen AI NPU(VitisAI 실행 공급자)로 바꿀 수 있습니다. NPU 는 양자화한 짝 모델 `best.npu.onnx` 가 있어야 하고, 처음 한 번 약 1분 동안 컴파일합니다.
 
 ## 요구 사항
@@ -50,7 +50,7 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
 - 프로젝트 파일(`DetectView.csproj`)을 꼭 지정합니다. 빼면 폴더의 `.slnx` 가 잡혀 `NETSDK1194` 경고가 납니다.
 - 결과는 `publish\DetectView.exe`(약 126 MB, .NET 런타임 포함)와 `best.onnx` 입니다. **모델은 exe 에 들어가지 않으니 같은 폴더에 둡니다.**
 - NPU 짝 모델은 publish 에 복사되지 않습니다. 배포 폴더 모델로 만듭니다: `pwsh tools\Make-NpuModel.ps1 -Model publish\best.onnx`
-- 실행해서 창 제목이 `DetectView — YOLO26s (2026-09-11 학습) — NVIDIA GeForce RTX 5060 Laptop GPU (DirectML)` 처럼 바뀌면 GPU 초기화에 성공한 것입니다.
+- 실행해서 창 제목이 `DetectView — YOLO26m 640×384 (2026-11-05 학습) — NVIDIA GeForce RTX 5060 Laptop GPU (DirectML)` 처럼 바뀌면 GPU 초기화에 성공한 것입니다.
 
 ## 사용법
 
@@ -70,21 +70,23 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
 
 ## 모델
 
-- 루트의 `best.onnx` 는 Ultralytics **YOLO26s** 를 파인튜닝한 모델입니다 (36 MB, 7클래스: person · car · motorcycle · truck · bus · scooter · bicycle).
-  입력은 640×640 고정이고 출력은 `[1, 300, 6]` — NMS 가 모델 안에 들어 있습니다(end-to-end).
-- 같은 형식의 다른 모델로 바꿔 쓸 수 있습니다(COCO 80클래스 YOLO26x 도 써 봤습니다). 창 제목의 모델 이름과 학습일은 ONNX 메타데이터에서 읽고, 화면에는 위 7개 클래스만 보입니다.
+- 루트의 `best.onnx` 는 Ultralytics **YOLO26m** 을 파인튜닝한 모델입니다 (78 MB, 7클래스: person · car · motorcycle · truck · bus · scooter · bicycle — 2026-11-06 YOLO26s 에서 바꿈).
+  입력은 16:9 영상에 맞춘 640×384 고정이고 출력은 `[1, 300, 6]` — NMS 가 모델 안에 들어 있습니다(end-to-end).
+  16:9 영상·화면은 640×640 입력과 같은 배율로 들어가고(추론은 31% 빠름), 16:9 가 아닌 영상(4:3 등)은 그보다 작게 들어갑니다.
+- 같은 형식의 다른 모델로 바꿔 쓸 수 있습니다(COCO 80클래스 YOLO26x 도 써 봤습니다). 입력 크기는 모델에서 읽습니다. 창 제목의 모델 이름·입력 크기·학습일은 모델 파일에서 읽고, 화면에는 위 7개 클래스만 보입니다.
 - `best.npu.onnx` 는 `best.onnx` 의 NPU 짝(A16W8 양자화)입니다. 원본을 바꾸면 `pwsh tools\Make-NpuModel.ps1` 로 다시 만듭니다.
   앱은 짝 모델에 들어 있는 원본 MD5 로 짝이 맞는지 확인하고, 안 맞으면 NPU 를 막습니다.
   보정 데이터 기본값은 `publish\test1~5.mp4` 이고, 다른 영상을 쓰려면 `-Calib` 로 영상·이미지 폴더를 줍니다.
 
 ## 성능 (참고)
 
-개발 PC(RTX 5060 Laptop GPU · Ryzen AI 5 340)에서 YOLO26s 로 잰 값입니다.
+개발 PC(RTX 5060 Laptop GPU · Ryzen AI 5 340)에서 잰 값입니다. 모델은 지금 루트 모델(YOLO26m 640×384)이고, 표시한 줄만 이전 모델(YOLO26s 640×640) 때 값입니다.
 
 | 항목 | 값 |
 |---|---|
-| 파일 재생 처리 (720p) | GPU 약 96~98 FPS · NPU 약 52 FPS |
-| 화면 HUD (2560×1440, DXGI) | 약 104 FPS — 캡처+검출 한 번 10.6 ms |
+| 추론 한 번 (`session.Run`) | GPU 8.8 ms · NPU 20.4 ms |
+| 파일 재생 처리 (720p) | GPU 약 78 FPS (같은 날 잰 이전 모델은 약 91 FPS) · NPU 약 40 FPS |
+| 화면 HUD (2560×1440, DXGI) | 약 104 FPS — 캡처+검출 한 번 10.6 ms (이전 모델 때) |
 | 화면이 안 바뀔 때 HUD 추론 | 0회/초 (대기) |
 
 ## 테스트
@@ -124,7 +126,7 @@ pwsh tests/ui/Run-All.ps1
 
 [GNU AGPL-3.0](LICENSE) — Copyright (C) 2026 chisu0208
 
-- 저장소에 든 모델(`best.onnx` · `best.npu.onnx`)은 Ultralytics YOLO26s 를 파인튜닝한 것입니다. Ultralytics 는 YOLO 로 학습한 모델과
+- 저장소에 든 모델(`best.onnx` · `best.npu.onnx`)은 Ultralytics YOLO26m 을 파인튜닝한 것입니다. Ultralytics 는 YOLO 로 학습한 모델과
   그 모델을 쓰는 프로젝트에 AGPL-3.0 을 요구해서([Ultralytics Licensing](https://www.ultralytics.com/license)) 프로젝트 전체를 AGPL-3.0 으로 공개합니다.
 - 고친 판을 배포하거나 네트워크 서비스로 제공하면 그 소스도 AGPL-3.0 으로 공개해야 합니다.
 - 저장소에 들어 있는 다른 사람의 코드(`WindowsMlExecutionProvider.cs` 의 바탕인 YoloDotNet, graft 연동 파일)와 그 라이선스 전문은

@@ -94,7 +94,14 @@ pwsh tests/ui/Run-All.ps1
   옛 판 `UiLatency` 형식이 남은 PowerShell 세션에선 분명한 메시지로 멈춘다(Add-Type 형식은 못 바꿈 — 새 pwsh 에서 돌릴 것)
 - 종료 코드 = 실패 건수(`Run-All` 은 0/1). 파일 열기 대화상자 자동화 요령 등은 `Common.ps1` 머리말에 정리해 두었다.
   `Run-All` 은 테스트 파일이 try 밖에서 throw 해도(영상·빌드 없음) 그 파일만 실패로 세고 다음 파일을 돈다(2026-10-30 — 예전엔 거기서 통째로 멈췄다)
-- 마지막 전체 통과: 2026-11-05 낮, **배포본 `publish`** — `f863585`(앱 YOLO 레터박스를 OpenCV 쌍선형으로 — `YoloLetterbox`, 위 '입력 축소' · RF-DETR 실험)로 다시 배포.
+- 마지막 전체 통과: 2026-11-06 아침, Debug — **루트 모델을 YOLO26m 640×384 로 바꾼 뒤**(CLAUDE.md "RF-DETR 검토" 3단계 — SAHI 타일을 모델 입력 크기로, 창 제목에 입력 크기, NPU 짝 `BD18D32C…`).
+  `Run-All` 한 번에 `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 · `Test-SceneChange` 21 · `Test-ZoneEvents` 21 · `Test-Incident` 16 · `Test-ViewIdentity` 27 · `Test-VfrPlayback` 26 ·
+  `Test-ScreenHud` 39(DXGI — 이번엔 모니터 0 이 1920×1080, 결함 주입 포함) · `Test-NpuSwitch` 28 항목 = 251 모두 통과. 테스트는 고치지 않았다 — 모델이 바뀌어도 멈춘 덤프트럭은 차로 유고 후보로 잡혔고
+  (`⚠ TRUCK #2 Z1 차로 유고 후보`), SAHI 는 640×384 타일로 '정밀 분석 완료: 16개'. `Test-NpuSwitch` 의 '다른 모델의 짝' 경로는 배포 폴더 모델을 써서 제목이 `YOLO26s 640×640 (2026-09-17 학습)` 으로 보였다(640×640 모델의 제목 꼴도 확인).
+  새 짝이라 NPU 첫 전환은 컴파일해 64.2초, 다시 고르면 4.7초, GPU 로 되돌리기 0.6초, 캐시 키 `BD18D32C…_1.8.80.0_1.27.20260711.1.7b7c0e2`, ①② 창 응답 WM_NULL 최대 1 ms · UIA 최대 13~22 ms.
+  참고용 재생 처리 GPU 75.9 · NPU 39.5 FPS, HUD 91.3 FPS(1920×1080). 앱·TrackerCheck·NpuBench·RfDetrBench·RuntimeParity(Old·WinML) 빌드 경고 0.
+  배포본(`publish`)은 이 변경 전 그대로다(배포 폴더 모델은 사용자가 바꿔 쓰는 것이라 바꾸기 전에 묻는다)
+- 그 전: 2026-11-05 낮, **배포본 `publish`** — `f863585`(앱 YOLO 레터박스를 OpenCV 쌍선형으로 — `YoloLetterbox`, 위 '입력 축소' · RF-DETR 실험)로 다시 배포.
   exe 126.4 MB(132,573,736 바이트) — worktree 의 루트 `best.onnx` 가 배포 폴더 것보다 새것이라 임시 폴더로 내보내고 exe 만 바꿨다(위 '빌드 · 배포'). 배포 폴더 `best.onnx`(09-17 visible, `87D0E1CB…`)는 그대로,
   `best.npu.onnx` 는 쌍선형 보정으로 다시 만들었다(`5CE87F90…` → `D889EA23…`, 100장 27초). Release DLL 에 `YoloLetterbox` 가 있고 결함 이름은 없다.
   worktree 에 `publish` 연결을 두고 `Run-All -ExeDir E:\DetectView\publish` 한 번에 237 항목 중 236 통과 — `Test-Incident` 1건 실패: 멈춘 덤프트럭이 카메라가 돌기 시작하는 10.5초에 BUS 로 잡혀

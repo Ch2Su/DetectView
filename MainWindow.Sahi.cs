@@ -99,29 +99,33 @@ namespace DetectView
             }
         }
 
-        // 전체 프레임 1회 + 640 타일(겹침 30%) 추론 → 좌표 역변환 → 같은 라벨끼리 합쳐 병합 → 영상과 박스 반환
+        // 전체 프레임 1회 + 모델 입력 크기 타일(겹침 30%) 추론 → 좌표 역변환 → 같은 라벨끼리 합쳐 병합 → 영상과 박스 반환
         // gen 이 바뀌면(정지·다른 소스) 남은 추론을 돌리지 않고 OperationCanceledException — 결과는 어차피 버려진다
         private (BitmapSource image, List<Det> dets) RunSahi(Mat frameBgr, int gen)
         {
             int w = frameBgr.Width, h = frameBgr.Height;
-            const int tile = 640;
+            // 타일 = 모델 입력 크기 — 타일이 배율 1 로 들어가야 작은 물체를 원래 크기로 보는 SAHI 의 뜻이 산다.
+            // 예전엔 640 정사각형으로 박아 뒀다(모델이 640×640 이던 때). 16:9 영상용 640×384 모델(2026-11-06)에 640×640 타일을 넣으면 0.6배로 줄어든다
+            int tileW, tileH;
+            lock (_yoloLock) { (tileW, tileH) = YoloLetterbox.InputSize(_yolo!); }   // NPU 세션도 같은 크기(짝은 같은 모델을 양자화한 것)
             const double overlap = 0.3;   // 겹침↑ → 객체가 최소 한 타일엔 온전히 들어오도록
-            int step = Math.Max(1, (int)(tile * (1 - overlap)));
+            int stepX = Math.Max(1, (int)(tileW * (1 - overlap)));
+            int stepY = Math.Max(1, (int)(tileH * (1 - overlap)));
 
             var all = new List<(Det D, bool Cut)>();
-            // 원본 SAHI(perform_standard_pred)처럼 전체 프레임 검출도 함께 넣는다 — 겹침(192px)보다 넓은 큰 물체는 어느 타일에도
+            // 원본 SAHI(perform_standard_pred)처럼 전체 프레임 검출도 함께 넣는다 — 겹침(640 이면 192px, 384 면 116px)보다 큰 물체는 어느 타일에도
             // 온전히 들어오지 않아 타일 검출로는 조각뿐이다. 프레임이 타일 하나 크기 이하면 타일 검출과 같으니 건너뛴다
-            if (w > tile || h > tile)
+            if (w > tileW || h > tileH)
             {
                 if (gen != Volatile.Read(ref _loadGeneration)) throw new OperationCanceledException();
                 foreach (var d in DetectTile(frameBgr, 0, 0)) all.Add((d, false));
             }
-            foreach (int oy in Sahi.TileOrigins(h, tile, step))
-                foreach (int ox in Sahi.TileOrigins(w, tile, step))
+            foreach (int oy in Sahi.TileOrigins(h, tileH, stepY))
+                foreach (int ox in Sahi.TileOrigins(w, tileW, stepX))
                 {
                     if (gen != Volatile.Read(ref _loadGeneration)) throw new OperationCanceledException();
-                    int tw = Math.Min(tile, w - ox);
-                    int th = Math.Min(tile, h - oy);
+                    int tw = Math.Min(tileW, w - ox);
+                    int th = Math.Min(tileH, h - oy);
                     using var roi = new Mat(frameBgr, new OpenCvSharp.Rect(ox, oy, tw, th));
                     // 타일 안쪽 경계에 닿은 박스는 물체가 잘렸을 수 있다 — 병합에서 그런 조각이 낀 묶음만 합친다
                     foreach (var d in DetectTile(roi, ox, oy)) all.Add((d, Sahi.TouchesInnerEdge(d, ox, oy, tw, th, w, h)));
