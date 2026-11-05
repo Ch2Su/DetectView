@@ -299,6 +299,7 @@ namespace DetectView
                 _yolo?.Dispose();
                 _yolo = null;
                 _inferenceClosed = true;   // 아직 도는 NPU 준비가 끝나도 _yolo 를 되살리지 않는다 (MainWindow.Npu.cs)
+                _letterbox.Dispose();      // 늦게 온 검출은 _yolo 가 null 이라 레터박스 버퍼에 닿기 전에 예외로 끝난다 (YoloLetterbox.Detect)
             }
 
             _playSignal.Dispose();

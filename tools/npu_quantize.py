@@ -14,7 +14,7 @@
 #   a8w8-pc-pct: 둘 다 (INT8 중엔 가장 낫다)
 #
 # 결과 모델 메타데이터에 짝 확인용 값을 넣는다 — 앱은 best.onnx 를 바꿨는데 옛 NPU 모델이 남은 경우를 이걸로 알아챈다:
-#   npu_source_md5 = 원본 모델 파일의 MD5 · npu_quant = 방식 · npu_calib = 보정 데이터 요약
+#   npu_source_md5 = 원본 모델 파일의 MD5 · npu_quant = 방식 · npu_calib = 보정 데이터 요약 · npu_resize = 보정 입력의 축소 방식(linear)
 import argparse
 import hashlib
 import pathlib
@@ -44,13 +44,15 @@ IMAGE_EXT = {".jpg", ".jpeg", ".png", ".bmp"}
 VIDEOS = ["test1.mp4", "test2.mp4", "test3.mp4", "test4.mp4", "test5.mp4"]   # 보정 기본값 (publish 안)
 
 repo = pathlib.Path(__file__).resolve().parents[1]
-# OpenCV 의 INTER_NEAREST 는 화소 중심을 맞추지 않는다. Skia(YoloDotNet)의 Nearest 와 같은 쪽은 NEAREST_EXACT
-NEAREST = getattr(cv2, "INTER_NEAREST_EXACT", cv2.INTER_NEAREST)
+# 앱의 축소 = OpenCV INTER_LINEAR (YoloLetterbox.cs 가 같은 규칙·같은 보간으로 레터박스를 만들어 YoloDotNet 에 넘긴다 — 2026-11-05).
+# 2026-11-05 전엔 앱이 YoloDotNet 기본값 Nearest 라 여기도 INTER_NEAREST_EXACT 였다 (OpenCV 의 INTER_NEAREST 는 화소 중심을 맞추지 않는다 —
+# 다만 NEAREST_EXACT 도 Skia 의 Nearest 와 똑같지는 않아 데이터셋 시험 분할 973장 중 540장이 달랐다)
+RESIZE = cv2.INTER_LINEAR
 
 
 def letterbox(img, width, height):
     """BGR 이미지 → 모델 입력 [1,3,H,W] float32(RGB, 0~1).
-    앱이 실제로 넣는 입력과 같게 YoloDotNet 의 ResizeImageProportional 을 따른다: 비율 유지·가운데·Nearest·검은 여백
+    앱이 실제로 넣는 입력과 같게 YoloDotNet 의 ResizeImageProportional 을 따른다: 비율 유지·가운데·쌍선형·검은 여백
     (캔버스를 SKColors.Empty 로 지운다), 크기는 (int)(w·s + 0.5), 모델보다 작은 이미지는 줄이지 않고 가운데에 둔다."""
     ih, iw = img.shape[:2]
     if iw < width and ih < height:
@@ -60,7 +62,7 @@ def letterbox(img, width, height):
         nw, nh = int(iw * s + 0.5), int(ih * s + 0.5)
     canvas = np.zeros((height, width, 3), np.uint8)
     x, y = (width - nw) // 2, (height - nh) // 2
-    canvas[y:y + nh, x:x + nw] = img if (nw, nh) == (iw, ih) else cv2.resize(img, (nw, nh), interpolation=NEAREST)
+    canvas[y:y + nh, x:x + nw] = img if (nw, nh) == (iw, ih) else cv2.resize(img, (nw, nh), interpolation=RESIZE)
     return canvas[:, :, ::-1].transpose(2, 0, 1)[None].astype(np.float32) / 255.0
 
 
@@ -218,8 +220,10 @@ def main():
 
     # 짝 확인용 메타데이터 (원본의 Ultralytics 메타데이터 description·names·task 등은 양자화기가 그대로 옮긴다)
     out = onnx.load(str(dst))
+    # npu_resize = 보정 입력의 축소 방식 (2026-11-05 부터. 이 키가 없는 짝은 Nearest 로 보정한 옛 짝이다 — 앱은 그래도 쓴다)
     tags = {"npu_source_md5": source_md5, "npu_quant": a.mode,
-            "npu_calib": f"{len(frames)}장: {calib_summary}", "npu_quantizer": f"onnxruntime {onnxruntime.__version__}"}
+            "npu_calib": f"{len(frames)}장: {calib_summary}", "npu_resize": "linear",
+            "npu_quantizer": f"onnxruntime {onnxruntime.__version__}"}
     keep = [p for p in out.metadata_props if p.key not in tags]
     del out.metadata_props[:]
     out.metadata_props.extend(keep)

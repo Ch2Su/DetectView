@@ -16,6 +16,8 @@
     <Compile Include="..\Program.cs" />
     <!-- GPU 선택은 본 앱과 같은 판정 (런타임과 무관해 옛 쪽에도 그대로 쓴다) -->
     <Compile Include="..\..\..\GpuAdapters.cs" />
+    <!-- 레터박스·박스 되돌리기도 본 앱과 같은 소스 (2026-11-05 — 런타임과 무관해 두 빌드 모두) -->
+    <Compile Include="..\..\..\YoloLetterbox.cs" />
   </ItemGroup>
 
   <ItemGroup>

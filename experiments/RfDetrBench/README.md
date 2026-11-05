@@ -259,6 +259,8 @@ FP32 모델은 CPU 로 쟀다. DirectML(`--ep dml`, NVIDIA)로 다시 재도 RF-
 - **FP16 은 정확도를 잃지 않는다**: DirectML 에서 FP32 0.7417 → FP16 0.7416(재현율 0.920 → 0.919). 1단계의 FP16 속도(9.1 ms)를 그대로 쓸 수 있다
 - **앱의 Nearest 축소가 YOLO 의 AP 를 0.02~0.03 깎는다**: YOLO26s 0.640 → 0.660 · 배포 0.653 → 0.672 · YOLO26m 0.677 → 0.708(작은 물체 AP +0.02~0.045). Ultralytics 8.4.142 는 학습·검증 모두 쌍선형(`INTER_LINEAR`)으로 줄이는데
   앱(YoloDotNet 기본값)은 Nearest 라 학습 때와 다른 입력을 넣는 셈이다. YoloDotNet 4.2.0 `YoloOptions.SamplingOptions` 로 바꿀 수 있어 보인다 — 앱엔 안 해 봤다(NPU 짝의 양자화 보정도 Nearest 기준이라 같이 다뤄야 한다)
+  — **고침(11-05, 아래 '앱의 쌍선형 축소')**: 이 차이의 대부분은 이 평가기가 640 보다 작은 111장을 **키울 때** 생긴 것이다. 앱(YoloDotNet)은 작은 이미지를 키우지 않아,
+  앱이 실제로 하는 축소에서의 이득은 +0.005~0.008 이다
 - **교차 확인 — 각 라이브러리의 자체 평가기**(`crosscheck_native.py`, WSL CPU): Ultralytics val(test) YOLO26s **0.674** · YOLO26m **0.725**(mAP50 0.870 · 0.897), rfdetr `evaluate(split="test")` RF-DETR-S **0.751**(mAP50 0.925).
   RF-DETR-S 와의 차이는 0.077 · 0.026 — 우리 평가기(쌍선형)의 0.082 · 0.034 와 같은 쪽·비슷한 크기다. 우리 평가기는 자체 평가기보다 YOLO26s 0.014 · YOLO26m 0.017 · RF-DETR-S 0.009 낮게 잰다
   — YOLO 몫은 아래처럼 다 나눴다(RF-DETR 몫은 나누지 않았다)
@@ -295,3 +297,51 @@ FP32 모델은 CPU 로 쟀다. DirectML(`--ep dml`, NVIDIA)로 다시 재도 RF-
   ② YOLO26m 으로 바꾸기(쌍선형이면 0.708, 추론은 2.2배) ③ **RF-DETR-N 을 같은 데이터로 학습**해 보기 — FP16 5.2 ms 로 지금 YOLO26s(6.4 ms)보다 빠른데 이번엔 재지 않았다(11-05 시작했다가 첫 epoch 뒤 멈춤 — 위 학습 절)
 - 확인 안 한 것: 학습을 한 번씩만 했다(시드 차이 모름) · 학습률을 일찍 내리는 조리법(rfdetr `lr_drop`) · 시험 분할은 학습 데이터와 같은 출처라 **앱의 CCTV 영상(test1~5)에서의 차이** ·
   추적기·유고 규칙 위에서의 차이
+
+## 앱의 쌍선형 축소 (2026-11-05 — 앱을 Nearest 에서 쌍선형으로 바꾸며 잰 것)
+
+앱은 먼저 YoloDotNet `YoloOptions.SamplingOptions = SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.None)` 으로 줄이게 했고(`MainWindow.Inference.cs` 의 `InputSampling` — 아래 표의 '쌍선형' 열),
+같은 날 레터박스를 OpenCV 쌍선형으로 직접 만들어 넘기게 바꿨다(루트 `YoloLetterbox.cs` — 맨 아래 'OpenCV 선축소').
+위 표의 'Nearest (앱 그대로)' 행은 이 평가기(OpenCV)로 앱을 흉내 낸 것이라, 앱과 같은 코드로 다시 쟀다 — `TrackerCheck testsplit`(YoloDotNet + DirectML, 본 앱 `ProcessFrame` 과 같은 길)이
+시험 분할 973장을 두 방식으로 검출해 JSON 을 쓰고, 이 평가기가 `--app-json` 으로 채점한다(`--subset`·`--compare`·`--yolo-no-upscale` 도 이때 더했다 — `eval_test.py` 머리말).
+
+**앞의 평가와 다른 점 둘**
+- **YoloDotNet 은 모델보다 작은 이미지(가로·세로 모두 640 미만 — 시험 분할 111장)를 키우지 않고 가운데에 그대로 둔다**(`ResizeImageProportional`). 이 평가기는 모든 이미지를 640 에 맞춰 키웠다.
+  그래서 작은 이미지에선 앱의 두 방식이 비트 단위로 같고, 이 평가기의 Nearest 는 작은 이미지를 **키우며** 크게 손해를 봤다
+- **OpenCV `INTER_NEAREST_EXACT` 는 Skia 의 Nearest 와 화소를 똑같이 고르지 않는다** — 973장 중 540장이 달랐다(같은 화소 80.5%, 3 이상 차이 13%, 최대 255 — 표본 위치가 두 화소 중심의 한가운데에 걸리는 배율에서 반올림이 갈린다.
+  정확히 2배 축소면 Skia 는 2×2 묶음의 왼쪽 위, `NEAREST_EXACT` 는 오른쪽 아래 화소 — `TrackerCheck inputbench`).
+  예전 기록(NpuBench README·`tools/npu_quantize.py`)은 둘이 같다고 적었다. 쌍선형은 Skia 와 OpenCV `INTER_LINEAR` 이 화소 87.5% 같고 나머지는 **정확히 ±1**(채널 평균 |차| 0.057)이라 같은 방식으로 봐도 된다
+
+**배포 YOLO26s (09-17, `publish\best.onnx`) — 시험 분할 AP** (임계 0.3 정밀도 / 재현율)
+
+| 이미지 | 이 평가기 Nearest → 쌍선형 (CPU, 작은 이미지는 키움 — 위 표) | **앱 Nearest → 쌍선형** (YoloDotNet · DirectML) |
+|---|---|---|
+| 전체 973장 | 0.653 → 0.672 (+0.019) | **0.6555 → 0.6602 (+0.005)** · 0.885/0.813 → 0.894/0.817 |
+| 앱이 줄이는 862장 (`--subset resized`) | 0.6555 → 0.6638 (+0.008) · APs 0.428 → 0.440 | **0.6472 → 0.6533 (+0.006)** · APs 0.383 → 0.399 · AP50 0.826 → 0.836 |
+| 작은 111장 (`--subset small`) | 0.646 → 0.736 (+0.09 — 키우며 생긴 차이) | 0.7106 → 0.7106 (같음 — 줄이지 않는다) |
+
+루트 `best.onnx`(09-11 — 이 데이터셋의 시험 분할을 학습에 썼을 수 있어 절대값은 의미가 없다)도 앱 경로로 0.8080 → 0.8134(+0.005), 줄이는 862장 0.7992 → 0.8055(+0.006).
+
+- **앱이 실제로 얻는 이득은 +0.005~0.006 AP**(작은 물체 AP +0.009~0.015, 정밀도 +0.009) — 앞서 적은 +0.02~0.03 은 작은 이미지를 키우는 이 평가기의 몫이 섞인 값이었다
+- **앱 경로와 이 평가기의 검출은 거의 같다** — `--yolo-resize linear --yolo-no-upscale --ep dml`(앱과 같은 전처리)로 돌린 검출과 앱 검출을 임계 0.3 에서 맞대면(`--compare`)
+  5,919 · 5,917개 중 5,910개가 같은 클래스 IoU 0.5 이상으로 짝지어지고(99.85% · 99.88%, 모든 검출이 짝지어진 이미지 957/973), 신뢰도 차 중앙 0.0000 · 99% 0.040, 좌표 차(네 변 중 최대) 중앙 0.92 px · 99% 2.9 px
+- 그래도 AP 는 앱이 0.012 낮다(0.6602 vs 0.6725) — **YoloDotNet 이 박스 좌표를 정수로 내린다**(`ObjectDetectionModuleV26` 의 `(int)((x - xPad) * gain)` — 평균 −0.5 px).
+  확인: 이 평가기의 박스를 앱처럼 내리면 줄이는 862장 0.6638 → 0.6593, 앱 박스에 +0.5 px 를 더하면 0.6533 → 0.6573(작은 물체 AP 0.399 → 0.416). 남는 몫은 레터박스 여백을 정수로 그리고 실수로 되돌리는 YoloDotNet 의 반올림·DirectML/CPU 차이로 보인다(나누지 않았다).
+  앱에서 +0.5 px 보정은 하지 않았다 — 축소 방식과 별개다.
+  같은 날 잰 **OpenCV 선축소**(OpenCV 로 640×640 레터박스를 만들어 넘기고 박스를 +0.5·정확한 여백으로 직접 되돌림)는 0.6658 로 +0.5 px 보정과 같은 정확도에
+  검출 한 번이 8.25 → 7.40 ms 라 **앱에 넣었다**(같은 날, 루트 `YoloLetterbox.cs` — `TrackerCheck` README 'YOLO 입력 축소' 의 선축소 시험). 그래서 지금 앱은 위 표의 쌍선형 열이 아니라 0.6658 이다.
+  넣기 전에 흉내로 먼저 쟀다 — `--yolo-no-upscale` 실수 좌표 검출(0.6725)을 줄인 이미지 좌표로 옮겨 정수로 내린 뒤 키우면 **0.6535**(작은 물체 0.349), 내린 뒤 +0.5 하고 키우면 0.6658 —
+  실제 앱 경로와 같은 값이다. 그러니 +0.5 는 꼭 필요하다(빼면 쌍선형 이득보다 크게 잃는다). 원래 크기에서 내리는 지금까지의 앱 흉내는 0.6676(+0.5 하면 0.6685)
+- 비용: YoloDotNet 의 축소가 프레임당 0.5~1.0 → 1.5~2.2 ms(`TrackerCheck inputbench` 두 번 — 1280×720·2560×1440 모두, 추가 비용 1.0~1.4 ms). 앱의 파일 재생 처리 FPS 는 92.4 · 94.5 → 86.0 · 85.7
+  (`tests/ui/Measure-Fps.ps1`, test1.mp4, Debug, 기준선을 앞뒤로 두 번). 같은 입력은 같은 출력이다(50번 반복 · 시험 분할 50장 두 번 — 모두 비트 단위로 같음)
+
+```powershell
+# 앱 경로 검출 (GPU, 약 2.5분 — 데이터는 읽기만 한다). UNC 경로라 Git Bash 가 아니라 PowerShell 에서
+experiments\TrackerCheck\bin\Release\net10.0-windows10.0.19041.0\TrackerCheck.exe testsplit '\\wsl.localhost\Ubuntu\home\chisu\rfdetr_work\data\visible' `
+    experiments\TrackerCheck\out\testsplit 'deployed=publish\best.onnx' 'root=best.onnx'
+# 채점 — 전체·줄이는 이미지·작은 이미지 (--subset), 두 방식 비교 (--compare)
+uv run --no-project --python 3.12 --with onnxruntime --with pycocotools --with opencv-python --with numpy experiments/RfDetrBench/step2/eval_test.py `
+    --data '\\wsl.localhost\Ubuntu\home\chisu\rfdetr_work\data\visible' --out experiments\RfDetrBench\out\eval_app --subset resized `
+    --app-json 'app_nearest:experiments\TrackerCheck\out\testsplit\app_deployed_nearest.json' --app-json 'app_linear:experiments\TrackerCheck\out\testsplit\app_deployed_linear.json' `
+    --compare app_nearest:app_linear
+```

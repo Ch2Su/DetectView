@@ -399,7 +399,6 @@ static class Prep
 {
     static readonly float[] Mean = [0.485f, 0.456f, 0.406f];
     static readonly float[] Std = [0.229f, 0.224f, 0.225f];
-    const InterpolationFlags NearestExact = (InterpolationFlags)6;   // INTER_NEAREST_EXACT — OpenCvSharp 열거형엔 이름이 없다
 
     /// <summary>
     /// RF-DETR 전처리: BGR → RGB → 정사각형으로 그냥 늘이기(레터박스 없음, 쌍선형·반 화소 중심·antialias 없음) → ImageNet 정규화 → CHW.
@@ -434,7 +433,8 @@ static class Prep
         return dst;
     }
 
-    /// <summary>YOLO26s 기준 입력 — 앱(YoloDotNet ResizeImageProportional)과 같게 비율 유지·가운데·Nearest·검은 여백, RGB 0~1 CHW (NpuBench 와 같음)</summary>
+    /// <summary>YOLO26s 기준 입력 — 앱(YoloDotNet ResizeImageProportional)과 같게 비율 유지·가운데·쌍선형·검은 여백, RGB 0~1 CHW (NpuBench 와 같음).
+    /// 2026-11-05 앱이 쌍선형으로 바꿀 때 같이 바꿨다(그 전엔 INTER_NEAREST_EXACT) — 이 실험은 YOLO 를 시간 기준으로만 써서 1단계 숫자는 그대로다</summary>
     public static unsafe float[] Letterbox(Mat src, int side)
     {
         int w = src.Width, h = src.Height;
@@ -444,7 +444,7 @@ static class Prep
             (w, h) = ((int)(src.Width * s + 0.5f), (int)(src.Height * s + 0.5f));
         }
         using var canvas = new Mat(side, side, MatType.CV_8UC3, Scalar.All(0));
-        using (var resized = (w, h) == (src.Width, src.Height) ? src.Clone() : src.Resize(new OpenCvSharp.Size(w, h), 0, 0, NearestExact))
+        using (var resized = (w, h) == (src.Width, src.Height) ? src.Clone() : src.Resize(new OpenCvSharp.Size(w, h), 0, 0, InterpolationFlags.Linear))
         using (var roi = new Mat(canvas, new Rect((side - w) / 2, (side - h) / 2, w, h)))
             resized.CopyTo(roi);
         int plane = side * side;

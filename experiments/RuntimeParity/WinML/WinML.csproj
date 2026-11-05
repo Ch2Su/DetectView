@@ -14,6 +14,7 @@
     <Compile Include="..\Program.cs" />
     <Compile Include="..\..\..\WindowsMlExecutionProvider.cs" />
     <Compile Include="..\..\..\GpuAdapters.cs" />
+    <Compile Include="..\..\..\YoloLetterbox.cs" />
   </ItemGroup>
 
   <ItemGroup>
