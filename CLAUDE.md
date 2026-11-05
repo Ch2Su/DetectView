@@ -281,11 +281,12 @@ SDK 기본 글롭이 `old/**` 의 소스와 생성 `.g.cs` 까지 끌어와 **72
 - 영상을 열 때·시크 뒤·전환이 안정된 뒤에만 식별한다. 첫 호출이 느려 **앱을 켤 때 `ViewMatcher.WarmUp`** 을 돌린다(빼면 세션 첫 재생이 0.8배속 안팎). 구역 파일은 구역을 편집할 때만 저장한다
 - 뷰로 돌아올 때마다 번호·유고 5초를 새로 센다(방문 사이 이어 붙이기는 미구현)
 
-## 도메인 지식 — RF-DETR 검토 (2026-11-04~05, 2단계 끝 — 3단계는 사용자 결정 대기)
+## 도메인 지식 — RF-DETR 검토 (2026-11-04~06, 2단계 끝 — 3단계는 사용자 결정 대기)
 
 경과·수치는 [docs/rf-detr.md](docs/rf-detr.md)와 `experiments/RfDetrBench/README.md`. 요점:
-- 시험 분할 AP: RF-DETR-S 0.742(FP16 같음) · YOLO26m 0.708 · 배포 YOLO26s(앱 경로) 0.6658. **16:9 이미지만 보면 RF-DETR-S = YOLO26m(0.695 · 0.696)** — RF-DETR-S 는 재현율·사람·두 바퀴, YOLO26m 은 작은 물체·car·truck 이 낫다
-- 3단계(앱에 '모델 종류'로 더하기)는 사용자 결정 대기 — 후보: RF-DETR-S FP16(`session.Run` 9.1 ms + 전처리 0.29 ms, YoloDotNet 밖의 새 추론 경로) · YOLO26m 640×384(9.14 ms, 지금 경로) · RF-DETR-N(학습은 11-05 첫 epoch 뒤 멈춤)
+- 시험 분할 AP: RF-DETR-S 0.742(FP16 같음) · YOLO26m 0.708 · 배포 YOLO26s(앱 경로) 0.6658 · RF-DETR-N 0.665(11-06). **16:9 이미지만 보면 RF-DETR-S = YOLO26m(0.695 · 0.696)** — RF-DETR-S 는 재현율·사람·두 바퀴, YOLO26m 은 작은 물체·car·truck 이 낫다
+- 3단계(앱에 '모델 종류'로 더하기)는 사용자 결정 대기 — 후보: RF-DETR-S FP16(`session.Run` 9.1 ms + 전처리 0.29 ms, YoloDotNet 밖의 새 추론 경로) · YOLO26m 640×384(9.14 ms, 지금 경로).
+  RF-DETR-N 은 YOLO26s 급이고 16:9 에선 더 낮아(0.611 vs 0.654) 권하지 않았다 — 이점은 속도뿐
 - 학습·평가 데이터는 WSL 백업 `/home/chisu/datasets_backup/visible_2026-11-04` 를 쓴다(원본은 라벨링 도구의 'WSL 학습' 버튼이 덮어쓴다). 오래 도는 벤치·학습은 전원을 연결한다(배터리 20분 무입력이면 GPU 작업도 멈춘다)
 
 ## 도메인 지식 — NPU (AMD Ryzen AI — 왼쪽 패널 "추론 장치"에서 GPU/NPU 선택)
