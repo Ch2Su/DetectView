@@ -28,7 +28,7 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
 ```
 
 - 프로젝트 파일(`DetectView.csproj`)을 꼭 지정한다. 생략하면 폴더의 `.slnx` 가 잡혀 `NETSDK1194`(솔루션 + `--output`) 경고가 난다
-- 결과: `DetectView.exe` 126.4 MB (2026-10-24, Windows ML 런타임. 이전 DirectML 1.23 은 119.4 MB. 2026-10-30·10-31·11-01 다시 배포도 같은 크기 — 11-01 은 세 번: 이슈 수정판 `53db7ed`, 화면 개편판 `c274575`, 클래스별 검출 수 범례판 `fb06cf9` · 11-02 추적기 연결·라벨/꺾쇠·상태바판 `3939f40` · 11-03 관심 구역·화면 전환 감지·구역 이벤트 로그·유고 규칙·화면 식별판 `10f7b31` · 같은 날 폴더 이전·이름 정리판 — 위 '이름'). 테스트 영상(`test1~4.mp4`)은 같은 폴더에 있어도 덮어쓰지 않는다
+- 결과: `DetectView.exe` 126.4 MB (2026-10-24, Windows ML 런타임. 이전 DirectML 1.23 은 119.4 MB. 2026-10-30·10-31·11-01 다시 배포도 같은 크기 — 11-01 은 세 번: 이슈 수정판 `53db7ed`, 화면 개편판 `c274575`, 클래스별 검출 수 범례판 `fb06cf9` · 11-02 추적기 연결·라벨/꺾쇠·상태바판 `3939f40` · 11-03 관심 구역·화면 전환 감지·구역 이벤트 로그·유고 규칙·화면 식별판 `10f7b31` · 같은 날 폴더 이전·이름 정리판 — 위 '이름' · 11-05 YOLO 쌍선형 레터박스·NPU 짝 재보정판 `f863585`). 테스트 영상(`test1~4.mp4`)은 같은 폴더에 있어도 덮어쓰지 않는다
 - publish 뒤에는 배포본으로 UI 테스트를 돌린다: `pwsh tests\ui\Run-All.ps1 -ExeDir publish`
 - **`publish\best.onnx` 는 루트의 것과 다를 수 있고, 사용자가 수시로 바꾼다** (YOLO26s ↔ YOLO26x(COCO 80클래스),
   데이터셋이 다른 7클래스 모델 등 — 2026-09-23 한 세션 안에서도 바뀌었다). 건드리지 말 것.
@@ -39,7 +39,9 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
 - **앱용 ONNX 를 새로 내보낼 땐 end-to-end(`[1,300,6]`)인지 본다** — Ultralytics 8.4.142(라벨링 도구가 쓰는 판)의 `export(format="onnx")` 기본값은 NMS 전 원출력 `[1,84,8400]`(메타데이터 `end2end False`)이다.
   `nms=False`(또는 `end2end=True`)를 줄 것. 지금 `best.onnx` 는 8.4.31 기본값으로 end-to-end 였다 (2026-11-04 실측 — `experiments/RfDetrBench` README. 원출력 꼴을 앱이 어떻게 처리하는지는 확인 안 함 — 아래 3번의 전제가 깨진다).
   같은 판의 **val 도 `nms` 를 안 주면 one-to-many 출력 + NMS 로 잰다**(학습 중 검증·`best.pt` 고르기도) — 학습 로그의 mAP 는 앱이 쓰는 end-to-end 출력보다 0.007~0.010 높게 나온다(2026-11-05 실측). 앱과 같은 걸 재려면 val 에 `nms=False`
-- publish 는 `best.onnx` 를 `PreserveNewest` 로 복사한다 → **루트 `best.onnx` 가 배포 폴더의 것보다 새로우면 덮어쓴다**
+- publish 는 `best.onnx` 를 `PreserveNewest` 로 복사한다 → **루트 `best.onnx` 가 배포 폴더의 것보다 새로우면 덮어쓴다**.
+  **worktree 에서 배포하면 거의 늘 그렇다**(루트 `best.onnx` 의 시각이 체크아웃한 때다) — 그땐 임시 폴더로 `-o` 를 주고 `DetectView.exe` 만 배포 폴더로 옮긴다(2026-11-05).
+  worktree 에서 UI 테스트를 돌릴 때도 테스트가 `<저장소>\publish\test*.mp4` 를 찾으니 worktree 에 `publish` → `E:\DetectView\publish` 연결(junction)을 두고, 끝나면 링크만 지운다
 - `best.onnx` 는 단일 파일 exe에 포함되지 않는다. **exe 옆에 같이 놓아야** 실행된다.
   경로는 작업 디렉터리가 아니라 `AppContext.BaseDirectory`(exe 폴더) 기준이다. 예전엔 상대 경로라 바로가기의 "시작 위치"나
   다른 폴더에서 실행하면 모델을 못 찾고 엉뚱하게 "GPU 드라이버 확인" 오류를 냈다 (2026-09-23 수정, 실측 확인)
@@ -836,7 +838,8 @@ pwsh tests/ui/Run-All.ps1
   `비우기`(목록·개수 0, 저장 꺼짐) → 접으면 목록이 사라짐 → 정지하면 패널이 사라짐 → 구역 없는 영상(test1)은 4초 재생해도 0건. 로그 항목의 시각 범위·개수는 영상·검출에 따라 달라 성질만 본다. 항목 수 21
 - `Test-Incident.ps1`(2026-11-03): 유고 규칙(위 "유고 규칙"). 구역 파일(차로 Z1 — 0~10.5초 멈춘 덤프트럭의 발 위치를 품음)을 test4 옆에 써 두고(끝나면 지움) 12.6초까지 재생하며 0.03초 간격으로 위치·헤더의 유고 표시(`Txt_EventIncident`)·박스 번호의 `정지 유고` 를 기록한다
   (두 값을 읽는 사이 프레임이 넘어갈 수 있어 표시를 번호 앞뒤로 읽어 같은 표본만 센다): 5초 전 표시·강조 없음 + 멈춘 트럭엔 `정지` → 선언 뒤(7~10.3초) 헤더 `⚠ 유고 후보 1`·박스 번호 `#14 정지 유고`(같은 번호가 정지이기도 함) →
-  처음 보인 위치 5.0~7.0초(실측 5.2초) → 카메라가 돈 뒤(11.7초~) 표시·강조가 사라짐 → 로그: 유고 후보 행 한 줄(5~9초)·`유고 해소 (화면 전환) · 멈춤 10.3초` 행 → CSV: `incident`(Z1 · lane · 멈춤 5000ms)·`incident_end` 각 한 행 →
+  처음 보인 위치 5.0~7.0초(실측 5.2초) → 카메라가 돈 뒤(11.7초~) 표시·강조가 사라짐 → 로그: 유고 후보 행 한 줄(5~9초)·같은 번호의 `유고 해소 (화면 전환) · 멈춤 10.3초` 행
+  (라벨은 그 순간의 클래스라 같은 차가 TRUCK → BUS 로 바뀔 수 있어 번호로 맞춘다 — 11-05 배포 모델에서 실제로 그랬다) → CSV: `incident`(Z1 · lane · 멈춤 5000ms)·`incident_end` 각 한 행 →
   비우고 2초로 시크해 재생하면 7~9.3초(실측 7.3초)에 다시 선언 → 선언 중에 다시 2초로 시크하면 `유고 해소 (시크)` 행. 항목 수 16
 - `Test-ViewIdentity.ps1`(2026-11-03): 화면 식별(위 "화면 식별"). `TrackerCheck mkrevisit` 이 test4 조각을 이어 만든 `experiments\TrackerCheck\out\test4_revisit.mp4`(없으면 테스트가 만든다 — `publish\test4.mp4` 가 필요)에 옛 형식 구역 파일(판 1, 차로 Z1 — 트럭의 발 위치)을 옆에 써 두고 30초를 재생하며
   0.03초 간격으로 배지·구역 헤더(`Txt_ZoneCount`)·유고 표시를 기록한다(세 값을 위치 앞뒤로 읽어 같은 표본만 쓴다): A 0~8초 헤더 `V1 · 1개`·배지 없음·유고 후보 → B 8초 컷 `● 새 뷰 V2 · 구역 없음`·헤더 `V2 · 0개`·유고 표시 없음·배지는 2초 뒤 사라짐 →
@@ -882,7 +885,15 @@ pwsh tests/ui/Run-All.ps1
   옛 판 `UiLatency` 형식이 남은 PowerShell 세션에선 분명한 메시지로 멈춘다(Add-Type 형식은 못 바꿈 — 새 pwsh 에서 돌릴 것)
 - 종료 코드 = 실패 건수(`Run-All` 은 0/1). 파일 열기 대화상자 자동화 요령 등은 `Common.ps1` 머리말에 정리해 두었다.
   `Run-All` 은 테스트 파일이 try 밖에서 throw 해도(영상·빌드 없음) 그 파일만 실패로 세고 다음 파일을 돈다(2026-10-30 — 예전엔 거기서 통째로 멈췄다)
-- 마지막 전체 통과: 2026-11-05 오전, Debug — **레터박스를 OpenCV 쌍선형으로 직접 만드는 `YoloLetterbox` 를 넣은 뒤**(위 '화면 HUD' 의 '입력 축소' ②). 아래 판과 같게 `publish` 연결을 두고 돌렸다.
+- 마지막 전체 통과: 2026-11-05 낮, **배포본 `publish`** — `f863585`(앱 YOLO 레터박스를 OpenCV 쌍선형으로 — `YoloLetterbox`, 위 '입력 축소' · RF-DETR 실험)로 다시 배포.
+  exe 126.4 MB(132,573,736 바이트) — worktree 의 루트 `best.onnx` 가 배포 폴더 것보다 새것이라 임시 폴더로 내보내고 exe 만 바꿨다(위 '빌드 · 배포'). 배포 폴더 `best.onnx`(09-17 visible, `87D0E1CB…`)는 그대로,
+  `best.npu.onnx` 는 쌍선형 보정으로 다시 만들었다(`5CE87F90…` → `D889EA23…`, 100장 27초). Release DLL 에 `YoloLetterbox` 가 있고 결함 이름은 없다.
+  worktree 에 `publish` 연결을 두고 `Run-All -ExeDir E:\DetectView\publish` 한 번에 237 항목 중 236 통과 — `Test-Incident` 1건 실패: 멈춘 덤프트럭이 카메라가 돌기 시작하는 10.5초에 BUS 로 잡혀
+  해소 행이 `BUS #10 … 유고 해소 (화면 전환)` 였는데 테스트가 라벨을 CAR·TRUCK 만 받았다(앱은 맞다 — 추적기는 차량 6종을 한 묶음으로 본다). 테스트를 라벨 대신 같은 번호로 맞추게 고친 뒤
+  `Test-Incident` 만 배포본·Debug 로 다시 돌려 둘 다 16 항목 통과(Debug 루트 모델은 끝까지 `TRUCK #9`). 나머지: `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 · `Test-SceneChange` 21 · `Test-ZoneEvents` 21 ·
+  `Test-ViewIdentity` 27 · `Test-VfrPlayback` 26 · `Test-ScreenHud` 25(DXGI, 결함 주입은 Release 라 빠짐) · `Test-NpuSwitch` 28. 새 짝이라 NPU 첫 전환은 컴파일해 55.1초, 다시 고르면 5.1초,
+  캐시 키 `D889EA23…_1.8.80.0_1.27.20260711.1.7b7c0e2`, ①② 창 응답 WM_NULL 최대 1 ms · UIA 최대 6 ms. 참고용 재생 처리 GPU 98.9 · NPU 47.6 FPS, HUD 117.1 FPS. 앱·RfDetrBench·TrackerCheck 빌드 경고 0
+- 그 전: 2026-11-05 오전, Debug — **레터박스를 OpenCV 쌍선형으로 직접 만드는 `YoloLetterbox` 를 넣은 뒤**(위 '화면 HUD' 의 '입력 축소' ②). 아래 판과 같게 `publish` 연결을 두고 돌렸다.
   `Run-All` 한 번에 `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 · `Test-SceneChange` 21 · `Test-ZoneEvents` 21 · `Test-Incident` 16 · `Test-ViewIdentity` 27 · `Test-VfrPlayback` 26 ·
   `Test-ScreenHud` 39(DXGI, 박스 없음, 결함 주입 포함) · `Test-NpuSwitch` 28 항목 = 251. 멈춘 덤프트럭은 앱에서도 `#9`(유고 후보 행 `⚠ TRUCK #9 Z1 차로 유고 후보`, 선언 5.2초 그대로).
   NPU 전환 4.7초(캐시)·다시 고르면 5.1초, 캐시 키 `0B58A84E…`, ①② 창 응답 WM_NULL 최대 1 ms · UIA 최대 6~12 ms. 참고용 재생 처리 GPU 99.7 · NPU 50.2 FPS, HUD 114.2 FPS.
