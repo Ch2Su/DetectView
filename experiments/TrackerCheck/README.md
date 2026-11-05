@@ -30,8 +30,8 @@ experiments/TrackerCheck/bin/Release/net10.0-windows10.0.19041.0/TrackerCheck.ex
   ① 저장한 검출로 박스 수 전후·뺀 박스 종류·목표 정지 차량 자리의 이중 박스 ② SAHI — 타일 검출을 GPU 로 다시 해(N 프레임에 하나, 기본 15) 병합 결과 전후
 - `render <test4|test5> <x,y,w,h|full> <배율> <초...>`: 트랙 ID(번호+라벨 첫 글자, 정지 판정이면 뒤에 `*`)를 그린 프레임을 세로로 이어 `out/render_*.png` 로. 의심 연결은 이걸로 눈으로 봤다
 - `testsplit <데이터셋 폴더> <출력 폴더> <이름=모델.onnx> ...` · `inputbench [반복]`: YOLO 입력 축소 방식(`InputCheck.cs`) — 아래 "YOLO 입력 축소"
-- **검출(`detect`·`dedup`·`sahi`)은 본 앱처럼 쌍선형으로 줄인다**(2026-11-05 — 본 앱 `InputSampling` 의 복사본 `InputCheck.AppSampling`). `detect nearest` 면 그 전의 앱(YoloDotNet 기본값 Nearest).
-  아래 "결과"·"중복 박스 필터"·"화면 가장자리" 표는 Nearest 때 잰 것이다
+- **검출(`detect`·`dedup`·`sahi`)은 본 앱 `DetectBgra` 와 같은 길이다** — 루트 `YoloLetterbox.cs` 를 링크한다(2026-11-05: OpenCV 쌍선형 레터박스 → YoloDotNet 배율 1 → 박스 +0.5 로 되돌림, 좌표가 실수).
+  `detect nearest` 면 그 전의 앱(YoloDotNet 이 Nearest 로 직접 줄이고 정수 박스 그대로). 아래 "결과"·"중복 박스 필터"·"화면 가장자리" 표는 Nearest 때 잰 것이다
 
 ## 결과 (기본 파라미터)
 
@@ -183,9 +183,10 @@ experiments\TrackerCheck\bin\Release\net10.0-windows10.0.19041.0\TrackerCheck.ex
 
 `dedup`·`sahi` 는 쌍선형으로 다시 재지 않았다(위 표들은 Nearest 때 것).
 
-**선축소 시험** (`prelb` — 앱엔 아직 없다, 2026-11-05 포크 세션이 낸 길): OpenCV `INTER_LINEAR` 로 YoloDotNet 과 같은 크기·위치의 640×640 레터박스를 만들어 넘기면
-YoloDotNet 은 배율 1 로 그대로 그리고 박스를 레터박스 좌표의 정수(내림)로 준다. 그 박스에 +0.5 를 더하고 그린 자리 그대로의 여백·배율로 되돌린다(`DetectPreLetterbox`) —
+**선축소 시험 → 앱에 넣음** (`prelb` — 2026-11-05 포크 세션이 낸 길, 같은 날 사용자 결정으로 앱에 넣었다 = 루트 `YoloLetterbox.cs`): OpenCV `INTER_LINEAR` 로 YoloDotNet 과 같은 크기·위치의
+640×640 레터박스를 만들어 넘기면 YoloDotNet 은 배율 1 로 그대로 그리고 박스를 레터박스 좌표의 정수(내림)로 준다. 그 박스에 +0.5 를 더하고 그린 자리 그대로의 여백·배율로 되돌린다 —
 YoloDotNet 의 내림(평균 −0.5 px)과 실수 여백·정수 그림 위치의 어긋남이 없어지는 대신, 정수 칸이 원래 크기에서 배율만큼 커진다(720p 2 px · 1440p 4 px).
+처음엔 `InputCheck.cs` 의 시험 코드로 쟀고, 앱에 넣은 뒤 `testsplit` 의 `prelb` 는 앱과 같은 `YoloLetterbox.cs` 로 돈다 — 두 코드의 검출이 시험 분할 전체에서 좌표까지 같았다.
 
 | test1 300번째 프레임 (중앙) | 1280×720 | 2560×1440 |
 |---|---|---|
@@ -194,5 +195,8 @@ YoloDotNet 의 내림(평균 −0.5 px)과 실수 여백·정수 그림 위치�
 | 검출 한 번 전체: Nearest · 쌍선형 · **선축소** | 7.16 · 8.25 · **7.40** ms | 7.09 · 8.39 · **7.53** ms |
 
 선축소에서 남는 0.57 ms 는 YoloDotNet 이 640×640 전체(여백 포함)를 RGBX 로 옮겨 그리는 몫이다. 시험 분할(배포 YOLO26s, `eval_test.py --app-json`):
-AP 0.6602(지금 앱) → **0.6658**(선축소), 줄이는 862장 0.6533 → 0.6576, 작은 물체 AP 0.373 → 0.388. 지금 앱 박스에 +0.5 px 만 더한 흉내(0.6651)와 같은 정확도에 0.85 ms 빠르다.
-선축소 검출은 `eval_test.py --yolo-resize linear --yolo-no-upscale` 의 검출과 100% 짝지어진다(신뢰도 차 99% 0). 실수 좌표 그대로면 0.6725 — 남은 0.007 은 정수 칸 몫이다
+AP 0.6602(Skia 쌍선형) → **0.6658**(선축소), 줄이는 862장 0.6533 → 0.6576, 작은 물체 AP 0.373 → 0.388. Skia 쌍선형 박스에 +0.5 px 만 더한 흉내(0.6651)와 같은 정확도에 0.85 ms 빠르다.
+루트 모델은 0.8134 → 0.8250(작은 물체 0.578 → 0.618). 선축소 검출은 `eval_test.py --yolo-resize linear --yolo-no-upscale` 의 검출과 100% 짝지어진다(신뢰도 차 99% 0).
+실수 좌표 그대로면 0.6725 — 남은 0.007 은 정수 칸 몫이다. 같은 프레임 50번은 앱 경로도 모두 같다(두 크기).
+앱 경로로 다시 돌린 추적 기준: test4 트랙 162 · 재연결 15 · 튐 20 · 끊김 후보 2, test5 15 · 1 · 1 · 0 — 목표 정지 차량 둘 다 트랙 1개(덤프트럭 ID 9, 315/315 · 화물차 ID 1, 2726/2821).
+검출 수는 Skia 쌍선형과 같다(test4 19,677 · test5 5,408 — 2배 축소라 입력 화소가 같고 박스 좌표만 다르다)

@@ -3,7 +3,8 @@
 // 트랙 ID 를 그린 프레임을 뽑아 눈으로 확인한다(render). 검출은 GPU 로 한 번만 하고, 파라미터는 track 만 다시 돌려 고른다.
 // 본 앱 표시 경로의 중복 박스 필터(Detection.cs DuplicateBoxes) 전후도 여기서 본다(dedup). SAHI 병합 방식 전후도 본다(sahi).
 // 화면 가장자리에 걸친 박스의 멈춤 판정(이슈 #10)은 track 이 함께 재고(noframe: 프레임 크기를 안 줘 예전 판정), 합성 장면으로도 본다(selftest).
-// YOLO 입력 축소 방식(2026-11-05 Nearest → 쌍선형)은 InputCheck.cs 가 본다(testsplit · inputbench). detect 도 본 앱처럼 쌍선형으로 줄인다(nearest 면 예전).
+// YOLO 입력 축소 방식(2026-11-05 Nearest → 쌍선형 → OpenCV 레터박스)은 InputCheck.cs 가 본다(testsplit · inputbench).
+// 검출(detect·dedup·sahi)은 본 앱 DetectBgra 처럼 루트 YoloLetterbox.cs 로 한다(detect nearest 면 2026-11-05 전의 앱).
 //
 // 실행: TrackerCheck detect [nearest]
 //       TrackerCheck track [MovingGapMs=1000 StationaryGapMs=10000 IouThreshold=0.3 RelinkIouThreshold=0.5 BorderMargin=2 ...] [noreset] [noframe]
@@ -50,6 +51,10 @@ var targets = new (string Video, string Name, double FromMs, double ToMs, Det Bo
     ("test5", "갓길 정차 흰색 화물차 (0~47초, 검은 끊김 포함)", 0, double.PositiveInfinity, new Det(649, 519, 64, 84, "truck", 1)),
 };
 
+// 검출은 본 앱 DetectBgra 와 같은 길 — 루트 YoloLetterbox.cs 를 링크한다(OpenCV 쌍선형 레터박스 → YoloDotNet 배율 1 → 박스 +0.5 로 되돌림).
+// detect nearest 면 2026-11-05 전의 앱(YoloDotNet 이 Nearest 로 직접 줄이고 정수 박스 그대로)
+var letterbox = new YoloLetterbox();
+bool oldYoloPath = false;
 string repo = FindRepoRoot();
 string outDir = Path.Combine(repo, "experiments", "TrackerCheck", "out");
 Directory.CreateDirectory(outDir);
@@ -169,7 +174,8 @@ int SceneScan(string[] paths)
 }
 
 // ---------- detect: 모든 프레임 검출 → out/<영상>.dets.csv ----------
-// 축소 방식은 본 앱과 같은 쌍선형(InputCheck.AppSampling — 앱 MainWindow.Inference.cs 의 InputSampling 복사본). nearest = 2026-11-05 전의 앱
+// YoloDotNet 의 축소 방식은 본 앱과 같은 쌍선형(InputCheck.AppSampling — 앱 InputSampling 복사본). 검출은 YoloLetterbox 가 레터박스를 직접 만들어
+// 배율 1 로 그려져 이 값이 듣지 않는다. nearest = 2026-11-05 전의 앱(YoloDotNet 이 Nearest 로 직접 줄임 — DetectBgra 의 oldYoloPath)
 Yolo OpenModel(Action<string> log, bool nearest = false)
 {
     string modelPath = Path.Combine(repo, "best.onnx");
@@ -182,12 +188,14 @@ Yolo OpenModel(Action<string> log, bool nearest = false)
         SamplingOptions = nearest ? InputCheck.OldSampling : InputCheck.AppSampling,
     });
     var meta = yolo.OnnxModel?.CustomMetaData;
-    log($"모델: {meta?.GetValueOrDefault("description")} · {meta?.GetValueOrDefault("date")} · {gpuName} · 축소 {(nearest ? "Nearest (예전 앱)" : "쌍선형 (본 앱)")}");
+    log($"모델: {meta?.GetValueOrDefault("description")} · {meta?.GetValueOrDefault("date")} · {gpuName} · " +
+        (nearest ? "YoloDotNet 이 Nearest 로 직접 줄임 (2026-11-05 전의 앱)" : "YoloLetterbox — OpenCV 쌍선형 레터박스 (본 앱)"));
     return yolo;
 }
 
 int Detect(bool nearest)
 {
+    oldYoloPath = nearest;
     using var yolo = OpenModel(Console.WriteLine, nearest);
 
     foreach (var (name, _) in videos)
@@ -209,15 +217,10 @@ int Detect(bool nearest)
             double ms = cap.Get(VideoCaptureProperties.PosMsec);   // 본 앱 재생 루프와 같은 시각
             writer.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{n},{ms:R},,,,,,"));
             Cv2.CvtColor(frame, bgra, ColorConversionCodes.BGR2BGRA);
-            var info = new SKImageInfo(bgra.Width, bgra.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
-            using var sk = new SKBitmap();
-            sk.InstallPixels(info, bgra.Data, (int)bgra.Step());
-            foreach (var r in yolo.RunObjectDetection(sk, confidence: Confidence, iou: Iou))
+            foreach (var d in DetectBgra(yolo, bgra, 0, 0))
             {
-                if (!TargetClasses.Contains(r.Label.Name)) continue;
-                var b = r.BoundingBox;
                 writer.WriteLine(string.Create(CultureInfo.InvariantCulture,
-                    $"{n},{ms:R},{r.Label.Name},{r.Confidence:R},{b.Left},{b.Top},{b.Width},{b.Height}"));
+                    $"{n},{ms:R},{d.Label},{d.Conf:R},{d.X:R},{d.Y:R},{d.W:R},{d.H:R}"));
                 total++;
             }
             n++;
@@ -1270,16 +1273,29 @@ List<Det> DetectTile(Yolo yolo, Mat tileBgr, int ox, int oy)
 {
     using var bgra = new Mat();
     Cv2.CvtColor(tileBgr, bgra, ColorConversionCodes.BGR2BGRA);
-    var info = new SKImageInfo(bgra.Width, bgra.Height, SKColorType.Bgra8888, SKAlphaType.Opaque);
-    using var sk = new SKBitmap();
-    sk.InstallPixels(info, bgra.Data, (int)bgra.Step());
+    return DetectBgra(yolo, bgra, ox, oy);
+}
+
+// 본 앱 DetectBgra 와 같은 길 (관심 클래스만, 중복 박스 필터 전). oldYoloPath(detect nearest)면 2026-11-05 전의 앱 —
+// YoloDotNet 이 직접 줄이고(OpenModel 의 SamplingOptions) 박스는 YoloDotNet 의 정수 그대로
+List<Det> DetectBgra(Yolo yolo, Mat bgra, int ox, int oy)
+{
     var list = new List<Det>();
-    foreach (var r in yolo.RunObjectDetection(sk, confidence: Confidence, iou: Iou))
+    if (oldYoloPath)
     {
-        if (!TargetClasses.Contains(r.Label.Name)) continue;
-        var b = r.BoundingBox;
-        list.Add(new Det(b.Left + ox, b.Top + oy, b.Width, b.Height, r.Label.Name, r.Confidence));
+        var info = new SKImageInfo(bgra.Width, bgra.Height, SKColorType.Bgra8888, SKAlphaType.Opaque);
+        using var sk = new SKBitmap();
+        sk.InstallPixels(info, bgra.Data, (int)bgra.Step());
+        foreach (var r in yolo.RunObjectDetection(sk, confidence: Confidence, iou: Iou))
+        {
+            if (!TargetClasses.Contains(r.Label.Name)) continue;
+            var b = r.BoundingBox;
+            list.Add(new Det(b.Left + ox, b.Top + oy, b.Width, b.Height, r.Label.Name, r.Confidence));
+        }
+        return list;
     }
+    foreach (var b in letterbox.Detect(yolo, bgra, Confidence, Iou))
+        if (TargetClasses.Contains(b.Label)) list.Add(new Det(b.X + ox, b.Y + oy, b.W, b.H, b.Label, b.Conf));
     return list;
 }
 

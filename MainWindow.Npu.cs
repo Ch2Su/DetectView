@@ -136,7 +136,7 @@ namespace DetectView
                 SetNpuStage(prep.Cached ? "NPU 준비 중" : "NPU 컴파일 중 (첫 실행 약 1분)");
 
                 var sw = Stopwatch.StartNew();
-                // 축소 방식(InputSampling)은 GPU 세션과 같게 — 짝 모델의 양자화 보정도 그 입력으로 했다 (tools/npu_quantize.py)
+                // 입력은 GPU 와 같은 YoloLetterbox(OpenCV 쌍선형 레터박스 — DetectBgra)로 들어간다. 짝 모델의 양자화 보정도 같은 규칙·같은 보간이다 (tools/npu_quantize.py)
                 npuYolo = await Task.Run(() => new Yolo(YoloOptionsFor(
                     new WindowsMlExecutionProvider(check.NpuModelPath, prep.Device, prep.EpOptions))));
                 Debug.WriteLine($"NPU 세션 {sw.Elapsed.TotalSeconds:F1}초 (캐시 {(prep.Cached ? "있음" : "없음")}, 키 {prep.CacheKey})");

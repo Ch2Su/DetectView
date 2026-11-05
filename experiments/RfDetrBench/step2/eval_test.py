@@ -2,8 +2,9 @@ r"""2단계 평가: 학습한 모델들을 데이터셋 시험 분할(학습·be
 
 모든 모델을 **ONNX + 앱과 같은 전처리**로 돌린다 — 앱이 실제로 돌릴 것을 재려고:
   - YOLO (end-to-end [1,300,6]): YoloDotNet 처럼 비율 유지 · 가운데 · 검은 여백, RGB 0~1 (NpuBench·RfDetrBench 의 Letterbox 와 같음).
-    축소는 --yolo-resize: linear = 지금 앱(2026-11-05 부터 SamplingOptions Linear — Skia 와 화소 ±1, TrackerCheck testsplit),
-    nearest = 그 전의 앱(YoloDotNet 기본값). 다만 OpenCV NEAREST_EXACT 는 Skia 의 Nearest 와 화소를 똑같이 고르지 않는다
+    축소는 --yolo-resize: linear = 지금 앱(2026-11-05 부터 — 앱도 YoloLetterbox.cs 에서 OpenCV INTER_LINEAR 로 같은 레터박스를 만든다.
+    다만 앱 박스는 레터박스 좌표의 정수 + 0.5 라 이 평가기의 실수 좌표와 조금 다르다), nearest = 그 전의 앱(YoloDotNet 기본값 — Skia 로 직접 줄임).
+    다만 OpenCV NEAREST_EXACT 는 Skia 의 Nearest 와 화소를 똑같이 고르지 않는다
     — 시험 분할 973장 중 540장이 달랐다(정확히 2배 축소에서 Skia 는 2×2 묶음의 왼쪽 위, NEAREST_EXACT 는 오른쪽 아래 화소를 고른다 —
     TrackerCheck inputbench). 그래서 nearest 값은 그때의 앱과 조금 다르다.
     YoloDotNet 은 모델보다 작은 이미지(가로·세로 모두 640 미만 — 시험 분할 111장)를 키우지 않고 가운데에 그대로 둔다 — 똑같이 하려면 --yolo-no-upscale
@@ -260,7 +261,7 @@ def main() -> int:
     ap.add_argument("--threads", type=int, default=0, help="ONNX Runtime 스레드 수 (0 = 기본)")
     # 기본값 nearest 는 README 2단계 표를 다시 낼 수 있게 그대로 둔다 (그 표의 'Nearest (앱 그대로)' 행)
     ap.add_argument("--yolo-resize", choices=["nearest", "linear"], default="nearest",
-                    help="YOLO 레터박스 축소: linear = 지금 앱(2026-11-05 부터 쌍선형) = Ultralytics, nearest = 그 전의 앱(YoloDotNet 기본값 — 화소는 조금 다르다, 머리말)")
+                    help="YOLO 레터박스 축소: linear = 지금 앱(2026-11-05 부터 OpenCV 쌍선형 — YoloLetterbox) = Ultralytics, nearest = 그 전의 앱(YoloDotNet 기본값 — 화소는 조금 다르다, 머리말)")
     ap.add_argument("--yolo-no-upscale", action="store_true",
                     help="모델보다 작은 이미지를 키우지 않는다 — YoloDotNet(앱)과 같게. 안 주면 예전처럼 모든 이미지를 640 에 맞춘다")
     ap.add_argument("--yolo-pad", type=int, default=0, help="YOLO 레터박스 여백 값: 0 = 앱(검정), 114 = Ultralytics 의 회색")

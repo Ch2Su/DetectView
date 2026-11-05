@@ -245,7 +245,8 @@ FP32 모델은 CPU 로 쟀다. DirectML(`--ep dml`, NVIDIA)로 다시 재도 RF-
 
 ## 앱의 쌍선형 축소 (2026-11-05 — 앱을 Nearest 에서 쌍선형으로 바꾸며 잰 것)
 
-앱은 이제 YoloDotNet `YoloOptions.SamplingOptions = SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.None)` 으로 줄인다(`MainWindow.Inference.cs` 의 `InputSampling`).
+앱은 먼저 YoloDotNet `YoloOptions.SamplingOptions = SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.None)` 으로 줄이게 했고(`MainWindow.Inference.cs` 의 `InputSampling` — 아래 표의 '쌍선형' 열),
+같은 날 레터박스를 OpenCV 쌍선형으로 직접 만들어 넘기게 바꿨다(루트 `YoloLetterbox.cs` — 맨 아래 'OpenCV 선축소').
 위 표의 'Nearest (앱 그대로)' 행은 이 평가기(OpenCV)로 앱을 흉내 낸 것이라, 앱과 같은 코드로 다시 쟀다 — `TrackerCheck testsplit`(YoloDotNet + DirectML, 본 앱 `ProcessFrame` 과 같은 길)이
 시험 분할 973장을 두 방식으로 검출해 JSON 을 쓰고, 이 평가기가 `--app-json` 으로 채점한다(`--subset`·`--compare`·`--yolo-no-upscale` 도 이때 더했다 — `eval_test.py` 머리말).
 
@@ -272,8 +273,10 @@ FP32 모델은 CPU 로 쟀다. DirectML(`--ep dml`, NVIDIA)로 다시 재도 RF-
 - 그래도 AP 는 앱이 0.012 낮다(0.6602 vs 0.6725) — **YoloDotNet 이 박스 좌표를 정수로 내린다**(`ObjectDetectionModuleV26` 의 `(int)((x - xPad) * gain)` — 평균 −0.5 px).
   확인: 이 평가기의 박스를 앱처럼 내리면 줄이는 862장 0.6638 → 0.6593, 앱 박스에 +0.5 px 를 더하면 0.6533 → 0.6573(작은 물체 AP 0.399 → 0.416). 남는 몫은 레터박스 여백을 정수로 그리고 실수로 되돌리는 YoloDotNet 의 반올림·DirectML/CPU 차이로 보인다(나누지 않았다).
   앱에서 +0.5 px 보정은 하지 않았다 — 축소 방식과 별개다.
-  같은 날 잰 **OpenCV 선축소**(OpenCV 로 640×640 레터박스를 만들어 넘기고 박스를 +0.5·정확한 여백으로 직접 되돌림 — 앱엔 아직 없다)는 0.6658 로 +0.5 px 보정과 같은 정확도에
-  검출 한 번이 8.25 → 7.40 ms 다(`TrackerCheck` README 'YOLO 입력 축소' 의 선축소 시험)
+  같은 날 잰 **OpenCV 선축소**(OpenCV 로 640×640 레터박스를 만들어 넘기고 박스를 +0.5·정확한 여백으로 직접 되돌림)는 0.6658 로 +0.5 px 보정과 같은 정확도에
+  검출 한 번이 8.25 → 7.40 ms 라 **앱에 넣었다**(같은 날, 루트 `YoloLetterbox.cs` — `TrackerCheck` README 'YOLO 입력 축소' 의 선축소 시험). 그래서 지금 앱은 위 표의 쌍선형 열이 아니라 0.6658 이다.
+  넣기 전에 흉내로 먼저 쟀다 — `--yolo-no-upscale` 실수 좌표 검출(0.6725)을 줄인 이미지 좌표로 옮겨 정수로 내린 뒤 키우면 **0.6535**(작은 물체 0.349), 내린 뒤 +0.5 하고 키우면 0.6658 —
+  실제 앱 경로와 같은 값이다. 그러니 +0.5 는 꼭 필요하다(빼면 쌍선형 이득보다 크게 잃는다). 원래 크기에서 내리는 지금까지의 앱 흉내는 0.6676(+0.5 하면 0.6685)
 - 비용: YoloDotNet 의 축소가 프레임당 0.5~1.0 → 1.5~2.2 ms(`TrackerCheck inputbench` 두 번 — 1280×720·2560×1440 모두, 추가 비용 1.0~1.4 ms). 앱의 파일 재생 처리 FPS 는 92.4 · 94.5 → 86.0 · 85.7
   (`tests/ui/Measure-Fps.ps1`, test1.mp4, Debug, 기준선을 앞뒤로 두 번). 같은 입력은 같은 출력이다(50번 반복 · 시험 분할 50장 두 번 — 모두 비트 단위로 같음)
 

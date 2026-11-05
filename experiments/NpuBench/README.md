@@ -71,7 +71,7 @@ Windows ML(자체 `onnxruntime.dll` 1.27)과 한 프로세스에 섞을 수 없�
 
 ## 결과 3 — 앱이 쌍선형으로 줄인 뒤 (2026-11-05, 루트 모델 · VitisAI EP 1.8.80)
 
-본 앱이 YOLO 입력을 YoloDotNet 기본값 Nearest 에서 쌍선형(`SamplingOptions` Linear)으로 바꿨다(CLAUDE.md '화면 HUD' 의 '입력 축소'). 평가 입력(`Letterbox`)과
+본 앱이 YOLO 입력을 YoloDotNet 기본값 Nearest 에서 쌍선형으로 바꿨다(CLAUDE.md '화면 HUD' 의 '입력 축소' — 지금은 앱도 `YoloLetterbox.cs` 에서 이 README 와 같은 OpenCV `INTER_LINEAR` 레터박스를 만든다). 평가 입력(`Letterbox`)과
 양자화 보정(`tools/npu_quantize.py`)을 `INTER_LINEAR` 로 바꿔 짝을 다시 만들었다 — 루트 `best.npu.onnx` MD5 `46098AE1…` → `0B58A84E…`, 메타데이터에 `npu_resize = linear`.
 옛 스크립트로 옛 짝을 다시 만들면 바이트 단위로 같아서(MD5 일치), 새 짝의 차이는 보정 입력의 축소 방식만의 것이다. 두 짝을 **같은 쌍선형 평가 입력**에서 견줬다 (GPU 기준 검출 1318개):
 

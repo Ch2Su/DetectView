@@ -1,9 +1,9 @@
 // best.onnx 를 AMD NPU(Windows ML · VitisAI EP)로 돌려 본다.
 // 재는 것: ① NPU 에 실제로 어떤 노드가 올라가는지 ② 추론 시간(NPU·GPU·CPU) ③ GPU 결과와 검출 일치도.
 // 모든 백엔드에 같은 입력 텐서를 넣으므로 차이는 순수하게 모델(양자화)·백엔드(정밀도·연산 배치) 탓이다.
-// 전처리는 직접 하되 본 앱의 YoloDotNet(ResizeImageProportional)과 같게 한다 — 비율 유지·가운데·쌍선형·검은 여백.
+// 전처리는 직접 하되 본 앱(YoloLetterbox.cs)과 같게 한다 — 비율 유지·가운데·OpenCV 쌍선형·검은 여백.
 // (2026-10-24 오전 측정은 Ultralytics 식 — 선형 보간·회색 114 여백 — 이었고, 10-24 오후~11-05 는 그때의 앱처럼 Nearest 였다.
-//  본 앱이 2026-11-05 쌍선형(SamplingOptions Linear)으로 바꿔 여기도 바꿨다 — README 의 결과표마다 어느 전처리인지 적혀 있다)
+//  본 앱이 2026-11-05 쌍선형으로 바꿔 여기도 바꿨다 — README 의 결과표마다 어느 전처리인지 적혀 있다)
 //
 // 실행: NpuBench.exe [기준 모델] [NPU 모델] [영상당 프레임 수(기본 20)] [--allow-fp32-npu] [--allow-mismatch]
 //   기준 모델(GPU)의 기본값은 저장소 루트 best.onnx, NPU 모델의 기본값은 기준 옆 <이름>.npu.onnx(tools/Make-NpuModel.ps1 이 만드는
@@ -323,8 +323,8 @@ float[] RunOnce(InferenceSession s, OrtValue input)
     return outs[0].GetTensorDataAsSpan<float>().ToArray();
 }
 
-// YoloDotNet ResizeImageProportional 과 같게: 크기는 (int)(w·s + 0.5), 가운데, 쌍선형, 검은 여백(캔버스를 SKColors.Empty 로 지움).
-// 본 앱의 Skia 쌍선형(SamplingOptions Linear)과 OpenCV INTER_LINEAR 은 같은 방식이고 값도 거의 같다(TrackerCheck testsplit — 화소 비교).
+// 본 앱 YoloLetterbox.cs(= YoloDotNet ResizeImageProportional 의 크기 규칙)와 같게: 크기는 (int)(w·s + 0.5), 가운데, OpenCV INTER_LINEAR, 검은 여백.
+// 앱도 이 보간으로 레터박스를 만들어 넘기므로 모델 입력이 같다 (2026-11-05 — 그날 잠깐 쓴 YoloDotNet 의 Skia 쌍선형과도 화소마다 많아야 1 차이).
 // 2026-11-05 전엔 앱이 Nearest 라 여기도 INTER_NEAREST_EXACT 였다(OpenCV 의 INTER_NEAREST 는 화소 중심을 안 맞춰 Skia 와 한 칸씩 어긋난다).
 // tools/npu_quantize.py 의 letterbox 와 같아야 한다
 static Mat Letterbox(Mat src)

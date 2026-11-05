@@ -1,17 +1,17 @@
-// YOLO 입력 축소 방식 확인 (2026-11-05 — 본 앱이 YoloDotNet 기본값 Nearest 에서 쌍선형으로 바꿀 때).
-// 검출은 본 앱 ProcessFrame 과 같은 길이다: BGR → BGRA → SKBitmap(Premul) → YoloDotNet RunObjectDetection (DirectML).
-// 축소는 YoloOptions.SamplingOptions 로 정해지고, YoloDotNet 은 그 값으로 Skia DrawImage 해 640×640 RGBX 버퍼를 만든다
-// (ImageResizeExtension.ResizeImageProportional — 모델보다 작은 이미지는 키우지 않고 가운데에 그대로 둔다).
+// YOLO 입력 축소 방식 확인 (2026-11-05 — 본 앱이 YoloDotNet 기본값 Nearest 에서 쌍선형으로, 이어서 OpenCV 레터박스(YoloLetterbox)로 바꿀 때).
+// 지금 앱의 검출: BGR → BGRA → 루트 YoloLetterbox.cs(OpenCV 쌍선형 레터박스 → YoloDotNet RunObjectDetection 배율 1 → 박스 +0.5 로 되돌림, DirectML).
+// 예전 앱의 검출(nearest·linear): BGRA → SKBitmap → YoloDotNet 이 YoloOptions.SamplingOptions 로 Skia DrawImage 해 640×640 RGBX 버퍼를 만든다
+// (ImageResizeExtension.ResizeImageProportional — 모델보다 작은 이미지는 키우지 않고 가운데에 그대로 둔다 — YoloLetterbox 도 같은 규칙).
 //
 //   testsplit <데이터셋 폴더> <출력 폴더> <이름=모델.onnx> [<이름=모델.onnx> ...]
-//     YOLO 형식 데이터셋의 images/test 를 읽기만 한다. 모델마다 Nearest·쌍선형으로 한 번씩 검출해 <출력>/app_<이름>_<방식>.json
+//     YOLO 형식 데이터셋의 images/test 를 읽기만 한다. 모델마다 세 방식으로 한 번씩 검출해 <출력>/app_<이름>_<방식>.json
 //     (COCO 결과 형식 + file_name — experiments/RfDetrBench/step2/eval_test.py --app-json 이 채점)을 쓰고, 같은 이미지에서
 //     YoloDotNet 의 축소 결과(Skia)를 OpenCV 레터박스(INTER_NEAREST_EXACT · INTER_LINEAR, 같은 크기·위치)와 화소 단위로 견준다.
 //     앞의 몇 장은 두 번 넣어 검출이 비트 단위로 같은지도 본다 (HUD 의 '새 화면 고리'가 기대는 결정성).
-//     app_<이름>_prelb.json 은 선축소 시험(앱엔 없음 — DetectPreLetterbox: OpenCV 레터박스를 넘기고 박스를 직접 되돌림)
+//     app_<이름>_prelb.json 은 지금 앱(루트 YoloLetterbox.cs — OpenCV 레터박스를 넘기고 박스를 직접 되돌림). nearest·linear 는 YoloDotNet 이 직접 줄이던 예전 앱
 //   inputbench [반복=200]
-//     축소만의 시간(Nearest vs 쌍선형 vs 선축소 — test1 1280×720 프레임과 그걸 키운 2560×1440)과 검출 한 번 전체 시간,
-//     같은 프레임을 거듭 넣었을 때 결과가 같은지, 선축소 입력이 Skia 쌍선형 입력과 같은지 (모델은 저장소 루트 best.onnx)
+//     축소만의 시간(Nearest vs Skia 쌍선형 vs 지금 앱 YoloLetterbox — test1 1280×720 프레임과 그걸 키운 2560×1440)과 검출 한 번 전체 시간,
+//     같은 프레임을 거듭 넣었을 때 결과가 같은지(세 방식 모두), 앱 경로의 모델 입력이 Skia 쌍선형 입력과 같은지 (모델은 저장소 루트 best.onnx)
 
 using System.Diagnostics;
 using System.Globalization;
@@ -93,23 +93,13 @@ static class InputCheck
     }
 
     /// <summary>
-    /// 선축소 시험(앱엔 없음 — 2026-11-05 포크 세션이 제안한 길): OpenCV INTER_LINEAR 로 YoloDotNet 과 같은 크기·위치의 640×640 레터박스를 만들어 넘긴다.
-    /// YoloDotNet 은 모델과 같은 크기라 배율 1 로 그대로 그리고(원본 화소 그대로 — inputbench), 박스를 레터박스 좌표의 정수(내림)로 돌려준다.
-    /// 그래서 내림 평균 −0.5 를 되돌리고(+0.5) 여백·배율은 그린 자리 그대로의 정확한 값으로 원래 좌표로 옮긴다 — YoloDotNet 의 실수 여백(xPad)과 정수 그림 위치의 어긋남이 없다.
-    /// 대신 정수 칸이 원래 크기에서 배율만큼 커진다(720p 2 px · 1080p 3 px · 1440p 4 px)
+    /// 지금 앱의 검출 — 루트 YoloLetterbox.cs(본 앱 DetectBgra 가 쓰는 것과 같은 파일)로: OpenCV INTER_LINEAR 레터박스를 640×640 으로 넘기고
+    /// YoloDotNet 이 레터박스 좌표의 정수로 준 박스를 +0.5 해 그린 자리 그대로의 여백·배율로 되돌린다 (2026-11-05 포크 세션이 낸 길을 앱에 넣음).
+    /// 관심 클래스만 (본 앱 TargetClasses)
     /// </summary>
-    static IEnumerable<(string Label, double Conf, double X1, double Y1, double X2, double Y2)> DetectPreLetterbox(Yolo yolo, Mat bgr, Mat lbBgra, double confidence)
-    {
-        Rect c;
-        using (var lb = CvLetterbox(bgr, InterpolationFlags.Linear, out c))
-            Cv2.CvtColor(lb, lbBgra, ColorConversionCodes.BGR2BGRA);
-        using var sk = new SKBitmap();
-        sk.InstallPixels(new SKImageInfo(Side, Side, SKColorType.Bgra8888, SKAlphaType.Premul), lbBgra.Data, (int)lbBgra.Step());
-        double fx = (double)bgr.Width / c.Width, fy = (double)bgr.Height / c.Height;
-        return Detect(yolo, sk, confidence)
-            .Select(d => (d.Label, d.Conf, (d.Box.Left + 0.5 - c.X) * fx, (d.Box.Top + 0.5 - c.Y) * fy,
-                          (d.Box.Right + 0.5 - c.X) * fx, (d.Box.Bottom + 0.5 - c.Y) * fy)).ToList();
-    }
+    static IEnumerable<(string Label, double Conf, double X1, double Y1, double X2, double Y2)> DetectApp(Yolo yolo, YoloLetterbox letterbox, Mat bgra, double confidence) =>
+        letterbox.Detect(yolo, bgra, confidence, Iou).Where(b => TargetClasses.Contains(b.Label))
+                 .Select(b => (b.Label, b.Conf, b.X, b.Y, b.X + b.W, b.Y + b.H)).ToList();
 
     /// <summary>화소 비교 누적: 화소마다 세 채널 중 가장 큰 |차| 의 분포 (내용 영역만 — 여백은 둘 다 0)</summary>
     sealed class PixelStats
@@ -201,7 +191,8 @@ static class InputCheck
         }
 
         // 모델 × 방식마다 JSON 을 흘려 쓴다 (모델·방식마다 수십만 개라 다 들고 있지 않는다).
-        // prelb = 선축소 시험(앱엔 없음): OpenCV INTER_LINEAR 레터박스를 640×640 으로 넘기고 박스를 직접 되돌린다 (DetectPreLetterbox)
+        // prelb = 지금 앱(YoloLetterbox — OpenCV INTER_LINEAR 레터박스를 640×640 으로 넘기고 박스를 직접 되돌린다, DetectApp).
+        // nearest·linear 는 YoloDotNet 이 직접 줄이던 예전 앱 (2026-11-05 전 · 그날 잠깐)
         var writers = new Dictionary<(string, string), (FileStream Stream, Utf8JsonWriter Json, long Count)>();
         foreach (var m in models)
             foreach (var mode in Modes.Select(md => md.Name).Append("prelb"))
@@ -235,7 +226,7 @@ static class InputCheck
         int repeatSame = 0, repeatDiff = 0, small = 0, skipped = 0;
         var sw = Stopwatch.StartNew();
         using var bgra = new Mat();
-        using var lbBgra = new Mat();
+        using var appLetterbox = new YoloLetterbox();
         for (int k = 0; k < files.Count; k++)
         {
             string file = files[k], fileName = Path.GetFileName(file);
@@ -268,8 +259,8 @@ static class InputCheck
                     // 박스는 YoloDotNet 이 준 정수 그대로 (본 앱 ToDet 과 같음)
                     Write(m.Name, md.Name, fileName, dets.Select(d => (d.Label, d.Conf, (double)d.Box.Left, (double)d.Box.Top, (double)d.Box.Right, (double)d.Box.Bottom)));
                 }
-                m.Options.SamplingOptions = AppSampling;   // 선축소는 배율 1 로 그려져 축소 방식과 상관없다
-                Write(m.Name, "prelb", fileName, DetectPreLetterbox(m.Yolo, bgr, lbBgra, EvalConfidence));
+                m.Options.SamplingOptions = AppSampling;   // 레터박스는 배율 1 로 그려져 축소 방식과 상관없다
+                Write(m.Name, "prelb", fileName, DetectApp(m.Yolo, appLetterbox, bgra, EvalConfidence));
             }
             if ((k + 1) % 100 == 0) Console.WriteLine($"  {k + 1}/{files.Count} · {sw.Elapsed.TotalSeconds:F0}초");
         }
@@ -317,6 +308,7 @@ static class InputCheck
         }
 
         using var buf = new PinnedMemoryBuffer(new SKImageInfo(Side, Side, SKColorType.Rgb888x, SKAlphaType.Opaque));
+        using var appLetterbox = new YoloLetterbox();   // 본 앱 DetectBgra 와 같은 파일
         var (yolo, options, gpu) = Open(Path.Combine(RepoPaths.Root, "best.onnx"), AppSampling);
         Console.WriteLine($"모델: 저장소 루트 best.onnx · {gpu} · 반복 {reps}회 (중앙 / 90%)");
         using var bgra = new Mat();
@@ -340,8 +332,9 @@ static class InputCheck
                 failures += differ;
             }
 
-            // 선축소 시험(앱엔 없음): OpenCV INTER_LINEAR 로 줄여 미리 만든 640×640 검은 캔버스에 넣는다(여백은 처음 한 번만 칠한다).
-            // YoloDotNet 은 배율 1 로 그대로 그린다. OpenCV 는 기본이 여러 스레드라 한 스레드로도 잰다
+            // 지금 앱(YoloLetterbox): OpenCV INTER_LINEAR 로 줄여 640×640 검은 캔버스에 넣는다(여백은 내용 자리가 바뀔 때만 칠한다).
+            // YoloDotNet 은 배율 1 로 그대로 그린다. 아래 앞부분은 그 단계를 따로 떼어 잰 것, '앱 경로'는 YoloLetterbox 자체.
+            // OpenCV 는 기본이 여러 스레드라 한 스레드로도 잰다
             {
                 int w = frame.Width, h = frame.Height;
                 float s = Math.Min((float)Side / w, (float)Side / h);
@@ -359,11 +352,18 @@ static class InputCheck
                     Cv2.SetNumThreads(t);
                     var cvOnly = Time(reps, Pre);
                     var pre = Time(reps, () => { Pre(); buf.TargetBitmap.Erase(SKColors.Empty); skC.ResizeImageProportional(AppSampling, buf); });
-                    var preFull = Time(reps, () => { Pre(); Detect(yolo, skC, 0.3); });
+                    var appFull = Time(reps, () => appLetterbox.Detect(yolo, bgra, 0.3, Iou));
                     Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
-                        $"  {label} 선축소 (OpenCV {t}스레드): OpenCV 축소·복사 {cvOnly.Median:F3} / {cvOnly.P90:F3} ms · YoloDotNet 그리기까지 {pre.Median:F3} / {pre.P90:F3} ms · 검출 전체 {preFull.Median:F2} / {preFull.P90:F2} ms"));
+                        $"  {label} 앱 경로 YoloLetterbox (OpenCV {t}스레드): OpenCV 축소·복사 {cvOnly.Median:F3} / {cvOnly.P90:F3} ms · YoloDotNet 그리기까지 {pre.Median:F3} / {pre.P90:F3} ms · " +
+                        $"검출 전체 {appFull.Median:F2} / {appFull.P90:F2} ms"));
                 }
                 Cv2.SetNumThreads(threads);
+
+                // 결정성 — 앱 경로도 같은 프레임 50번이 모두 첫 번째와 같아야 한다
+                var firstApp = appLetterbox.Detect(yolo, bgra, 0.001, Iou);
+                int differApp = Enumerable.Range(0, 50).Count(_ => !appLetterbox.Detect(yolo, bgra, 0.001, Iou).SequenceEqual(firstApp));
+                Console.WriteLine($"    결정성 (앱 경로): 같은 프레임 50번 중 첫 번째와 다른 결과 {differApp}번 (검출 {firstApp.Count}개, 임계 0.001)");
+                failures += differApp;
 
                 // 선축소로 YoloDotNet 버퍼에 들어간 화소 vs Skia 쌍선형 버퍼 (같은 자리, R·G·B)
                 Pre();

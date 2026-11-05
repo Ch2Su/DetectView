@@ -44,10 +44,9 @@ IMAGE_EXT = {".jpg", ".jpeg", ".png", ".bmp"}
 VIDEOS = ["test1.mp4", "test2.mp4", "test3.mp4", "test4.mp4", "test5.mp4"]   # 보정 기본값 (publish 안)
 
 repo = pathlib.Path(__file__).resolve().parents[1]
-# 앱의 축소 방식 = 쌍선형 (MainWindow.Inference.cs InputSampling — Skia Linear, 밉맵 없음). OpenCV INTER_LINEAR 이 같은 방식이다
-# (반 화소 중심·antialias 없음 — 화소마다 많아야 1 다르다, TrackerCheck testsplit). 2026-11-05 전엔 앱이 YoloDotNet 기본값 Nearest 라
-# 여기도 INTER_NEAREST_EXACT 였다 (OpenCV 의 INTER_NEAREST 는 화소 중심을 맞추지 않는다 — 다만 NEAREST_EXACT 도 Skia 의 Nearest 와
-# 똑같지는 않아 데이터셋 시험 분할 973장 중 540장이 달랐다)
+# 앱의 축소 = OpenCV INTER_LINEAR (YoloLetterbox.cs 가 같은 규칙·같은 보간으로 레터박스를 만들어 YoloDotNet 에 넘긴다 — 2026-11-05).
+# 2026-11-05 전엔 앱이 YoloDotNet 기본값 Nearest 라 여기도 INTER_NEAREST_EXACT 였다 (OpenCV 의 INTER_NEAREST 는 화소 중심을 맞추지 않는다 —
+# 다만 NEAREST_EXACT 도 Skia 의 Nearest 와 똑같지는 않아 데이터셋 시험 분할 973장 중 540장이 달랐다)
 RESIZE = cv2.INTER_LINEAR
 
 
