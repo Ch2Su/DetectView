@@ -82,7 +82,8 @@ pwsh tests/ui/Run-All.ps1
 - `Test-NpuSwitch.ps1`: ① 최소 폭(900)에서 조작 요소(11-01 부터 왼쪽 패널)가 모두 창 안에 ② "추론 장치" 콤보에서 NPU 선택 → 상태바 진행 표시 → 제목 NPU →
   파일 재생(배속·검출) → 재생 중 GPU 로 → 다시 NPU(캐시) — 재생이 끊기지 않는지 ③ 실패 경로 3가지(짝 없음·다른 모델의 짝·FP32 를 짝 이름으로)에서
   NPU 항목이 막히고 툴팁에 사유, GPU 유지. ③ 은 exe 폴더를 **하드 링크로 본뜬 옆 폴더(`<exe 폴더>.npu-test`, gitignore)** 에서 파일을 바꾼다 —
-  원래 폴더(배포 폴더 포함)는 건드리지 않고 끝나면 지운다. "다른 모델의 짝"은 MD5 가 다른 모델(루트·배포 폴더 `best.onnx`)이 있어야 해서 없으면 [INFO].
+  원래 폴더(배포 폴더 포함)는 건드리지 않고 끝나면 지운다. "다른 모델의 짝"은 MD5 가 다른 모델(루트·배포 폴더 `best.onnx`, 그다음 배포 폴더의 다른 `*.onnx` — 짝 `*.npu.onnx` 는 빼고)이 있어야 해서 없으면 [INFO].
+  배포 폴더의 다른 모델을 후보에 넣은 건 2026-11-06 — 루트와 배포 폴더가 같은 YOLO26m 640×384 가 되어 옛 YOLO26s 를 `best.yolo26s-0917.onnx` 로 보관했는데, 후보가 둘뿐이면 이 경우가 늘 건너뛰어졌다.
   **NPU(VitisAI 실행 공급자)가 없는 PC 거나 짝 모델 파일이 없으면 ② 를 [INFO] 로 건너뛴다**(①·③ 은 NPU 없이도 돈다).
   짝이 낡았거나(`best.onnx` 를 바꾸고 짝을 다시 안 만듦)·양자화 모델이 아니거나·확인이 예외로 끝나면 **FAIL** —
   예전엔 사유를 가리지 않고 건너뛰어, 짝이 낡은 배포본도 '모두 통과'였다(2026-10-30). 캐시가 없으면 ② 의 첫 전환이 1분 넘게 걸린다(제한 240초).
@@ -94,13 +95,22 @@ pwsh tests/ui/Run-All.ps1
   옛 판 `UiLatency` 형식이 남은 PowerShell 세션에선 분명한 메시지로 멈춘다(Add-Type 형식은 못 바꿈 — 새 pwsh 에서 돌릴 것)
 - 종료 코드 = 실패 건수(`Run-All` 은 0/1). 파일 열기 대화상자 자동화 요령 등은 `Common.ps1` 머리말에 정리해 두었다.
   `Run-All` 은 테스트 파일이 try 밖에서 throw 해도(영상·빌드 없음) 그 파일만 실패로 세고 다음 파일을 돈다(2026-10-30 — 예전엔 거기서 통째로 멈췄다)
-- 마지막 전체 통과: 2026-11-06 아침, Debug — **루트 모델을 YOLO26m 640×384 로 바꾼 뒤**(CLAUDE.md "RF-DETR 검토" 3단계 — SAHI 타일을 모델 입력 크기로, 창 제목에 입력 크기, NPU 짝 `BD18D32C…`).
+- 마지막 전체 통과: 2026-11-06 아침, **배포본 `publish`** — `a378a58`(루트 모델 YOLO26m 640×384 · SAHI 타일 = 모델 입력 크기 · 창 제목에 입력 크기)로 다시 배포하고,
+  사용자 승인으로 **배포 폴더 모델도** 같은 YOLO26m 640×384(`94A26C12…`)로 바꿨다. 옛 YOLO26s(09-17, `87D0E1CB…`)와 그 짝(`D889EA23…`)은 `best.yolo26s-0917.onnx` · `best.yolo26s-0917.npu.onnx` 로
+  이름을 바꿔 옆에 두었다. 짝은 `Make-NpuModel.ps1 -Model publishest.onnx` 로 만들어(33초) 루트 짝과 바이트까지 같다(`BD18D32C…`).
+  exe 126.4 MB(132,573,874 바이트 — 작업 트리가 깨끗한 `a378a58` 에서 임시 폴더로 내보내 exe 만 옮김), Release DLL 에 결함 이름 없음.
+  `Run-All -ExeDir publish` 한 번에 237 항목 모두 통과: `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 · `Test-SceneChange` 21 · `Test-ZoneEvents` 21 · `Test-Incident` 16 ·
+  `Test-ViewIdentity` 27 · `Test-VfrPlayback` 26 · `Test-ScreenHud` 25(DXGI 1920×1080, 결함 주입은 Release 라 빠짐) · `Test-NpuSwitch` 28.
+  '다른 모델의 짝'은 루트와 배포 폴더가 같은 모델이 되어 보관한 옛 YOLO26s 로 돌았다(이날 후보에 넣음 — 위 `Test-NpuSwitch` 설명). NPU 전환은 아래 Debug 실행이 남긴 캐시로 6.7초,
+  다시 고르면 6.9초, ①② 창 응답 WM_NULL 최대 1~2 ms · UIA 최대 11~18 ms. 참고용 재생 처리 GPU 59.7 · NPU 37.1 FPS, HUD 69.2 FPS
+  (UI 테스트의 FPS 는 한 번 읽은 값이라 벤치마크가 아니다 — 같은 날 `Measure-Fps` 로 잰 같은 코드의 Release 는 77.5 · 78.0)
+- 그 전: 2026-11-06 아침, Debug — **루트 모델을 YOLO26m 640×384 로 바꾼 뒤**(CLAUDE.md "RF-DETR 검토" 3단계 — SAHI 타일을 모델 입력 크기로, 창 제목에 입력 크기, NPU 짝 `BD18D32C…`).
   `Run-All` 한 번에 `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 · `Test-SceneChange` 21 · `Test-ZoneEvents` 21 · `Test-Incident` 16 · `Test-ViewIdentity` 27 · `Test-VfrPlayback` 26 ·
   `Test-ScreenHud` 39(DXGI — 이번엔 모니터 0 이 1920×1080, 결함 주입 포함) · `Test-NpuSwitch` 28 항목 = 251 모두 통과. 테스트는 고치지 않았다 — 모델이 바뀌어도 멈춘 덤프트럭은 차로 유고 후보로 잡혔고
   (`⚠ TRUCK #2 Z1 차로 유고 후보`), SAHI 는 640×384 타일로 '정밀 분석 완료: 16개'. `Test-NpuSwitch` 의 '다른 모델의 짝' 경로는 배포 폴더 모델을 써서 제목이 `YOLO26s 640×640 (2026-09-17 학습)` 으로 보였다(640×640 모델의 제목 꼴도 확인).
   새 짝이라 NPU 첫 전환은 컴파일해 64.2초, 다시 고르면 4.7초, GPU 로 되돌리기 0.6초, 캐시 키 `BD18D32C…_1.8.80.0_1.27.20260711.1.7b7c0e2`, ①② 창 응답 WM_NULL 최대 1 ms · UIA 최대 13~22 ms.
   참고용 재생 처리 GPU 75.9 · NPU 39.5 FPS, HUD 91.3 FPS(1920×1080). 앱·TrackerCheck·NpuBench·RfDetrBench·RuntimeParity(Old·WinML) 빌드 경고 0.
-  배포본(`publish`)은 이 변경 전 그대로다(배포 폴더 모델은 사용자가 바꿔 쓰는 것이라 바꾸기 전에 묻는다)
+  배포본(`publish`)은 이때 아직 바꾸기 전이었다(배포 폴더 모델은 사용자가 바꿔 쓰는 것이라 물어본 뒤 위처럼 바꿨다)
 - 그 전: 2026-11-05 낮, **배포본 `publish`** — `f863585`(앱 YOLO 레터박스를 OpenCV 쌍선형으로 — `YoloLetterbox`, 위 '입력 축소' · RF-DETR 실험)로 다시 배포.
   exe 126.4 MB(132,573,736 바이트) — worktree 의 루트 `best.onnx` 가 배포 폴더 것보다 새것이라 임시 폴더로 내보내고 exe 만 바꿨다(위 '빌드 · 배포'). 배포 폴더 `best.onnx`(09-17 visible, `87D0E1CB…`)는 그대로,
   `best.npu.onnx` 는 쌍선형 보정으로 다시 만들었다(`5CE87F90…` → `D889EA23…`, 100장 27초). Release DLL 에 `YoloLetterbox` 가 있고 결함 이름은 없다.

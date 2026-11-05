@@ -430,8 +430,13 @@ try {
     $model = Join-Path $mirror 'best.onnx'
     $hasTwin = Test-Path (Join-Path $ExeDir 'best.npu.onnx')
 
-    # 짝과 다른 모델 하나 (저장소 루트·배포 폴더 모델 중 MD5 가 다른 것). 없으면 그 경우만 건너뛴다
-    $other = @((Join-Path $RepoRoot 'best.onnx'), (Join-Path $RepoRoot 'publish\best.onnx')) |
+    # 짝과 다른 모델 하나 (저장소 루트·배포 폴더 모델 중 MD5 가 다른 것). 없으면 그 경우만 건너뛴다.
+    # 배포 폴더에 이름을 바꿔 보관한 옛 모델(2026-11-06 부터 best.yolo26s-0917.onnx — 짝 *.npu.onnx 는 빼고)도 후보다:
+    # 루트와 배포 폴더가 같은 모델이면 그것밖에 없다 (그날 둘 다 YOLO26m 640×384 가 됐다)
+    $candidates = @((Join-Path $RepoRoot 'best.onnx'), (Join-Path $RepoRoot 'publish\best.onnx')) +
+                  @(Get-ChildItem (Join-Path $RepoRoot 'publish') -Filter '*.onnx' -File -ErrorAction SilentlyContinue |
+                    Where-Object { $_.Name -notlike '*.npu.onnx' } | Sort-Object Name | ForEach-Object FullName)
+    $other = $candidates |
              Where-Object { (Test-Path $_) -and (Get-Md5 $_) -ne (Get-Md5 (Join-Path $ExeDir 'best.onnx')) } | Select-Object -First 1
 
     $cases = @(
