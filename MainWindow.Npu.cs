@@ -136,10 +136,9 @@ namespace DetectView
                 SetNpuStage(prep.Cached ? "NPU 준비 중" : "NPU 컴파일 중 (첫 실행 약 1분)");
 
                 var sw = Stopwatch.StartNew();
-                npuYolo = await Task.Run(() => new Yolo(new YoloOptions
-                {
-                    ExecutionProvider = new WindowsMlExecutionProvider(check.NpuModelPath, prep.Device, prep.EpOptions)
-                }));
+                // 축소 방식(InputSampling)은 GPU 세션과 같게 — 짝 모델의 양자화 보정도 그 입력으로 했다 (tools/npu_quantize.py)
+                npuYolo = await Task.Run(() => new Yolo(YoloOptionsFor(
+                    new WindowsMlExecutionProvider(check.NpuModelPath, prep.Device, prep.EpOptions))));
                 Debug.WriteLine($"NPU 세션 {sw.Elapsed.TotalSeconds:F1}초 (캐시 {(prep.Cached ? "있음" : "없음")}, 키 {prep.CacheKey})");
 
                 if (!_wantNpu) return;   // 준비 도중 GPU 를 다시 골랐다 — finally 에서 버린다

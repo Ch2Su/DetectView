@@ -29,6 +29,18 @@ namespace DetectView
 
         private const string ModelFileName = "best.onnx";
 
+        // YOLO 입력(640×640 레터박스)으로 줄이는 방식 — 쌍선형, 밉맵 없음. YoloDotNet 기본값은 Nearest 인데(문서 주석은 Linear 라고 잘못 적혀 있다)
+        // Ultralytics 는 학습·검증 모두 쌍선형(cv2.INTER_LINEAR)으로 줄여서 학습 때와 다른 입력을 넣던 셈이다. 앱 경로 그대로 잰 데이터셋 시험 분할 AP
+        // 0.6555 → 0.6602, 앱이 줄이는 이미지만 0.647 → 0.653(작은 물체 AP +0.015) — 2026-11-05 TrackerCheck testsplit · RfDetrBench README '앱의 쌍선형 축소'.
+        // Skia 의 Linear 도 반 화소 중심·antialias 없는 쌍선형이라 OpenCV INTER_LINEAR 과 화소마다 많아야 1 다르다(같은 testsplit).
+        // 대가는 축소 한 번에 1.0~1.4 ms(0.5~1.0 → 1.5~2.2 ms, TrackerCheck inputbench) — 파일 재생 처리 FPS 92~95 → 86 (Measure-Fps, test1.mp4).
+        // YoloDotNet 은 모델보다 크지 않은 이미지(SAHI 타일 640×640)는 줄이지 않는다 — 쌍선형이어도 원본 화소 그대로다(inputbench).
+        // GPU·NPU 세션 모두 YoloOptionsFor 로 만든다. NPU 짝의 양자화 보정(tools/npu_quantize.py)과 실험 도구의 복사본(TrackerCheck·RuntimeParity·NpuBench)도 같은 방식이어야 한다
+        internal static readonly SKSamplingOptions InputSampling = new(SKFilterMode.Linear, SKMipmapMode.None);
+
+        private static YoloOptions YoloOptionsFor(WindowsMlExecutionProvider provider) =>
+            new() { ExecutionProvider = provider, SamplingOptions = InputSampling };
+
         private Yolo? _yolo;
         private readonly Lock _yoloLock = new();   // 재생 루프와 SAHI의 동시 추론 직렬화
 
@@ -72,10 +84,7 @@ namespace DetectView
                          ?? throw new InvalidOperationException("DirectML 장치를 찾지 못했습니다.");
                 gpuName = $"{device.HardwareDevice.Vendor} GPU";   // 고른 것과 다른 장치로 돈다는 걸 제목에 드러낸다
             }
-            var yolo = new Yolo(new YoloOptions
-            {
-                ExecutionProvider = new WindowsMlExecutionProvider(modelPath, device)
-            });
+            var yolo = new Yolo(YoloOptionsFor(new WindowsMlExecutionProvider(modelPath, device)));
             return (yolo, gpuName);
         }
 

@@ -1,8 +1,15 @@
 r"""2단계 평가: 학습한 모델들을 데이터셋 시험 분할(학습·best 고르기에 안 쓴 몫)에서 같은 평가기로 견준다 (README '2단계').
 
 모든 모델을 **ONNX + 앱과 같은 전처리**로 돌린다 — 앱이 실제로 돌릴 것을 재려고:
-  - YOLO (end-to-end [1,300,6]): YoloDotNet 처럼 비율 유지 · 가운데 · Nearest · 검은 여백, RGB 0~1 (NpuBench·RfDetrBench 의 Letterbox 와 같음)
+  - YOLO (end-to-end [1,300,6]): YoloDotNet 처럼 비율 유지 · 가운데 · 검은 여백, RGB 0~1 (NpuBench·RfDetrBench 의 Letterbox 와 같음).
+    축소는 --yolo-resize: linear = 지금 앱(2026-11-05 부터 SamplingOptions Linear — Skia 와 화소 ±1, TrackerCheck testsplit),
+    nearest = 그 전의 앱(YoloDotNet 기본값). 다만 OpenCV NEAREST_EXACT 는 Skia 의 Nearest 와 화소를 똑같이 고르지 않는다
+    — 시험 분할 973장 중 540장이 달랐다(정확히 2배 축소에서 Skia 는 2×2 묶음의 왼쪽 위, NEAREST_EXACT 는 오른쪽 아래 화소를 고른다 —
+    TrackerCheck inputbench). 그래서 nearest 값은 그때의 앱과 조금 다르다.
+    YoloDotNet 은 모델보다 작은 이미지(가로·세로 모두 640 미만 — 시험 분할 111장)를 키우지 않고 가운데에 그대로 둔다 — 똑같이 하려면 --yolo-no-upscale
   - RF-DETR ([1,Q,4] + [1,Q,C]): 정사각형으로 그냥 늘이기(float 쌍선형, antialias 없음) + ImageNet 정규화, 시그모이드 → 쿼리×클래스 상위 Q
+앱 경로 그대로의 검출(YoloDotNet + DirectML — TrackerCheck testsplit 이 쓴 JSON)은 --app-json 으로 같은 평가기에 넣고,
+--compare 로 두 검출 묶음을 앱 임계값(0.3)에서 박스 단위로 견준다.
 점수는 pycocotools(COCO mAP50-95 · mAP50 · 작은/중간/큰 물체 AP · 클래스별 AP)와, 앱의 신뢰도 임계 0.3 에서의 정밀도·재현율(IoU 0.5).
 추론은 ONNX Runtime CPU(실행 공급자 차이는 RfDetrBench ③ 에서 검출 단위로 같음을 봤다).
 
@@ -12,6 +19,9 @@ r"""2단계 평가: 학습한 모델들을 데이터셋 시험 분할(학습·be
         --out experiments\RfDetrBench\out\eval --threads 4 `
         --model "yolo:y26s:experiments\RfDetrBench\out\step2_models\y26s.onnx" --model "rfdetr:rfdetr_s:experiments\RfDetrBench\out\step2_models\rfdetr_s.onnx"
     # FP16 은 앱처럼 DirectML 로: onnxruntime 대신 --with onnxruntime-directml, 그리고 --ep dml (GPU 를 학습이 쓰는 동안엔 돌리지 않는다)
+    # 앱 경로 검출과 맞대기 (2026-11-05 — README '앱의 쌍선형 축소'): 먼저 TrackerCheck testsplit 으로 JSON 을 만들고
+    #   ... --ep dml --yolo-resize linear --yolo-no-upscale --model "yolo:deployed_cv2_linear:publish\best.onnx" `
+    #       --app-json "deployed_app_linear:experiments\TrackerCheck\out\testsplit\app_deployed_linear.json" --compare deployed_cv2_linear:deployed_app_linear
 
 --model 은 '종류:이름:경로' (종류 yolo | rfdetr). RF-DETR 는 마지막 로짓 칸이 배경이면(파인튜닝 모델 — 클래스 수 + 1) 그 칸을 뺀다
 (rfdetr 의 YOLO 데이터 로더는 클래스 번호를 그대로 로짓 칸 번호로 쓰고, 남는 마지막 칸은 rfdetr 자체 ONNX 추론도 뺀다 — export/_onnx/inference.py 의 background_class_id=-1).
@@ -74,23 +84,28 @@ def build_gt(data: Path, names: list[str], cache: Path) -> dict:
     return gt
 
 
-def letterbox(bgr: np.ndarray, side: int, interp: int = cv2.INTER_NEAREST_EXACT, pad: int = 0) -> tuple[np.ndarray, float, int, int]:
-    """YoloDotNet ResizeImageProportional 과 같게 — 크기 (int)(w·s + 0.5), 가운데, Nearest(화소 중심 맞춤), 검은 여백.
-    interp 를 INTER_LINEAR 로 주면 Ultralytics LetterBox 의 축소 방식(쌍선형)이 되고, pad 114 면 그쪽 여백 색(회색)이 된다 —
-    앱의 전처리가 정확도에서 잃는 몫을 나눠 재려고"""
+def letterbox(bgr: np.ndarray, side: int, interp: int = cv2.INTER_NEAREST_EXACT, pad: int = 0,
+              no_upscale: bool = False) -> tuple[np.ndarray, float, int, int]:
+    """YoloDotNet ResizeImageProportional 과 같게 — 크기 (int)(w·s + 0.5), 가운데, 검은 여백.
+    interp 는 INTER_LINEAR(지금 앱 · Ultralytics 와 같은 쌍선형) 또는 INTER_NEAREST_EXACT(2026-11-05 전의 앱 — 화소 중심을 맞추는 Nearest),
+    pad 114 면 Ultralytics 의 여백 색(회색)이 된다 — 앱의 전처리가 정확도에서 잃는 몫을 나눠 재려고.
+    no_upscale 이면 YoloDotNet 처럼 모델보다 작은 이미지(가로·세로 모두 side 미만)는 키우지 않고 가운데에 그대로 둔다"""
     h, w = bgr.shape[:2]
-    s = min(side / w, side / h)
-    nw, nh = int(w * s + 0.5), int(h * s + 0.5)
+    if no_upscale and w < side and h < side:
+        s, nw, nh = 1.0, w, h
+    else:
+        s = min(side / w, side / h)
+        nw, nh = int(w * s + 0.5), int(h * s + 0.5)
     canvas = np.full((side, side, 3), pad, np.uint8)
     px, py = (side - nw) // 2, (side - nh) // 2
-    canvas[py:py + nh, px:px + nw] = cv2.resize(bgr, (nw, nh), interpolation=interp)
+    canvas[py:py + nh, px:px + nw] = bgr if (nw, nh) == (w, h) else cv2.resize(bgr, (nw, nh), interpolation=interp)
     x = canvas[:, :, ::-1].transpose(2, 0, 1).astype(np.float32)[None] / 255.0
     return np.ascontiguousarray(x), s, px, py
 
 
-def run_yolo(sess, bgr: np.ndarray, interp: int = cv2.INTER_NEAREST_EXACT, pad: int = 0) -> list[tuple]:
+def run_yolo(sess, bgr: np.ndarray, interp: int = cv2.INTER_NEAREST_EXACT, pad: int = 0, no_upscale: bool = False) -> list[tuple]:
     side = sess.get_inputs()[0].shape[2]
-    x, s, px, py = letterbox(bgr, side, interp, pad)
+    x, s, px, py = letterbox(bgr, side, interp, pad, no_upscale)
     out = sess.run(None, {sess.get_inputs()[0].name: x})[0][0]   # [300, 6] = x1 y1 x2 y2 점수 클래스 (레터박스 좌표)
     h, w = bgr.shape[:2]
     dets = []
@@ -171,6 +186,39 @@ def app_point(gt: dict, preds: dict[int, list], names: list[str]) -> dict:
             "recall_per_class": {names[i]: v[0] / max(1, v[2]) for i, v in per.items()}}
 
 
+def compare_preds(gt: dict, pa: dict[int, list], pb: dict[int, list], thr: float = THRESHOLD_APP) -> dict:
+    """두 검출 묶음(a 기준)을 앱 임계값(신뢰도 ≥ 0.3 — YoloDotNet 은 0.3 미만만 버린다)에서 견준다.
+    이미지마다 같은 클래스끼리 IoU 큰 순으로 1:1 짝짓는다(IoU 0.5 이상 — NpuBench 의 일치도와 같은 방식).
+    좌표 차는 짝지은 박스의 네 변 중 가장 큰 화소 차"""
+    n_a = n_b = matched = same_images = 0
+    ious, dconf, dcoord = [], [], []
+    for img in gt["images"]:
+        a = [d for d in pa.get(img["id"], []) if d[5] >= thr]
+        b = [d for d in pb.get(img["id"], []) if d[5] >= thr]
+        n_a, n_b = n_a + len(a), n_b + len(b)
+        pairs = sorted(((iou(x, y), i, j) for i, x in enumerate(a) for j, y in enumerate(b) if x[4] == y[4]), reverse=True)
+        used_a, used_b, m = set(), set(), 0
+        for v, i, j in pairs:
+            if v < 0.5:
+                break
+            if i in used_a or j in used_b:
+                continue
+            used_a.add(i)
+            used_b.add(j)
+            m += 1
+            ious.append(v)
+            dconf.append(abs(a[i][5] - b[j][5]))
+            dcoord.append(max(abs(a[i][k] - b[j][k]) for k in range(4)))
+        matched += m
+        same_images += m == len(a) == len(b)
+    q = lambda xs, p: float(np.percentile(xs, p)) if xs else float("nan")   # noqa: E731
+    return {"a": n_a, "b": n_b, "matched": matched, "a_matched": matched / max(1, n_a), "b_matched": matched / max(1, n_b),
+            "images_all_matched": same_images, "images": len(gt["images"]),
+            "iou_median": q(ious, 50), "iou_p1": q(ious, 1), "dconf_median": q(dconf, 50), "dconf_p99": q(dconf, 99),
+            "dconf_max": max(dconf, default=float("nan")), "dcoord_median": q(dcoord, 50), "dcoord_p99": q(dcoord, 99),
+            "dcoord_max": max(dcoord, default=float("nan"))}
+
+
 def coco_scores(gt_path: Path, det_path: Path, names: list[str]) -> dict:
     from pycocotools.coco import COCO
     from pycocotools.cocoeval import COCOeval
@@ -201,21 +249,45 @@ def main() -> int:
     ap.add_argument("--ultra-json", action="append", default=[],
                     help="이름:경로 — Ultralytics val(save_json=True, crosscheck_native.py)의 predictions.json 을 같은 평가기로 채점한다. "
                          "두 평가기의 차이가 점수 계산에서 오는지 Ultralytics 의 전처리(rect 배치 · 회색 여백)에서 오는지 가르려고")
+    ap.add_argument("--app-json", action="append", default=[],
+                    help="이름:경로 — 앱 경로 그대로(YoloDotNet + DirectML)의 검출. TrackerCheck testsplit 이 쓴 app_<모델>_<방식>.json "
+                         "(file_name · category_id = 클래스 + 1 · bbox · score)")
+    ap.add_argument("--det-json", action="append", default=[],
+                    help="이름:경로 — 이 스크립트가 예전에 쓴 det_<이름>.json 을 다시 채점한다 (같은 gt_test.json 의 이미지 번호여야 한다 — 같은 --out 이나 그 복사본). "
+                         "--subset 으로 나눠 보거나 --compare 하려고")
+    ap.add_argument("--compare", action="append", default=[],
+                    help="이름A:이름B — 이 실행에서 채점한 두 검출 묶음을 앱 임계값(0.3)에서 박스 단위로 견준다 (A 기준)")
     ap.add_argument("--threads", type=int, default=0, help="ONNX Runtime 스레드 수 (0 = 기본)")
+    # 기본값 nearest 는 README 2단계 표를 다시 낼 수 있게 그대로 둔다 (그 표의 'Nearest (앱 그대로)' 행)
     ap.add_argument("--yolo-resize", choices=["nearest", "linear"], default="nearest",
-                    help="YOLO 레터박스 축소: nearest = 앱(YoloDotNet), linear = Ultralytics 와 같은 쌍선형")
+                    help="YOLO 레터박스 축소: linear = 지금 앱(2026-11-05 부터 쌍선형) = Ultralytics, nearest = 그 전의 앱(YoloDotNet 기본값 — 화소는 조금 다르다, 머리말)")
+    ap.add_argument("--yolo-no-upscale", action="store_true",
+                    help="모델보다 작은 이미지를 키우지 않는다 — YoloDotNet(앱)과 같게. 안 주면 예전처럼 모든 이미지를 640 에 맞춘다")
     ap.add_argument("--yolo-pad", type=int, default=0, help="YOLO 레터박스 여백 값: 0 = 앱(검정), 114 = Ultralytics 의 회색")
+    ap.add_argument("--subset", choices=["all", "resized", "small"], default="all",
+                    help="채점할 이미지: resized = 가로나 세로가 640 이상(앱이 줄이는 이미지), small = 둘 다 640 미만(앱은 그대로 둔다). "
+                         "결과 이름에 @<subset> 이 붙는다")
     ap.add_argument("--ep", choices=["cpu", "dml"], default="cpu",
                     help="dml = DirectML (onnxruntime-directml 패키지 필요). FP16 모델은 앱처럼 DirectML 로 잰다")
     args = ap.parse_args()
-    if not args.model and not args.ultra_json:
-        ap.error("--model 이나 --ultra-json 을 하나 이상 준다")
+    if not (args.model or args.ultra_json or args.app_json or args.det_json):
+        ap.error("--model · --ultra-json · --app-json · --det-json 중 하나 이상 준다")
     yolo_interp = cv2.INTER_LINEAR if args.yolo_resize == "linear" else cv2.INTER_NEAREST_EXACT
     args.out.mkdir(parents=True, exist_ok=True)
 
     names = read_names(args.data)
     gt_path = args.out / "gt_test.json"
-    gt = build_gt(args.data, names, gt_path)
+    gt = gt_all = build_gt(args.data, names, gt_path)
+    if args.subset != "all":
+        # 640 = 앱 YOLO 입력. 이미지 번호는 전체 분할 그대로 둔다(검출 JSON 의 image_id 가 같은 번호를 가리키게)
+        small = lambda im: im["width"] < 640 and im["height"] < 640   # noqa: E731
+        keep = {im["id"] for im in gt["images"] if small(im) == (args.subset == "small")}
+        gt = {"images": [im for im in gt["images"] if im["id"] in keep],
+              "annotations": [a for a in gt["annotations"] if a["image_id"] in keep], "categories": gt["categories"]}
+        gt_path = args.out / f"gt_test_{args.subset}.json"
+        gt_path.write_text(json.dumps(gt))
+    keep_ids = {im["id"] for im in gt["images"]}
+    suffix = "" if args.subset == "all" else f"@{args.subset}"
     n_ann = len(gt["annotations"])
     per_img = np.bincount([a["image_id"] for a in gt["annotations"]], minlength=len(gt["images"]) + 1)[1:]
     print(f"시험 분할 {len(gt['images'])}장 · 정답 {n_ann}개 · 한 장 최대 {per_img.max()}개 (100 넘는 장 {(per_img > 100).sum()}) · "
@@ -233,8 +305,14 @@ def main() -> int:
                  if args.ep == "dml" else ["CPUExecutionProvider"])
     results_path = args.out / "results.json"
     results = json.loads(results_path.read_text()) if results_path.exists() else {}   # 모델을 나눠 돌려도 결과가 쌓이게
+    scored: dict[str, dict] = {}   # 이 실행에서 채점한 검출 (--compare 용)
 
     def record(name: str, preds: dict, dets_json: list, extra: dict) -> None:
+        # --subset 이면 그 이미지의 검출만 (pycocotools 는 정답에 없는 이미지의 검출을 받지 않는다)
+        preds = {k: v for k, v in preds.items() if k in keep_ids}
+        dets_json = [d for d in dets_json if d["image_id"] in keep_ids]
+        name += suffix
+        scored[name] = preds
         det_path = args.out / f"det_{name}.json"
         det_path.write_text(json.dumps(dets_json))
         r = coco_scores(gt_path, det_path, names)
@@ -264,33 +342,65 @@ def main() -> int:
         preds, dets_json = {}, []
         for img in gt["images"]:
             bgr = cv2.imread(str(args.data / "images" / "test" / img["file_name"]), cv2.IMREAD_COLOR)
-            d = run_yolo(sess, bgr, yolo_interp, args.yolo_pad) if kind == "yolo" else run_rfdetr(sess, bgr, background_last)
+            d = (run_yolo(sess, bgr, yolo_interp, args.yolo_pad, args.yolo_no_upscale) if kind == "yolo"
+                 else run_rfdetr(sess, bgr, background_last))
             preds[img["id"]] = d
             dets_json += [{"image_id": img["id"], "category_id": c + 1, "bbox": [x1, y1, x2 - x1, y2 - y1], "score": sc}
                           for x1, y1, x2, y2, c, sc in d]
         dt = time.time() - t0
         record(name, preds, dets_json, {
             "ep": args.ep,
-            "preprocess": (f"letterbox-{args.yolo_resize}" + (f"-pad{args.yolo_pad}" if args.yolo_pad else "")) if kind == "yolo"
+            "preprocess": (f"letterbox-{args.yolo_resize}" + (f"-pad{args.yolo_pad}" if args.yolo_pad else "")
+                           + ("-noupscale" if args.yolo_no_upscale else "")) if kind == "yolo"
                           else "stretch-linear-float",
             "ms_per_image": dt / len(gt["images"]) * 1000,   # 디코딩·전처리·후처리 포함 — 참고용
         })
 
-    # Ultralytics val 의 검출(그쪽 전처리 — rect 배치 · 회색 114 여백 · 쌍선형)을 같은 평가기로. 이미지는 파일 이름(확장자 뺌)으로 맞춘다
-    by_stem = {Path(img["file_name"]).stem: img["id"] for img in gt["images"]}
-    for spec in args.ultra_json:
-        name, path = spec.split(":", 1)
+    # 바깥에서 낸 검출을 같은 평가기로 — Ultralytics val(그쪽 전처리 — rect 배치 · 회색 114 여백 · 쌍선형)과 앱 경로(TrackerCheck testsplit).
+    # 이미지는 파일 이름(확장자 뺌)으로 맞춘다. 둘 다 클래스 번호 + 1 을 category_id 로 쓴다
+    by_stem = {Path(img["file_name"]).stem: img["id"] for img in gt_all["images"]}   # --subset 밖 이미지의 검출은 record 가 뺀다
+
+    def load_external(name: str, path: str) -> tuple[dict, list]:
         preds, dets_json = {}, []
-        for d in json.loads(Path(path).read_text()):
-            stem = Path(d["file_name"]).stem if "file_name" in d else str(d["image_id"])
-            if stem not in by_stem:
-                raise SystemExit(f"{name}: {stem} 이 시험 분할에 없다 — 다른 분할의 predictions.json?")
-            iid = by_stem[stem]
+        for d in json.loads(Path(path).read_text(encoding="utf-8")):
+            if "file_name" not in d and isinstance(d["image_id"], int):
+                iid = d["image_id"]   # 이 스크립트가 쓴 det_<이름>.json — gt_test.json 의 이미지 번호
+            else:
+                stem = Path(d["file_name"]).stem if "file_name" in d else str(d["image_id"])
+                if stem not in by_stem:
+                    raise SystemExit(f"{name}: {stem} 이 시험 분할에 없다 — 다른 분할의 검출?")
+                iid = by_stem[stem]
             x, y, w, h = map(float, d["bbox"])
-            c, sc = int(d["category_id"]) - 1, float(d["score"])   # Ultralytics 는 COCO 가 아닌 데이터셋에 클래스 번호 + 1 을 쓴다
+            c, sc = int(d["category_id"]) - 1, float(d["score"])
             preds.setdefault(iid, []).append((x, y, x + w, y + h, c, sc))
             dets_json.append({"image_id": iid, "category_id": c + 1, "bbox": [x, y, w, h], "score": sc})
-        record(name, preds, dets_json, {"ep": "ultralytics-val", "preprocess": "ultralytics-val"})
+        return preds, dets_json
+
+    for spec in args.ultra_json:
+        name, path = spec.split(":", 1)
+        record(name, *load_external(name, path), {"ep": "ultralytics-val", "preprocess": "ultralytics-val"})
+    for spec in args.app_json:
+        name, path = spec.split(":", 1)
+        record(name, *load_external(name, path), {"ep": "app-yolodotnet-dml", "preprocess": "app (YoloDotNet ResizeImageProportional)"})
+    for spec in args.det_json:
+        name, path = spec.split(":", 1)
+        record(name, *load_external(name, path), {"ep": "rescored", "preprocess": f"rescored {Path(path).name}"})
+
+    compare_path = args.out / "compare.json"
+    compares = json.loads(compare_path.read_text()) if compare_path.exists() else {}
+    for spec in args.compare:
+        a_name, b_name = (n + suffix for n in spec.split(":", 1))
+        spec += suffix
+        missing = [n for n in (a_name, b_name) if n not in scored]
+        if missing:
+            raise SystemExit(f"--compare {spec}: 이 실행에서 채점하지 않은 이름 {missing}")
+        c = compare_preds(gt, scored[a_name], scored[b_name])
+        compares[spec] = c
+        print(f"[비교 {a_name} → {b_name}] 임계 0.3 검출 {c['a']} · {c['b']}, 짝 {c['matched']} ({c['a_matched']:.4f} · {c['b_matched']:.4f}) · "
+              f"모두 짝지은 이미지 {c['images_all_matched']}/{c['images']} · IoU 중앙 {c['iou_median']:.4f} 1% {c['iou_p1']:.4f} · "
+              f"신뢰도 차 중앙 {c['dconf_median']:.4f} 99% {c['dconf_p99']:.4f} 최대 {c['dconf_max']:.4f} · "
+              f"좌표 차 중앙 {c['dcoord_median']:.2f} 99% {c['dcoord_p99']:.2f} 최대 {c['dcoord_max']:.2f} px", flush=True)
+        compare_path.write_text(json.dumps(compares, ensure_ascii=False, indent=1))
 
     print(f"\n결과 → {results_path}")
     return 0

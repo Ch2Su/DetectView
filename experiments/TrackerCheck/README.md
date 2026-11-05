@@ -29,6 +29,9 @@ experiments/TrackerCheck/bin/Release/net10.0-windows10.0.19041.0/TrackerCheck.ex
 - `dedup [Every=N]`: 본 앱 표시 경로의 중복 박스 필터(`Detection.cs` 의 `DuplicateBoxes`) 전후를 `out/dedup.txt` 에 (아래 "중복 박스 필터").
   ① 저장한 검출로 박스 수 전후·뺀 박스 종류·목표 정지 차량 자리의 이중 박스 ② SAHI — 타일 검출을 GPU 로 다시 해(N 프레임에 하나, 기본 15) 병합 결과 전후
 - `render <test4|test5> <x,y,w,h|full> <배율> <초...>`: 트랙 ID(번호+라벨 첫 글자, 정지 판정이면 뒤에 `*`)를 그린 프레임을 세로로 이어 `out/render_*.png` 로. 의심 연결은 이걸로 눈으로 봤다
+- `testsplit <데이터셋 폴더> <출력 폴더> <이름=모델.onnx> ...` · `inputbench [반복]`: YOLO 입력 축소 방식(`InputCheck.cs`) — 아래 "YOLO 입력 축소"
+- **검출(`detect`·`dedup`·`sahi`)은 본 앱처럼 쌍선형으로 줄인다**(2026-11-05 — 본 앱 `InputSampling` 의 복사본 `InputCheck.AppSampling`). `detect nearest` 면 그 전의 앱(YoloDotNet 기본값 Nearest).
+  아래 "결과"·"중복 박스 필터"·"화면 가장자리" 표는 Nearest 때 잰 것이다
 
 ## 결과 (기본 파라미터)
 
@@ -131,3 +134,51 @@ SAHI 를 타일마다 먼저 거르면 `MergeNms` 입력이 바뀌어 어긋난�
 - 한 축을 가로지른 박스(두 변이 다 테두리)는 그 축을 잴 수 없다 — 처음부터 그렇게 멈춘 물체는 정지로 판정되지 않는다(예전엔 정지)
 - 테두리에 걸쳐 멈춘 차가 안쪽부터 가려지면 박스가 나가는 차와 같아, 가려진 동안 움직임으로 본다(1초 뒤 39/106 프레임만 정지. 예전엔 우연히 맞아 내내 정지)
 - 고정 가림(기둥) 경계에 걸친 변은 추적기가 모른다 — ROI 단계에서 다룰 것
+
+## YOLO 입력 축소 (2026-11-05, `testsplit`·`inputbench` — `InputCheck.cs`)
+
+본 앱이 YOLO 입력을 YoloDotNet 기본값 Nearest 에서 쌍선형(`YoloOptions.SamplingOptions = SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.None)`)으로 바꿀 때 잰 것.
+YoloDotNet 4.2.0 은 `ResizeImageProportional` 에서 그 값으로 Skia `DrawImage` 해 640×640 RGBX 버퍼를 만든다 — 모델보다 작은 이미지(가로·세로 모두 640 미만)는 키우지 않고 가운데에 그대로 둔다.
+
+```powershell
+# 데이터셋 시험 분할을 앱 경로로 (PowerShell — UNC 경로를 Git Bash 가 바꿔 버린다). 데이터는 읽기만 한다
+experiments\TrackerCheck\bin\Release\net10.0-windows10.0.19041.0\TrackerCheck.exe testsplit '\wsl.localhost\Ubuntu\home\chisu\rfdetr_work\data\visible' `
+    experiments\TrackerCheck\out\testsplit 'deployed=publish\best.onnx' 'root=best.onnx'
+experiments\TrackerCheck\bin\Release\net10.0-windows10.0.19041.0\TrackerCheck.exe inputbench
+```
+
+- `testsplit`: 모델마다 Nearest·쌍선형으로 검출(임계 0.001 — mAP 용)해 `out/testsplit/app_<이름>_<방식>.json`(COCO 결과 형식 + `file_name`)을 쓴다. 채점은
+  `experiments/RfDetrBench/step2/eval_test.py --app-json`(그 README '앱의 쌍선형 축소'). 같은 이미지에서 YoloDotNet 의 축소 결과를 OpenCV 레터박스(같은 크기·위치)와 화소 단위로 견주고,
+  앞 25장은 두 번 넣어 검출이 비트 단위로 같은지 본다(종료 코드 = 다른 횟수). 973장 2.5분
+- `inputbench`: test1 의 1280×720 프레임과 그걸 키운 2560×1440(HUD 화면 대신)에서 축소만의 시간·검출 한 번 전체 시간(루트 `best.onnx`, GPU), 같은 프레임 50번이 모두 같은지,
+  640×640(SAHI 타일)을 쌍선형으로 그려도 원본 그대로인지
+
+결과 (2026-11-05, RTX 5060 Laptop):
+
+| | Nearest (예전 앱) | 쌍선형 (지금 앱) |
+|---|---|---|
+| YoloDotNet(Skia) vs OpenCV 화소 — 시험 분할 973장 내용 영역 2.6억 화소 | vs `INTER_NEAREST_EXACT`: 같음 80.5%, 3 이상 차이 13.0%, 최대 255 — **540장이 다름** | vs `INTER_LINEAR`: 같음 87.5%, 나머지 **정확히 1**(최대 1), 채널 평균 \|차\| 0.057 |
+| 축소만 (중앙 / 90%) 1280×720 · 2560×1440 | 0.98 / 1.25 · 0.78 / 1.22 ms | 2.21 / 2.70 · 2.22 / 2.45 ms |
+| 검출 한 번 전체 (축소·정규화·추론·후처리) | 8.18 · 8.00 ms | 9.92 · 9.65 ms |
+| 같은 입력 거듭 (프레임 50번 × 2 크기 · 시험 분할 25장 × 2 모델) | 모두 같음 | 모두 같음 |
+| 640×640 (SAHI 타일) | — | 원본 그대로 (다른 화소 0) |
+| 시험 분할 검출 수 (임계 0.001) 배포 · 루트 | 24,223 · 21,759 | 23,354 · 20,700 |
+
+- Skia 의 Nearest 는 OpenCV `INTER_NEAREST_EXACT` 와 표본 화소를 똑같이 고르지 않는다 — 표본 위치가 두 화소 중심의 한가운데에 걸리는 배율(정확히 2배 축소 등)에서 반올림이 갈린다(아래).
+  예전 기록(NpuBench README 함정 11·`tools/npu_quantize.py`)은 둘이 같다고 적었다. 쌍선형은 그런 경계 문제가 없어 OpenCV 로 앱 입력을 거의 그대로 흉내 낼 수 있다
+- 640 보다 작은 111장은 두 방식의 검출이 비트 단위로 같다(줄이지 않는다)
+- `inputbench` 의 시간은 실행마다 다르다 — 위 표는 첫 실행, 두 번째 실행은 축소 0.54 → 1.51 ms · 검출 전체 6.9 → 8.1 ms(두 크기 같음). 쌍선형의 추가 비용은 1.0~1.4 ms.
+  앱의 파일 재생 처리 FPS(`tests/ui/Measure-Fps.ps1`, test1.mp4, Debug, 5회 중앙)는 Nearest 92.4 · 94.5 → 쌍선형 86.0 · 85.7 (기준선을 앞뒤로 두 번)
+- 정확히 2배 축소(1280×720 → 640×360)에서 Skia 의 Nearest 는 2×2 묶음의 **왼쪽 위 화소 (2x, 2y)** 를 고른다(출력의 100% 가 그 화소와 같음). 표본 위치 2x+1.0 이 두 화소 중심의 한가운데라
+  반올림이 갈리는데, OpenCV `INTER_NEAREST_EXACT` 는 오른쪽 아래 (2x+1, 2y+1) 를 고른다 — 시험 분할에서 540장이 다르던 이유. (OpenCV `INTER_NEAREST` 는 이 배율에선 Skia 와 같은 쪽이다)
+
+**추적 기준** (`detect` → `track`, 루트 모델·기본 파라미터). 위 '결과' 표는 Nearest 때 것이고 `detect nearest` 로 다시 돌리면 바이트 단위로 같은 수가 나온다:
+
+| | test4 Nearest → 쌍선형 | test5 Nearest → 쌍선형 |
+|---|---|---|
+| 검출 (`DuplicateBoxes` 전) | 18,795 → 19,677 | 5,451 → 5,408 |
+| 트랙 | 160 → 160 | 14 → 15 |
+| 목표 정지 차량 | **덤프트럭 트랙 1개** 그대로 — ID 14 → 9 (앞서 생긴 트랙 수가 달라서), 315/315 | **흰색 화물차 트랙 1개** 그대로 — ID 1, 2726/2821, 최대 공백 1.25초 |
+| 재연결 / 튐·크기 급변 / 끊김 후보 | 9 / 26 / 9 → 16 / 16 / 2 | 1 / 2 / 0 → 1 / 1 / 0 |
+
+`dedup`·`sahi` 는 쌍선형으로 다시 재지 않았다(위 표들은 Nearest 때 것).

@@ -33,7 +33,8 @@ var device = WindowsMlExecutionProvider.FindDmlDevice(vendorId, deviceId)
 var provider = new WindowsMlExecutionProvider(modelPath, device);
 string runtime = "Windows ML (WindowsMlExecutionProvider)";
 #endif
-using var yolo = new Yolo(new YoloOptions { ExecutionProvider = provider });
+// 축소는 본 앱 MainWindow.Inference.cs 의 InputSampling 과 같은 쌍선형 (2026-11-05 전엔 YoloDotNet 기본값 Nearest — 그때의 CSV 와는 견주지 말 것)
+using var yolo = new Yolo(new YoloOptions { ExecutionProvider = provider, SamplingOptions = new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.None) });
 Console.WriteLine($"{runtime} · {gpuName}");
 
 using var writer = new StreamWriter(args[1]);

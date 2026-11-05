@@ -3,14 +3,17 @@
 // 트랙 ID 를 그린 프레임을 뽑아 눈으로 확인한다(render). 검출은 GPU 로 한 번만 하고, 파라미터는 track 만 다시 돌려 고른다.
 // 본 앱 표시 경로의 중복 박스 필터(Detection.cs DuplicateBoxes) 전후도 여기서 본다(dedup). SAHI 병합 방식 전후도 본다(sahi).
 // 화면 가장자리에 걸친 박스의 멈춤 판정(이슈 #10)은 track 이 함께 재고(noframe: 프레임 크기를 안 줘 예전 판정), 합성 장면으로도 본다(selftest).
+// YOLO 입력 축소 방식(2026-11-05 Nearest → 쌍선형)은 InputCheck.cs 가 본다(testsplit · inputbench). detect 도 본 앱처럼 쌍선형으로 줄인다(nearest 면 예전).
 //
-// 실행: TrackerCheck detect
+// 실행: TrackerCheck detect [nearest]
 //       TrackerCheck track [MovingGapMs=1000 StationaryGapMs=10000 IouThreshold=0.3 RelinkIouThreshold=0.5 BorderMargin=2 ...] [noreset] [noframe]
 //       TrackerCheck selftest
 //       TrackerCheck gpu        (추적기와 별개: 루트 GpuAdapters.cs 의 내장/외장 판정 점검 — 이슈 #3. 종료 코드 = 실패 수)
 //       TrackerCheck dedup [Every=15]
 //       TrackerCheck sahi [Every=15] [Variant=nmm] [test5@44.75 ...]
 //       TrackerCheck render <test4|test5> <x,y,w,h|full> <배율> <초> [<초> ...]
+//       TrackerCheck testsplit <데이터셋 폴더> <출력 폴더> <이름=모델.onnx> [...]   (InputCheck.cs)
+//       TrackerCheck inputbench [반복=200]                                          (InputCheck.cs)
 
 using System.Globalization;
 using System.Text;
@@ -54,7 +57,7 @@ Console.OutputEncoding = Encoding.UTF8;
 
 return args.FirstOrDefault() switch
 {
-    "detect" => Detect(),
+    "detect" => Detect(args.Contains("nearest")),
     "track" => TrackAll(args.Skip(1).ToArray()),
     "selftest" => SelfTest(),
     "gpu" => GpuCheck(),
@@ -65,12 +68,15 @@ return args.FirstOrDefault() switch
     "sahi" => SahiCompare(args.Skip(1).ToArray()),
     "render" when args.Length >= 5 => Render(args[1], args[2], double.Parse(args[3], CultureInfo.InvariantCulture),
                                              args.Skip(4).Select(s => double.Parse(s, CultureInfo.InvariantCulture)).ToArray()),
+    "testsplit" => InputCheck.TestSplit(args.Skip(1).ToArray()),
+    "inputbench" => InputCheck.InputBench(args.Skip(1).ToArray()),
     _ => Usage(),
 };
 
 static int Usage()
 {
-    Console.WriteLine("사용법: detect | track [이름=값 ...] [noreset] [noframe] | selftest | gpu | dedup [Every=N] | sahi [Every=N] [영상@초 ...] | render <영상> <x,y,w,h|full> <배율> <초...>");
+    Console.WriteLine("사용법: detect [nearest] | track [이름=값 ...] [noreset] [noframe] | selftest | gpu | dedup [Every=N] | sahi [Every=N] [영상@초 ...] | render <영상> <x,y,w,h|full> <배율> <초...> | " +
+                      "testsplit <데이터셋> <출력 폴더> <이름=모델.onnx> ... | inputbench [반복]");
     return 2;
 }
 
@@ -163,21 +169,26 @@ int SceneScan(string[] paths)
 }
 
 // ---------- detect: 모든 프레임 검출 → out/<영상>.dets.csv ----------
-Yolo OpenModel(Action<string> log)
+// 축소 방식은 본 앱과 같은 쌍선형(InputCheck.AppSampling — 앱 MainWindow.Inference.cs 의 InputSampling 복사본). nearest = 2026-11-05 전의 앱
+Yolo OpenModel(Action<string> log, bool nearest = false)
 {
     string modelPath = Path.Combine(repo, "best.onnx");
     var (gpuName, vendorId, deviceId) = SelectBestGpu();
     var device = WindowsMlExecutionProvider.FindDmlDevice(vendorId, deviceId)
                  ?? throw new InvalidOperationException("DirectML 장치를 PCI ID 로 찾지 못함");
-    var yolo = new Yolo(new YoloOptions { ExecutionProvider = new WindowsMlExecutionProvider(modelPath, device) });
+    var yolo = new Yolo(new YoloOptions
+    {
+        ExecutionProvider = new WindowsMlExecutionProvider(modelPath, device),
+        SamplingOptions = nearest ? InputCheck.OldSampling : InputCheck.AppSampling,
+    });
     var meta = yolo.OnnxModel?.CustomMetaData;
-    log($"모델: {meta?.GetValueOrDefault("description")} · {meta?.GetValueOrDefault("date")} · {gpuName}");
+    log($"모델: {meta?.GetValueOrDefault("description")} · {meta?.GetValueOrDefault("date")} · {gpuName} · 축소 {(nearest ? "Nearest (예전 앱)" : "쌍선형 (본 앱)")}");
     return yolo;
 }
 
-int Detect()
+int Detect(bool nearest)
 {
-    using var yolo = OpenModel(Console.WriteLine);
+    using var yolo = OpenModel(Console.WriteLine, nearest);
 
     foreach (var (name, _) in videos)
     {

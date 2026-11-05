@@ -19,7 +19,7 @@ Windows ML(자체 `onnxruntime.dll` 1.27)과 한 프로세스에 섞을 수 없�
 모든 백엔드에 **같은 입력 텐서**를 넣고 `session.Run` 시간만 잰다. 전처리·후처리는 빼고 잰다.
 일치도는 GPU 결과를 기준으로 한다: 신뢰도 ≥ 0.3(본 앱 `ConfidenceThreshold`), 같은 클래스, IoU ≥ 0.5 를 IoU 큰 순으로 1:1 로 짝짓는다.
 전처리(평가 입력·양자화 보정 모두)는 오전엔 Ultralytics 식(선형 보간·회색 114 여백)이었고, 오후부터 **본 앱 YoloDotNet 과 같게**
-(비율 유지·가운데·Nearest·검은 여백) 바꿨다 — 앱이 NPU 모델에 넣을 입력이 바로 그것이라서.
+(비율 유지·가운데·Nearest·검은 여백) 바꿨다 — 앱이 NPU 모델에 넣을 입력이 바로 그것이라서. 2026-11-05 본 앱이 쌍선형으로 바꿔 여기도 쌍선형이다(결과 3).
 
 ## 결과 1 — 방식 비교 (오전, Ultralytics 식 전처리)
 
@@ -69,6 +69,23 @@ Windows ML(자체 `onnxruntime.dll` 1.27)과 한 프로세스에 섞을 수 없�
 - 어긋난 박스는 이번에도 거의 전부 반대쪽에서 신뢰도 0.05~0.3 이었다 (루트 52/52, 배포 53/53)
 - 오전(Ultralytics 식 전처리) A16W8 텐서별 92.3% / 95.3% 와 오후 92.0% / 96.5% 가 비슷하다 — 전처리를 앱에 맞춘 것 자체로는 정확도가 크게 변하지 않았다
 
+## 결과 3 — 앱이 쌍선형으로 줄인 뒤 (2026-11-05, 루트 모델 · VitisAI EP 1.8.80)
+
+본 앱이 YOLO 입력을 YoloDotNet 기본값 Nearest 에서 쌍선형(`SamplingOptions` Linear)으로 바꿨다(CLAUDE.md '화면 HUD' 의 '입력 축소'). 평가 입력(`Letterbox`)과
+양자화 보정(`tools/npu_quantize.py`)을 `INTER_LINEAR` 로 바꿔 짝을 다시 만들었다 — 루트 `best.npu.onnx` MD5 `46098AE1…` → `0B58A84E…`, 메타데이터에 `npu_resize = linear`.
+옛 스크립트로 옛 짝을 다시 만들면 바이트 단위로 같아서(MD5 일치), 새 짝의 차이는 보정 입력의 축소 방식만의 것이다. 두 짝을 **같은 쌍선형 평가 입력**에서 견줬다 (GPU 기준 검출 1318개):
+
+| NPU 모델 | 추론 평균 / p95 | 첫 세션 (컴파일) | GPU 대비 재현율 / 정밀도 | 신뢰도 차 | 작은 물체 | 놓친 / 더 잡은 |
+|---|---|---|---|---|---|---|
+| **새 짝 — 쌍선형 보정** (`0B58A84E…`) | 15.2 / 15.7 ms | 54 s | **97.5% / 98.5%** | 0.018 | 97.3% | 33 / 19 |
+| 옛 짝 — Nearest 보정 (`46098AE1…`) | 15.2 / 15.7 ms | 75 s | 97.1% / 98.5% | 0.021 | 96.8% | 38 / 19 |
+| (참고) CPU 로 돌린 새 짝 · 옛 짝 | 114 · 145 ms | — | 98.9% / 98.4% · 98.8% / 98.3% | 0.010 | 99.1% · 99.0% | |
+
+- 보정을 쌍선형으로 바꾼 몫은 작지만 같은 쪽이다(재현율 +0.4%p, 작은 물체 +0.5%p) — 옛 짝을 쌍선형 앱에서 그대로 써도 크게 틀리진 않는다(배포 폴더의 짝이 그렇다 — 다음 배포 때 다시 만든다)
+- 결과 2(96.0% / 99.1%)와 직접 견주지 말 것 — 평가 입력이 Nearest 에서 쌍선형으로 바뀌어 GPU 기준 검출부터 다르다(결과 2 의 GPU 기준과 같은 프레임이지만 다른 입력)
+- 어긋난 박스는 이번에도 모두 반대쪽에서 신뢰도 0.3 바로 아래였다(놓친 33/33 · 더 잡은 19/19)
+- GPU(DirectML, FP32) 중앙 6.0~6.4 ms · NPU 15.1 ms — 축소 방식과 상관없다(입력 텐서만 다르다)
+
 ## 알게 된 것 (함정)
 
 1. **FP32 모델을 그대로 넣으면 실패한다.** EP 가 BF16 으로 바꿔(VAIML) 분할 분석까지는 하지만, NPU 커널 빌드(aiecompiler 의 Peano)가
@@ -90,8 +107,11 @@ Windows ML(자체 `onnxruntime.dll` 1.27)과 한 프로세스에 섞을 수 없�
 8. NPU 세션의 `EndProfiling` 은 VitisAI 쪽 이벤트가 없다는 오류 로그를 남기지만, 무해하다 (CPU·VitisAI 노드 배치는 정상 기록)
 9. AMD Quark 0.13 의 ONNX 양자화기는 불러올 때 torch 를 요구해서 쓰지 않았다. ORT 양자화기로 충분했다
 10. **A16W8 에도 가중치 채널별 스케일을 쓴다** — 텐서별보다 GPU 대비 재현율이 4~6%p 오르고 속도는 같다 (결과 2). VitisAI EP 가 INT16 활성값 + 채널별 INT8 가중치를 그대로 컴파일한다(노드 배치는 텐서별과 같음)
-11. 보정 전처리는 앱(YoloDotNet `ResizeImageProportional`)과 같게 한다: 크기 `(int)(w·s + 0.5)`, 가운데, Nearest, 검은 여백(`SKColors.Empty`).
-    OpenCV 의 `INTER_NEAREST` 는 화소 중심을 맞추지 않아 Skia 와 한 칸씩 어긋나므로 `INTER_NEAREST_EXACT`(OpenCvSharp 에선 이름이 없어 `(InterpolationFlags)6`)
+11. 보정 전처리는 앱(YoloDotNet `ResizeImageProportional`)과 같게 한다: 크기 `(int)(w·s + 0.5)`, 가운데, 쌍선형(`INTER_LINEAR` — 2026-11-05 부터, 결과 3), 검은 여백(`SKColors.Empty`).
+    그 전엔 앱이 Nearest 라 `INTER_NEAREST_EXACT`(OpenCvSharp 에선 이름이 없어 `(InterpolationFlags)6`)로 맞췄다 — OpenCV 의 `INTER_NEAREST` 는 화소 중심을 맞추지 않아 Skia 와 한 칸씩 어긋난다.
+    **다만 `NEAREST_EXACT` 도 Skia 의 Nearest 와 똑같지는 않았다**(데이터셋 시험 분할 973장 중 540장이 달랐다, `TrackerCheck testsplit` — 정확히 2배 축소면 Skia 는 2×2 묶음의 왼쪽 위,
+    `NEAREST_EXACT` 는 오른쪽 아래 화소를 고른다, `TrackerCheck inputbench`. 테스트 영상 1280×720 이 바로 2배 축소라 10-24~11-05 의 Nearest 평가 입력은 앱과 한 화소씩 어긋나 있었다).
+    쌍선형은 Skia 와 OpenCV 가 화소마다 많아야 1 다르다
 12. 양자화는 결정적이다 — 같은 원본·보정 데이터·방식이면 결과 파일이 바이트 단위로 같았다(MD5 일치). 그래서 여기서 잰 숫자가 저장소의 `best.npu.onnx` 에 그대로 해당한다
 
 ## 재현
