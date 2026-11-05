@@ -379,7 +379,7 @@ DXGI 와 GDI 캡처는 같은 영역에서 **픽셀이 완전히 동일**했고 
 - GDI `CAPTUREBLT` 플래그 제거: 효과 없음
 - 캡처 버퍼 알파 채널 보정: 불필요. 알파=0 버퍼를 넣어도 검출 결과 동일 (`SKAlphaType.Opaque` 로 넘김)
 
-남은 개선 후보(미구현): 모션 예측 외삽(비용 거의 0, 방향 전환 시 오버슈트). YoloDotNet 박스 좌표의 정수 내림 보정(아래 '입력 축소'의 마지막 항목).
+남은 개선 후보(미구현): 모션 예측 외삽(비용 거의 0, 방향 전환 시 오버슈트). **OpenCV 선축소**(아래 '입력 축소'의 마지막 항목 — 쌍선형 비용을 되찾고 박스 좌표의 정수 내림도 고친다, 사용자 결정 대기).
 
 **입력 축소 — Nearest → 쌍선형 (2026-11-05, 속도가 아니라 정확도)**: Ultralytics 는 학습·검증 모두 쌍선형(`cv2.INTER_LINEAR`)으로 줄이는데 YoloDotNet 4.2.0 의 기본값은
 Nearest 다(`ImageConfig.DefaultSamplingOptions` — `YoloOptions.SamplingOptions` 의 XML 문서 주석은 Linear 라고 잘못 적혀 있다). 그래서 `YoloOptions.SamplingOptions =
@@ -401,6 +401,11 @@ YoloDotNet 은 `ResizeImageProportional` 에서 이 값으로 Skia `DrawImage` �
 - **배포 폴더(`publish`)는 다시 배포하지 않았다** — 지금 배포본은 Nearest 판이다. 다시 배포할 땐 배포 폴더 짝도 `-Model publish\best.onnx` 로 다시 만든다(Nearest 로 보정한 옛 짝도 쓰긴 된다 — NpuBench README 결과 3)
 - 남은 몫(안 함): **YoloDotNet 이 박스 좌표를 정수로 내린다**(`ObjectDetectionModuleV26` 의 `(int)((x − xPad) × gain)` — 평균 −0.5 px). 앱 박스에 +0.5 px 이면 줄이는 862장 AP 0.6533 → 0.6573(작은 물체 0.399 → 0.416).
   레터박스를 정수 위치에 그리고 실수 여백(`xPad`)으로 되돌리는 어긋남도 있다(1280×854 인 test5 는 세로 1 px)
+- **OpenCV 선축소 (잰 것만 — 앱엔 없다, 사용자 결정 대기)**: OpenCV `INTER_LINEAR` 로 YoloDotNet 과 같은 크기·위치의 640×640 레터박스를 만들어 넘기면 YoloDotNet 은 배율 1 로 그대로 그린다.
+  모델 입력은 Skia 쌍선형과 화소까지 같고(720p·1440p 다른 화소 0), 검출 한 번 8.25 → **7.40 ms**(720p, Nearest 때 7.16)·8.39 → 7.53 ms(1440p).
+  박스는 레터박스 좌표의 정수로 오니 +0.5 를 더하고 그린 자리 그대로의 여백·배율로 되돌리면 위 내림·여백 어긋남이 함께 없어진다 — 시험 분할 AP 0.6602 → **0.6658**(작은 물체 0.373 → 0.388).
+  대가는 정수 칸이 원래 크기에서 배율만큼 커지는 것(720p 2 px · 1440p 4 px — 그래도 실수 좌표 0.6725 와의 차이 0.007 이 그 몫). 앱에 넣으면 `ProcessFrame`·`DetectBgra`(HUD)·SAHI 의 전체 프레임 검출이 바뀐다.
+  `TrackerCheck testsplit`(`prelb`)·`inputbench`, 그 README 'YOLO 입력 축소'. 앞 '기각' 항목의 선축소와는 조건이 다르다 — 그건 Nearest 기준이었고 박스를 되돌리는 법을 따로 다루지 않았다
 
 ## 도메인 지식 — SAHI (on-demand)
 

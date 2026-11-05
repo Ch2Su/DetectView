@@ -7,10 +7,11 @@
 //     YOLO 형식 데이터셋의 images/test 를 읽기만 한다. 모델마다 Nearest·쌍선형으로 한 번씩 검출해 <출력>/app_<이름>_<방식>.json
 //     (COCO 결과 형식 + file_name — experiments/RfDetrBench/step2/eval_test.py --app-json 이 채점)을 쓰고, 같은 이미지에서
 //     YoloDotNet 의 축소 결과(Skia)를 OpenCV 레터박스(INTER_NEAREST_EXACT · INTER_LINEAR, 같은 크기·위치)와 화소 단위로 견준다.
-//     앞의 몇 장은 두 번 넣어 검출이 비트 단위로 같은지도 본다 (HUD 의 '새 화면 고리'가 기대는 결정성)
+//     앞의 몇 장은 두 번 넣어 검출이 비트 단위로 같은지도 본다 (HUD 의 '새 화면 고리'가 기대는 결정성).
+//     app_<이름>_prelb.json 은 선축소 시험(앱엔 없음 — DetectPreLetterbox: OpenCV 레터박스를 넘기고 박스를 직접 되돌림)
 //   inputbench [반복=200]
-//     축소만의 시간(Nearest vs 쌍선형 — test1 1280×720 프레임과 그걸 키운 2560×1440)과 검출 한 번 전체 시간,
-//     같은 프레임을 거듭 넣었을 때 결과가 같은지 (모델은 저장소 루트 best.onnx)
+//     축소만의 시간(Nearest vs 쌍선형 vs 선축소 — test1 1280×720 프레임과 그걸 키운 2560×1440)과 검출 한 번 전체 시간,
+//     같은 프레임을 거듭 넣었을 때 결과가 같은지, 선축소 입력이 Skia 쌍선형 입력과 같은지 (모델은 저장소 루트 best.onnx)
 
 using System.Diagnostics;
 using System.Globalization;
@@ -89,6 +90,25 @@ static class InputCheck
         using var roi = new Mat(canvas, content);
         resized.CopyTo(roi);
         return canvas;
+    }
+
+    /// <summary>
+    /// 선축소 시험(앱엔 없음 — 2026-11-05 포크 세션이 제안한 길): OpenCV INTER_LINEAR 로 YoloDotNet 과 같은 크기·위치의 640×640 레터박스를 만들어 넘긴다.
+    /// YoloDotNet 은 모델과 같은 크기라 배율 1 로 그대로 그리고(원본 화소 그대로 — inputbench), 박스를 레터박스 좌표의 정수(내림)로 돌려준다.
+    /// 그래서 내림 평균 −0.5 를 되돌리고(+0.5) 여백·배율은 그린 자리 그대로의 정확한 값으로 원래 좌표로 옮긴다 — YoloDotNet 의 실수 여백(xPad)과 정수 그림 위치의 어긋남이 없다.
+    /// 대신 정수 칸이 원래 크기에서 배율만큼 커진다(720p 2 px · 1080p 3 px · 1440p 4 px)
+    /// </summary>
+    static IEnumerable<(string Label, double Conf, double X1, double Y1, double X2, double Y2)> DetectPreLetterbox(Yolo yolo, Mat bgr, Mat lbBgra, double confidence)
+    {
+        Rect c;
+        using (var lb = CvLetterbox(bgr, InterpolationFlags.Linear, out c))
+            Cv2.CvtColor(lb, lbBgra, ColorConversionCodes.BGR2BGRA);
+        using var sk = new SKBitmap();
+        sk.InstallPixels(new SKImageInfo(Side, Side, SKColorType.Bgra8888, SKAlphaType.Premul), lbBgra.Data, (int)lbBgra.Step());
+        double fx = (double)bgr.Width / c.Width, fy = (double)bgr.Height / c.Height;
+        return Detect(yolo, sk, confidence)
+            .Select(d => (d.Label, d.Conf, (d.Box.Left + 0.5 - c.X) * fx, (d.Box.Top + 0.5 - c.Y) * fy,
+                          (d.Box.Right + 0.5 - c.X) * fx, (d.Box.Bottom + 0.5 - c.Y) * fy)).ToList();
     }
 
     /// <summary>화소 비교 누적: 화소마다 세 채널 중 가장 큰 |차| 의 분포 (내용 영역만 — 여백은 둘 다 0)</summary>
@@ -180,16 +200,34 @@ static class InputCheck
             models.Add((p[0], yolo, options));
         }
 
-        // 모델 × 방식마다 JSON 을 흘려 쓴다 (모델·방식마다 수십만 개라 다 들고 있지 않는다)
+        // 모델 × 방식마다 JSON 을 흘려 쓴다 (모델·방식마다 수십만 개라 다 들고 있지 않는다).
+        // prelb = 선축소 시험(앱엔 없음): OpenCV INTER_LINEAR 레터박스를 640×640 으로 넘기고 박스를 직접 되돌린다 (DetectPreLetterbox)
         var writers = new Dictionary<(string, string), (FileStream Stream, Utf8JsonWriter Json, long Count)>();
         foreach (var m in models)
-            foreach (var md in Modes)
+            foreach (var mode in Modes.Select(md => md.Name).Append("prelb"))
             {
-                var fs = File.Create(Path.Combine(outDir, $"app_{m.Name}_{md.Name}.json"));
+                var fs = File.Create(Path.Combine(outDir, $"app_{m.Name}_{mode}.json"));
                 var w = new Utf8JsonWriter(fs);
                 w.WriteStartArray();
-                writers[(m.Name, md.Name)] = (fs, w, 0);
+                writers[(m.Name, mode)] = (fs, w, 0);
             }
+        void Write(string model, string mode, string fileName, IEnumerable<(string Label, double Conf, double X1, double Y1, double X2, double Y2)> dets)
+        {
+            var (fs, w, count) = writers[(model, mode)];
+            foreach (var d in dets)
+            {
+                w.WriteStartObject();
+                w.WriteString("file_name", fileName);
+                w.WriteNumber("category_id", Array.IndexOf(names, d.Label) + 1);   // eval_test.py: 클래스 번호 + 1
+                w.WriteStartArray("bbox");
+                w.WriteNumberValue(d.X1); w.WriteNumberValue(d.Y1); w.WriteNumberValue(d.X2 - d.X1); w.WriteNumberValue(d.Y2 - d.Y1);
+                w.WriteEndArray();
+                w.WriteNumber("score", d.Conf);
+                w.WriteEndObject();
+                count++;
+            }
+            writers[(model, mode)] = (fs, w, count);
+        }
 
         var pixel = Modes.ToDictionary(md => md.Name, _ => new PixelStats());
         using var skiaBuf = new PinnedMemoryBuffer(new SKImageInfo(Side, Side, SKColorType.Rgb888x, SKAlphaType.Opaque));
@@ -197,6 +235,7 @@ static class InputCheck
         int repeatSame = 0, repeatDiff = 0, small = 0, skipped = 0;
         var sw = Stopwatch.StartNew();
         using var bgra = new Mat();
+        using var lbBgra = new Mat();
         for (int k = 0; k < files.Count; k++)
         {
             string file = files[k], fileName = Path.GetFileName(file);
@@ -215,6 +254,7 @@ static class InputCheck
             }
 
             foreach (var m in models)
+            {
                 foreach (var md in Modes)
                 {
                     m.Options.SamplingOptions = md.Sampling;
@@ -225,20 +265,12 @@ static class InputCheck
                         var again = Detect(m.Yolo, sk, EvalConfidence);
                         if (again.SequenceEqual(dets)) repeatSame++; else repeatDiff++;
                     }
-                    var (fs, w, count) = writers[(m.Name, md.Name)];
-                    foreach (var d in dets)
-                    {
-                        w.WriteStartObject();
-                        w.WriteString("file_name", fileName);
-                        w.WriteNumber("category_id", Array.IndexOf(names, d.Label) + 1);   // eval_test.py: 클래스 번호 + 1
-                        w.WriteStartArray("bbox");
-                        w.WriteNumberValue(d.Box.Left); w.WriteNumberValue(d.Box.Top); w.WriteNumberValue(d.Box.Width); w.WriteNumberValue(d.Box.Height);
-                        w.WriteEndArray();
-                        w.WriteNumber("score", d.Conf);
-                        w.WriteEndObject();
-                    }
-                    writers[(m.Name, md.Name)] = (fs, w, count + dets.Count);
+                    // 박스는 YoloDotNet 이 준 정수 그대로 (본 앱 ToDet 과 같음)
+                    Write(m.Name, md.Name, fileName, dets.Select(d => (d.Label, d.Conf, (double)d.Box.Left, (double)d.Box.Top, (double)d.Box.Right, (double)d.Box.Bottom)));
                 }
+                m.Options.SamplingOptions = AppSampling;   // 선축소는 배율 1 로 그려져 축소 방식과 상관없다
+                Write(m.Name, "prelb", fileName, DetectPreLetterbox(m.Yolo, bgr, lbBgra, EvalConfidence));
+            }
             if ((k + 1) % 100 == 0) Console.WriteLine($"  {k + 1}/{files.Count} · {sw.Elapsed.TotalSeconds:F0}초");
         }
         foreach (var (key, (fs, w, count)) in writers)
@@ -306,6 +338,48 @@ static class InputCheck
                 int differ = Enumerable.Range(0, 50).Count(_ => !Detect(yolo, sk, 0.001).SequenceEqual(first));
                 Console.WriteLine($"    결정성: 같은 프레임 50번 중 첫 번째와 다른 결과 {differ}번 (검출 {first.Count}개, 임계 0.001)");
                 failures += differ;
+            }
+
+            // 선축소 시험(앱엔 없음): OpenCV INTER_LINEAR 로 줄여 미리 만든 640×640 검은 캔버스에 넣는다(여백은 처음 한 번만 칠한다).
+            // YoloDotNet 은 배율 1 로 그대로 그린다. OpenCV 는 기본이 여러 스레드라 한 스레드로도 잰다
+            {
+                int w = frame.Width, h = frame.Height;
+                float s = Math.Min((float)Side / w, (float)Side / h);
+                int nw = (int)(w * s + 0.5f), nh = (int)(h * s + 0.5f);
+                using var canvas = new Mat(Side, Side, MatType.CV_8UC4, new Scalar(0, 0, 0, 255));
+                using var roi = new Mat(canvas, new Rect((Side - nw) / 2, (Side - nh) / 2, nw, nh));
+                using var small = new Mat();
+                using var skC = new SKBitmap();
+                skC.InstallPixels(new SKImageInfo(Side, Side, SKColorType.Bgra8888, SKAlphaType.Premul), canvas.Data, (int)canvas.Step());
+                void Pre() { Cv2.Resize(bgra, small, new Size(nw, nh), 0, 0, InterpolationFlags.Linear); small.CopyTo(roi); }
+                options.SamplingOptions = AppSampling;
+                int threads = Cv2.GetNumThreads();
+                foreach (int t in new[] { threads, 1 })
+                {
+                    Cv2.SetNumThreads(t);
+                    var cvOnly = Time(reps, Pre);
+                    var pre = Time(reps, () => { Pre(); buf.TargetBitmap.Erase(SKColors.Empty); skC.ResizeImageProportional(AppSampling, buf); });
+                    var preFull = Time(reps, () => { Pre(); Detect(yolo, skC, 0.3); });
+                    Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
+                        $"  {label} 선축소 (OpenCV {t}스레드): OpenCV 축소·복사 {cvOnly.Median:F3} / {cvOnly.P90:F3} ms · YoloDotNet 그리기까지 {pre.Median:F3} / {pre.P90:F3} ms · 검출 전체 {preFull.Median:F2} / {preFull.P90:F2} ms"));
+                }
+                Cv2.SetNumThreads(threads);
+
+                // 선축소로 YoloDotNet 버퍼에 들어간 화소 vs Skia 쌍선형 버퍼 (같은 자리, R·G·B)
+                Pre();
+                buf.TargetBitmap.Erase(SKColors.Empty);
+                skC.ResizeImageProportional(AppSampling, buf);
+                var preBytes = buf.Buffer.ToArray();
+                buf.TargetBitmap.Erase(SKColors.Empty);
+                sk.ResizeImageProportional(AppSampling, buf);
+                long diff = 0; int maxDiff = 0;
+                for (int i = 0; i < preBytes.Length; i += 4)
+                {
+                    int m = Math.Max(Math.Abs(preBytes[i] - buf.Buffer[i]), Math.Max(Math.Abs(preBytes[i + 1] - buf.Buffer[i + 1]), Math.Abs(preBytes[i + 2] - buf.Buffer[i + 2])));
+                    if (m > 0) diff++;
+                    if (m > maxDiff) maxDiff = m;
+                }
+                Console.WriteLine($"    선축소 입력 vs Skia 쌍선형 입력 (640×640 버퍼): 다른 화소 {diff}개 · 최대 차 {maxDiff}");
             }
         }
         // Skia 의 Nearest 가 정확히 2배 축소(1280×720 → 640×360)에서 고르는 원본 화소 — 표본 위치 2x+1.0 이 두 화소 중심의 한가운데라

@@ -147,7 +147,7 @@ experiments\TrackerCheck\bin\Release\net10.0-windows10.0.19041.0\TrackerCheck.ex
 experiments\TrackerCheck\bin\Release\net10.0-windows10.0.19041.0\TrackerCheck.exe inputbench
 ```
 
-- `testsplit`: 모델마다 Nearest·쌍선형으로 검출(임계 0.001 — mAP 용)해 `out/testsplit/app_<이름>_<방식>.json`(COCO 결과 형식 + `file_name`)을 쓴다. 채점은
+- `testsplit`: 모델마다 Nearest·쌍선형·선축소(`prelb` — 아래 '선축소 시험')로 검출(임계 0.001 — mAP 용)해 `out/testsplit/app_<이름>_<방식>.json`(COCO 결과 형식 + `file_name`)을 쓴다. 채점은
   `experiments/RfDetrBench/step2/eval_test.py --app-json`(그 README '앱의 쌍선형 축소'). 같은 이미지에서 YoloDotNet 의 축소 결과를 OpenCV 레터박스(같은 크기·위치)와 화소 단위로 견주고,
   앞 25장은 두 번 넣어 검출이 비트 단위로 같은지 본다(종료 코드 = 다른 횟수). 973장 2.5분
 - `inputbench`: test1 의 1280×720 프레임과 그걸 키운 2560×1440(HUD 화면 대신)에서 축소만의 시간·검출 한 번 전체 시간(루트 `best.onnx`, GPU), 같은 프레임 50번이 모두 같은지,
@@ -182,3 +182,17 @@ experiments\TrackerCheck\bin\Release\net10.0-windows10.0.19041.0\TrackerCheck.ex
 | 재연결 / 튐·크기 급변 / 끊김 후보 | 9 / 26 / 9 → 16 / 16 / 2 | 1 / 2 / 0 → 1 / 1 / 0 |
 
 `dedup`·`sahi` 는 쌍선형으로 다시 재지 않았다(위 표들은 Nearest 때 것).
+
+**선축소 시험** (`prelb` — 앱엔 아직 없다, 2026-11-05 포크 세션이 낸 길): OpenCV `INTER_LINEAR` 로 YoloDotNet 과 같은 크기·위치의 640×640 레터박스를 만들어 넘기면
+YoloDotNet 은 배율 1 로 그대로 그리고 박스를 레터박스 좌표의 정수(내림)로 준다. 그 박스에 +0.5 를 더하고 그린 자리 그대로의 여백·배율로 되돌린다(`DetectPreLetterbox`) —
+YoloDotNet 의 내림(평균 −0.5 px)과 실수 여백·정수 그림 위치의 어긋남이 없어지는 대신, 정수 칸이 원래 크기에서 배율만큼 커진다(720p 2 px · 1440p 4 px).
+
+| test1 300번째 프레임 (중앙) | 1280×720 | 2560×1440 |
+|---|---|---|
+| 모델 입력 (640×640 버퍼) vs Skia 쌍선형 | 다른 화소 0 | 다른 화소 0 |
+| 축소: Skia Nearest · Skia 쌍선형 · **선축소** (OpenCV 12 스레드 / 1 스레드) | 0.54 · 1.51 · **0.65** / 0.72 ms (OpenCV 몫 0.08 / 0.12) | 0.55 · 1.54 · **0.77** / 1.01 ms (0.17 / 0.34) |
+| 검출 한 번 전체: Nearest · 쌍선형 · **선축소** | 7.16 · 8.25 · **7.40** ms | 7.09 · 8.39 · **7.53** ms |
+
+선축소에서 남는 0.57 ms 는 YoloDotNet 이 640×640 전체(여백 포함)를 RGBX 로 옮겨 그리는 몫이다. 시험 분할(배포 YOLO26s, `eval_test.py --app-json`):
+AP 0.6602(지금 앱) → **0.6658**(선축소), 줄이는 862장 0.6533 → 0.6576, 작은 물체 AP 0.373 → 0.388. 지금 앱 박스에 +0.5 px 만 더한 흉내(0.6651)와 같은 정확도에 0.85 ms 빠르다.
+선축소 검출은 `eval_test.py --yolo-resize linear --yolo-no-upscale` 의 검출과 100% 짝지어진다(신뢰도 차 99% 0). 실수 좌표 그대로면 0.6725 — 남은 0.007 은 정수 칸 몫이다
