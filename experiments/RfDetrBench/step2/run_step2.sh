@@ -1,9 +1,9 @@
 #!/bin/bash
-# 2단계 학습을 차례로 돌린다: RF-DETR-S → YOLO26s → YOLO26m (README '2단계'). WSL 에서 파일로 돈다.
+# 2단계 학습을 차례로 돌린다: RF-DETR-S → YOLO26s → YOLO26m (README '2단계'), 이름을 주면 RF-DETR-N 도. WSL 에서 파일로 돈다.
 # Start-Step2.ps1 이 이 폴더를 ~/rfdetr_work/scripts 로 복사해 거기서 부른다 — 도는 중에 저장소 쪽을 고쳐도 꼬이지 않게
 # (bash 는 스크립트를 조금씩 읽는다).
 #
-#   bash ~/rfdetr_work/scripts/run_step2.sh [이름...]     # 이름: rfdetr_s y26s y26m — 없으면 전부
+#   bash ~/rfdetr_work/scripts/run_step2.sh [이름...]     # 이름: rfdetr_s y26s y26m rfdetr_n — 없으면 앞의 셋
 #   touch ~/rfdetr_work/runs/HALT                         # 지금 것이 끝나면 다음 것을 시작하지 않는다
 #   touch ~/rfdetr_work/runs/yolo/STOP                    # 지금 도는 YOLO 학습을 정상 중단 (라벨링 도구 train_wsl.py 의 정지 파일)
 set -u
@@ -28,8 +28,9 @@ YW=/mnt/e/local_auto_labeling/weights
 # close_mosaic 은 300 epoch 의 30 처럼 끝 10% 로 맞춰 10
 HYP="epochs=100 patience=120 seed=0 pretrained=true amp=true cos_lr=true box=7.5 cls=1.5 dfl=1.5 close_mosaic=10 hsv_h=0.015 hsv_s=0.7 hsv_v=0.4 fliplr=0.5 flipud=0.0 save_period=20"
 
-run_rfdetr() {
-  "$W/.venv/bin/python" "$HERE/train_rfdetr.py" --data "$DATA" --out "$W/runs/rfdetr_s" > "$LOGS/rfdetr_s.log" 2>&1
+run_rfdetr() {   # 크기(n|s) 이름
+  local size=$1 name=$2
+  "$W/.venv/bin/python" "$HERE/train_rfdetr.py" --size "$size" --data "$DATA" --out "$W/runs/$name" > "$LOGS/$name.log" 2>&1
 }
 run_yolo() {   # 이름 가중치 배치 — 배치는 8GB 에서 compare_0918 과 같게(s 20 · m 10)
   local name=$1 weights=$2 batch=$3
@@ -48,7 +49,8 @@ for name in "${ORDER[@]}"; do
   fi
   say "=== $name 시작 $(date '+%F %T')"
   case $name in
-    rfdetr_s) run_rfdetr ;;
+    rfdetr_s) run_rfdetr s rfdetr_s ;;
+    rfdetr_n) run_rfdetr n rfdetr_n ;;
     y26s) run_yolo y26s yolo26s.pt 20 ;;
     y26m) run_yolo y26m yolo26m.pt 10 ;;
     *) echo "모르는 이름: $name"; false ;;

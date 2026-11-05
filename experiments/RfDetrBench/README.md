@@ -127,7 +127,7 @@ RF-DETR-S · YOLO26s · YOLO26m 을 데이터셋 백업(위)으로 **각자의 �
 | YOLO26s · YOLO26m | 라벨링 도구의 학습 환경(`yolo_final` — Ultralytics 8.4.142)과 `train_wsl.py` 를 **고치지 않고 실행만** | 웹 UI 'WSL 학습' 버튼과 같은 인자(cos_lr · box 7.5 · cls 1.5 · dfl 1.5 · HSV · 좌우 뒤집기)를 100 epoch 로(close_mosaic 은 끝 10% 라 10) · 640 · 배치 s 20 · m 10 · 이미지 RAM 캐시 |
 
 ```powershell
-# 학습 — 몇 시간 걸려서 숨은 창으로 띄운다(띄운 쪽이 닫혀도 이어진다. 도는 동안 유휴 절전을 막는다). 이름은 rfdetr_s · y26s · y26m 중 고른다
+# 학습 — 몇 시간 걸려서 숨은 창으로 띄운다(띄운 쪽이 닫혀도 이어진다. 도는 동안 유휴 절전을 막는다). 이름은 rfdetr_s · y26s · y26m · rfdetr_n 중 고른다
 Start-Process pwsh -WindowStyle Hidden -ArgumentList '-NoProfile','-File','experiments\RfDetrBench\step2\Start-Step2.ps1','rfdetr_s','y26s','y26m'
 ```
 
@@ -144,6 +144,11 @@ Start-Process pwsh -WindowStyle Hidden -ArgumentList '-NoProfile','-File','exper
   - 런처가 띄운 `wsl.exe` 는 Windows 의 현재 폴더(저장소)에서 시작해서, Ultralytics 의 AMP 점검이 `yolo26n.pt` 를 저장소의 `weights/` 에 내려받았다 → 드라이버가 `~/rfdetr_work` 로 옮겨 간다
   - Windows 런처는 `wsl.exe` 출력을 드라이버가 끝날 때에야 받는다(`out/step2_driver.log`) — 도는 동안의 진행은 WSL 쪽 `driver.log` 를 본다
 - 드라이버는 한 모델이 실패해도 다음 모델로 넘어간다(밤새 돌 때 하나 때문에 다 서지 않게)
+- **RF-DETR-N**(`rfdetr_n` = `train_rfdetr.py --size n`, 2단계 뒤에 더함)은 같은 조리법(배치 4 × 누적 4)에서 epoch 당 약 2.8분이다.
+  S 는 3.5분이었다. GPU 사용률 45%·메모리 3.4 GB 라 CPU 매칭이 병목이다. 100 epoch 이면 약 4.7시간.
+  11-05 10:48 에 시작했다가 사용자 요청으로 첫 epoch(검증 mAP50-95 0.564) 뒤 멈췄다(Ctrl+C — Lightning 이 정리하고 끝냈다).
+  그 결과는 `~/rfdetr_work/runs/rfdetr_n_stopped_1105`(로그 `logs/rfdetr_n_stopped_1105.log`)로 옮겨 두었다. 다시 할 땐 위 명령에 `rfdetr_n` 을 주고 처음부터 돌린다.
+  이어서 하려면 `train_rfdetr.py --size n --resume <그 폴더>/last.ckpt` 를 직접 실행한다(rfdetr 1.11.2 가 Lightning `Trainer.fit(ckpt_path=...)` 로 넘기고 `metrics.csv` 기록도 이어 쓴다)
 
 ```powershell
 # 내보내기 (Windows, CPU) — out/step2_models/<이름>.onnx, RF-DETR 는 <이름>-fp16.onnx 도
@@ -237,6 +242,6 @@ FP32 모델은 CPU 로 쟀다. DirectML(`--ep dml`, NVIDIA)로 다시 재도 RF-
 - 앱에 넣으려면(1단계에서 정리): YoloDotNet 밖의 새 추론 경로(정사각형 늘이기 전처리 — float 경로가 CPU 5~7 ms 라 줄여야 한다 · 후처리), 모델 파일 57 MB(FP16), NPU 는 YOLO 만(짝 모델이 YOLO 전용),
   HUD 가 기대는 결정성(같은 입력에 같은 출력) 확인
 - 더 싼 길도 있다: ① 앱의 YOLO 축소를 쌍선형으로(새 모델 없이 AP +0.02~0.03 — 위 표의 나머지 몫까지 되찾으면 YOLO26m 은 0.72 안팎, RF-DETR-S 와 0.02~0.03 차이)
-  ② YOLO26m 으로 바꾸기(쌍선형이면 0.708, 추론은 2.2배) ③ **RF-DETR-N 을 같은 데이터로 학습**해 보기 — FP16 5.2 ms 로 지금 YOLO26s(6.4 ms)보다 빠른데 이번엔 재지 않았다
+  ② YOLO26m 으로 바꾸기(쌍선형이면 0.708, 추론은 2.2배) ③ **RF-DETR-N 을 같은 데이터로 학습**해 보기 — FP16 5.2 ms 로 지금 YOLO26s(6.4 ms)보다 빠른데 이번엔 재지 않았다(11-05 시작했다가 첫 epoch 뒤 멈춤 — 위 학습 절)
 - 확인 안 한 것: 학습을 한 번씩만 했다(시드 차이 모름) · 학습률을 일찍 내리는 조리법(rfdetr `lr_drop`) · 시험 분할은 학습 데이터와 같은 출처라 **앱의 CCTV 영상(test1~5)에서의 차이** ·
   추적기·유고 규칙 위에서의 차이
