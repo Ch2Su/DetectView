@@ -8,7 +8,7 @@ WPF(.NET 10) 실시간 객체 검출 애플리케이션. YOLO ONNX 모델을 **D
 | 항목 | 값 | 비고 |
 |---|---|---|
 | 폴더 | `E:\DetectView` | 예전 `E:\VS_E\YOLO11_Test` — 2026-11-03 옮김 (옛 폴더는 사용자가 백업한 뒤 지웠다 — 2026-11-04 무렵) |
-| 프로젝트·솔루션 / 네임스페이스 / `AssemblyName` / 제품명 / 창 제목 | `DetectView` (`DetectView.csproj`·`DetectView.slnx`·`namespace DetectView`) | 예전엔 `YOLO11_Test` 였다 — 옛 이름은 `old/`·git 기록·`old-history` 태그 안에만 남는다 |
+| 프로젝트·솔루션 / 네임스페이스 / `AssemblyName` / 제품명 / 창 제목 | `DetectView` (`DetectView.csproj`·`DetectView.slnx`·`namespace DetectView`) | 예전엔 `YOLO11_Test` 였다 — 옛 이름은 git 기록(`old-history` 태그)과 클라우드에 백업한 옛 `old/` 안에만 남는다 |
 | 배포 폴더 | `publish` | 예전 `publish_gpu_ver` |
 | 모델 | YOLO**26m** 파인튜닝 ONNX, 입력 **640×384**(16:9 영상용) (`best.onnx`, 78 MB, **7클래스**) | 2026-11-06 교체 — 아래 "RF-DETR 검토" 3단계에서 사용자가 골랐다. 이전: YOLO26s 640×640(36 MB, 2026-09-11~ · 그 전엔 9.5 MB 모델). YOLO11 아님 |
 
@@ -97,7 +97,7 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
 | `Ui.cs` | 스타일이 읽는 첨부 속성 — 버튼 아이콘(`Glyph`·`GlyphBrush`)·`HoverBackground`·`IconOnly`·지금 소스 버튼(`IsActive`) |
 | `TestFaults.cs` | Debug 빌드 전용 결함 주입 — 환경 변수 `DETECTVIEW_TEST_FAULTS`(쉼표 구분): `hud-create-fail` · `hud-capture-lost` · `hud-detect-fail`. 훅은 `[Conditional("DEBUG")]` 라 Release 엔 호출 자체가 없다(Release DLL 에 결함 이름 문자열 없음 확인). `Test-ScreenHud.ps1` 이 쓴다 |
 | `Directory.Build.props` | OpenCvSharp 판(`OpenCvSharpVersion`)을 두는 한 곳 — 본 앱·실험 프로젝트 넷이 같이 읽는다 ("절대 건드리면 안 되는 것들" 1번, 이슈 #9) |
-| `old/` | 이전 CPU 버전 전체 보관본 + 최적화 전 백업(`backup_20260911_before_opt/`, `backup_20260911_after_step1/`). **빌드 대상에서 제외됨**. `old/docs/` 에 SRS·아키텍처 설계서(.md/.pdf). `old/DetectView-history-2026-11-02.bundle` = 공개 전 git 기록(커밋 75개) 백업 — 아래 '도구 사용 주의'의 원격 항목 |
+| `old/` | **2026-11-06 지웠다** — 사용자가 클라우드에 백업한 뒤. 있던 것: 이전 CPU 버전 보관본·최적화 전 백업(`backup_20260911_*`)·학교 과제 제출본(폴더·zip)·`old/docs/`(SRS·아키텍처 설계서)·옛 모델(9.5 MB)·공개 전 git 기록 bundle(아래 '도구 사용 주의'의 원격 항목). `.csproj` 의 제외 글롭과 `.gitignore` 의 `/old/` 는 그대로 둔다 — 다시 생겨도 빌드·graft 가 안전하게(아래 5번·graft 함정 1) |
 | `publish/` | 배포 산출물 + 테스트 영상(`test1~4.mp4`, 1280×720 30fps · `test5.mp4`, 아래 "테스트 영상 내용"). 원래의 VFR 테스트 파일 `recording.webm` 은 없어졌고, 대신 합성 파일 `tests/ui/media/vfr60_nodur.webm` 을 쓴다 |
 | `tests/ui/` | UI 자동화 회귀 테스트 (PowerShell + UI Automation). 아래 "테스트" 참고 |
 | `README.md` | GitHub 첫 화면 (2026-11-02 작성 — 기능·빌드·사용법·테스트·라이선스). 화면이 크게 바뀌면 같이 고칠 것. 스크린샷(test4 3초 장면, 실제 도로 CCTV 프레임)은 같은 날 넣었다가 영상 사용 권리를 확인하지 못해 뺐다(`docs/screenshot.png` 삭제 — 이 PC 의 옛 기록 `old-history` 의 `10e65db` 에만 남음). 다시 넣으려면 권리가 분명한 영상으로 |
@@ -156,7 +156,7 @@ CLAUDE.md 가 매 세션 컨텍스트를 너무 많이 차지해서(13만 자) 2
   **판은 `Directory.Build.props` 에서만 바꾼다** — `dotnet add package` 로 한쪽만 올리면 그 줄의 `$(OpenCvSharpVersion)` 이 숫자로 덮여 다시 어긋난다(속성이 비면 복원이 NU1015 로 멈춘다).
   바꿀 땐 ① NuGet 에 그 날짜의 runtime.win 이 있는지 먼저 보고 ② 네이티브가 바뀌면 아래 "파일 재생 · 시크"의 OpenCV 동작·검출 결과(RuntimeParity)·UI 테스트를 다시 본다.
   참고(10-31 평가만, 채택 안 함): 20260627 짝은 네이티브를 다시 빌드해 contrib 13개가 빠졌고(bioinspired·ccalib·dpm·stereo·videostab 등) 관리 쪽 AssemblyVersion 이 4.0.0.0 이다.
-  `Directory.Build.props` 는 MSBuild 가 위로 올라가며 처음 찾은 하나만 읽어서 `old\*.csproj`·`.claude\worktrees\` 의 빌드도 가져간다 — 지금은 속성 하나라 무해하지만 타깃을 넣으면 그 빌드들에도 걸린다
+  `Directory.Build.props` 는 MSBuild 가 위로 올라가며 처음 찾은 하나만 읽어서 `.claude\worktrees\` 의 빌드(예전엔 `old\*.csproj` 도)도 가져간다 — 지금은 속성 하나라 무해하지만 타깃을 넣으면 그 빌드들에도 걸린다
 
 ### 2. `TargetClasses` 의 `"scooter"` 는 의도된 것
 ```csharp
@@ -196,7 +196,7 @@ COCO-80에 없는 클래스처럼 보여도 **사용자가 의도한 것**이다
 
 ### 5. `old/` · `publish*/` 빌드 제외 글롭
 SDK 기본 글롭이 `old/**` 의 소스와 생성 `.g.cs` 까지 끌어와 **724개 컴파일 에러**가 났던 적이 있다.
-`.csproj` 의 `Compile/Page/ApplicationDefinition/Resource/None Remove` 항목을 지우지 말 것. (`old/` 에 소스 백업을 넣어도 안전한 이유)
+`.csproj` 의 `Compile/Page/ApplicationDefinition/Resource/None Remove` 항목을 지우지 말 것. (`old/` 에 소스 백업을 넣어도 안전한 이유 — `old/` 는 2026-11-06 지웠지만 다시 생기면 같은 일이 나서 그대로 둔다)
 
 ## 도메인 지식 — 파일 재생 · 시크
 
@@ -406,7 +406,7 @@ graft 는 무시 규칙을 **`git ls-files --exclude-standard` 로만** 적용�
 - git 저장소가 아니었을 때는 `.gitignore` 가 통째로 무시돼 `obj/` 생성 코드와 `old/` 백업까지 잡혔다 (15개 → **234개**).
   검색하면 `old/backup_.../MainWindow.xaml.cs` 의 옛 `InitializeYoloModel` 이 상위에 뜬다 — 실수로 백업본을 고칠 위험.
 - git 은 **추적(tracked) 중인 파일은 `.gitignore` 와 무관하게 포함**시키고 graft 도 그 규칙을 따른다.
-  → `old/` 를 한 번이라도 `git add` 하면 무시 규칙이 무력해진다. 절대 커밋하지 말 것.
+  → `old/` 를 한 번이라도 `git add` 하면 무시 규칙이 무력해진다. 절대 커밋하지 말 것(2026-11-06 지웠지만 다시 만들어도 같다).
 
 ### 함정 2 — C# 간선은 `?.` 호출과 메서드 그룹을 놓친다
 `graft callers` 는 호출자를 **빠뜨릴 수 있다**. 실제로 확인된 두 형태:
@@ -427,14 +427,15 @@ LLM 개념 맵(`graft build --deep`)은 API 키가 필요해서 돌리지 않았
 - 이 환경의 **Bash 도구에 PowerShell cmdlet을 넣으면 "command not found"** 가 난다. PowerShell 도구를 따로 쓸 것
 - **`python` 은 PATH 에 없다** (WindowsApps 스텁만 있음). `uv` 로 격리 실행한다: `uv run --no-project --python 3.12 --with <패키지> <스크립트>.py`
   (한 줄 명령은 `uv run --no-project --python 3.12 python -c "..."`). 다른 프로젝트의 가상 환경(같은 PC 의 다른 저장소 `.venv` 등)은 건드리지 않는다
-- **git 저장소다** (2026-09-21 `git init`, 브랜치 `main`). 되돌리기 안전망이 생겼으니 `old/` 에 새 백업을 쌓을 필요는 없다 — 기존 `old/` 는 git 이전 기록이라 그대로 둔다
-  (예외: 2026-11-02 공개 때 GitHub 에서 지운 옛 git 기록의 백업 `old/DetectView-history-2026-11-02.bundle` — 아래 원격 항목)
+- **git 저장소다** (2026-09-21 `git init`, 브랜치 `main`). 되돌리기 안전망이 생겼으니 백업 폴더를 따로 쌓지 않는다. git 이전 기록이 든 옛 `old/`(공개 전 기록 bundle 포함 — 아래 원격 항목)는
+  2026-11-06 사용자가 클라우드에 백업하고 이 PC 에서 지웠다
 - **원격은 `origin` 하나 = 공개 저장소 GitHub `chisu0208/DetectView`** (2026-11-02 공개 — 사용자 결정: 옛 기록은 공개하지 않는다).
   옛 기록의 마지막 상태(`f8d66f4`)를 그대로 담은 기록 없는 첫 커밋(`6c43790`)부터 시작했다. 올리는 건 `main` 하나다.
-  - **옛 개발 기록(2026-09-21~11-02, 커밋 75개)은 이 PC 에만 있다** — 로컬 태그 `old-history`(`f8d66f4`)와 백업 파일 `old/DetectView-history-2026-11-02.bundle`
-    (44.9 MB, `git clone <파일>` 로 되살아난다 — 복원 확인함). 그 기록을 담았던 비공개 저장소(`DetectView` → `DetectView-history` 로 이름 바꿈)는 같은 날 사용자가 지웠고 이슈 #1~#11 도 함께 없어졌다.
+  - **옛 개발 기록(2026-09-21~11-02, 커밋 75개)은 공개하지 않았다** — 이 PC 의 로컬 태그 `old-history`(`f8d66f4`)와, 사용자가 클라우드에 백업한 bundle `DetectView-history-2026-11-02.bundle`
+    (44.9 MB — 2026-11-06 까지 `old/` 안에 있었다. `git clone <파일>` 로 되살아난다 — 복원 확인함)에만 있다. 그 기록을 담았던 비공개 저장소(`DetectView` → `DetectView-history` 로 이름 바꿈)는 같은 날 사용자가 지웠고 이슈 #1~#11 도 함께 없어졌다.
     **이 문서·메모의 커밋 해시(`6d1f61a` 등)와 이슈 번호 #1~#11 은 모두 그 옛 기록의 것**이다 — 해시는 `git show <해시>`·`git log old-history` 로 이 PC 에서 본다.
-    이슈 본문은 남아 있지 않지만 내용은 이 문서의 해당 서술(번호 옆)에 있다. 태그와 bundle 을 둘 다 지우면 옛 기록이 사라진다(`git gc` 는 태그가 가리키는 커밋은 지우지 않는다).
+    이슈 본문은 남아 있지 않지만 내용은 이 문서의 해당 서술(번호 옆)에 있다. 이 PC 엔 이제 태그만 있다 — 태그를 지우면 이 PC 에선 옛 기록이 사라진다
+    (클라우드의 bundle 로 되살린다. `git gc` 는 태그가 가리키는 커밋은 지우지 않는다).
   - **옛 기록을 `origin` 에 올리지 말 것** — `old-history` 태그·`claude/*`·`spike/*` 브랜치·옛 worktree 가 다 그렇다. 올리면 옛 커밋 75개(실제 이메일이 작성자인 72개와 뺀 CCTV 스크린샷 포함)가 공개된다.
     로컬 `.git/hooks/pre-push`(git 이 추적하지 않음 — 지우면 보호가 사라진다)가 옛 기록의 뿌리 커밋 둘을 조상으로 가진 커밋·태그를 공개 저장소로 올리면 push 전체를 거부한다(그래서 `git push --tags` 도 막힌다).
     옛 기록의 커밋을 `main` 에 merge·cherry-pick 하지도 말 것 — merge 는 옛 기록 전체를, cherry-pick 은 옛 작성자(실제 이메일)를 끌고 온다. 필요한 건 파일 내용만 옮긴다.
