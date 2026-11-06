@@ -97,7 +97,7 @@ pwsh tests/ui/Run-All.ps1
   `Run-All` 은 테스트 파일이 try 밖에서 throw 해도(영상·빌드 없음) 그 파일만 실패로 세고 다음 파일을 돈다(2026-10-30 — 예전엔 거기서 통째로 멈췄다)
 - 마지막 전체 통과: 2026-11-06 아침, **배포본 `publish`** — `a378a58`(루트 모델 YOLO26m 640×384 · SAHI 타일 = 모델 입력 크기 · 창 제목에 입력 크기)로 다시 배포하고,
   사용자 승인으로 **배포 폴더 모델도** 같은 YOLO26m 640×384(`94A26C12…`)로 바꿨다. 옛 YOLO26s(09-17, `87D0E1CB…`)와 그 짝(`D889EA23…`)은 `best.yolo26s-0917.onnx` · `best.yolo26s-0917.npu.onnx` 로
-  이름을 바꿔 옆에 두었다. 짝은 `Make-NpuModel.ps1 -Model publishest.onnx` 로 만들어(33초) 루트 짝과 바이트까지 같다(`BD18D32C…`).
+  이름을 바꿔 옆에 두었다. 짝은 `Make-NpuModel.ps1 -Model publish\best.onnx` 로 만들어(33초) 루트 짝과 바이트까지 같다(`BD18D32C…`).
   exe 126.4 MB(132,573,874 바이트 — 작업 트리가 깨끗한 `a378a58` 에서 임시 폴더로 내보내 exe 만 옮김), Release DLL 에 결함 이름 없음.
   `Run-All -ExeDir publish` 한 번에 237 항목 모두 통과: `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 · `Test-SceneChange` 21 · `Test-ZoneEvents` 21 · `Test-Incident` 16 ·
   `Test-ViewIdentity` 27 · `Test-VfrPlayback` 26 · `Test-ScreenHud` 25(DXGI 1920×1080, 결함 주입은 Release 라 빠짐) · `Test-NpuSwitch` 28.

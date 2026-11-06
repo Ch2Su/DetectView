@@ -33,7 +33,7 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
 - **`publish\best.onnx` 는 루트의 것과 다를 수 있고, 사용자가 수시로 바꾼다** (YOLO26s ↔ YOLO26x(COCO 80클래스),
   데이터셋이 다른 7클래스 모델 등 — 2026-09-23 한 세션 안에서도 바뀌었다). 건드리지 말 것.
   2026-11-06 엔 사용자 승인으로 루트와 같은 YOLO26m 640×384(`94A26C12…`)로 바꿨다 — 그 전 YOLO26s(09-17, `87D0E1CB…`)와 그 짝은
-  `publishest.yolo26s-0917.onnx` · `best.yolo26s-0917.npu.onnx` 로 이름을 바꿔 옆에 두었다(앱은 `best.onnx`·`best.npu.onnx` 만 읽는다. `Test-NpuSwitch` 의 '다른 모델의 짝'이 이것을 쓴다).
+  `publish\best.yolo26s-0917.onnx` · `best.yolo26s-0917.npu.onnx` 로 이름을 바꿔 옆에 두었다(앱은 `best.onnx`·`best.npu.onnx` 만 읽는다. `Test-NpuSwitch` 의 '다른 모델의 짝'이 이것을 쓴다).
   **성능을 재거나 비교하기 전엔 그 순간 어떤 모델인지 확인한다** — 앱이 떠 있으면 창 제목에 보이고(아래),
   아니면 파일 끝의 Ultralytics 메타데이터를 읽는다:
   `uv run --no-project --python 3.12 python -c "import re,sys;f=open(sys.argv[1],'rb');f.seek(-65536,2);t=f.read().decode('utf-8','ignore');[print(k,'=',v.strip()[:80]) for k,v in re.findall(r'(description|names|date|imgsz)\x12.?([^\x00-\x08\x0e-\x1f]+)',t)]" publish/best.onnx`
@@ -427,6 +427,9 @@ LLM 개념 맵(`graft build --deep`)은 API 키가 필요해서 돌리지 않았
 - 이 환경의 **Bash 도구에 PowerShell cmdlet을 넣으면 "command not found"** 가 난다. PowerShell 도구를 따로 쓸 것
 - **`python` 은 PATH 에 없다** (WindowsApps 스텁만 있음). `uv` 로 격리 실행한다: `uv run --no-project --python 3.12 --with <패키지> <스크립트>.py`
   (한 줄 명령은 `uv run --no-project --python 3.12 python -c "..."`). 다른 프로젝트의 가상 환경(같은 PC 의 다른 저장소 `.venv` 등)은 건드리지 않는다
+- **Windows 경로의 백슬래시가 이스케이프로 풀려 제어 문자가 들어간 적이 있다** — 2026-11-05~06 `publish` 뒤 백슬래시 + `best…` 가 백스페이스(0x08) 한 글자로 바뀌어
+  문서 셋·메모 하나에 들어갔다(화면엔 `publishest.onnx` 로 보인다 — 11-06 고침). Bash 도구는 명령을 큰따옴표로 한 번 더 감싸 heredoc 안에서도 백슬래시 둘을 하나로 줄인다.
+  경로가 든 글을 도구로 쓴 뒤엔 제어 문자가 없는지 본다: `git grep -lP "\x08"`
 - **git 저장소다** (2026-09-21 `git init`, 브랜치 `main`). 되돌리기 안전망이 생겼으니 백업 폴더를 따로 쌓지 않는다. git 이전 기록이 든 옛 `old/`(공개 전 기록 bundle 포함 — 아래 원격 항목)는
   2026-11-06 사용자가 클라우드에 백업하고 이 PC 에서 지웠다
 - **원격은 `origin` 하나 = 공개 저장소 GitHub `chisu0208/DetectView`** (2026-11-02 공개 — 사용자 결정: 옛 기록은 공개하지 않는다).

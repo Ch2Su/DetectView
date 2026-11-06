@@ -29,8 +29,8 @@
 
 **검증** (`experiments/TrackerCheck` — 모든 프레임 검출을 CSV 로 남기고 추적만 다시 돌린다. 자세한 건 그 README).
 루트 `Detection.cs`·`Tracker.cs`·`Sahi.cs`·`WindowsMlExecutionProvider.cs`·`GpuAdapters.cs`·`Roi.cs`·`SceneChange.cs`·`SceneThumbnail.cs`·`ZoneEvents.cs`·`IncidentRules.cs`·`ViewIdentity.cs`·`YoloLetterbox.cs` 를 소스로 링크해 WPF 없이 빌드하므로 이 열둘에 WPF 의존을 넣으면 빌드가 깨진다.
-앱 상수(신뢰도 0.3·IoU 0.7·`TargetClasses`·타일 640·겹침 0.3·병합 0.45/0.6·YoloDotNet 축소 방식 `InputSampling` → `InputCheck.AppSampling`)와 `DetectTile`·`DetectBgra` 는 **복사본**이라(`SelectBestGpu` 는 `GpuAdapters.cs` 를,
-레터박스·박스 되돌리기는 `YoloLetterbox.cs` 를 링크해 앱과 같은 코드) 앱 쪽을 바꾸면 같이 맞춰야
+앱 상수(신뢰도 0.3·IoU 0.7·`TargetClasses`·겹침 0.3·병합 0.45/0.6·YoloDotNet 축소 방식 `InputSampling` → `InputCheck.AppSampling`)와 `DetectTile`·`DetectBgra` 는 **복사본**이라(`SelectBestGpu` 는 `GpuAdapters.cs` 를,
+레터박스·박스 되돌리기와 SAHI 타일 크기(모델 입력 크기 `InputSize` — 2026-11-06 전엔 640 복사본)는 `YoloLetterbox.cs` 를 링크해 앱과 같은 코드) 앱 쪽을 바꾸면 같이 맞춰야
 비교가 조용히 어긋나지 않는다. 검출 CSV 는 `DuplicateBoxes` **전** 결과다(앱의 '검출 N' 보다 많다 — 2026-11-05 부터 좌표가 실수):
 - 정지 판정(`IsStationary`)도 보고한다 — `tracks.csv` 마지막 열 `stationary`, `render` 는 정지면 ID 뒤 `*`, 보고서의 '테두리 멈춤 판정' 절(관측마다 판정과 따로 잰 중심 이동을 맞댐)
 - 기준 충족: test4 0~10.5초 덤프트럭 **트랙 1개**(315/315 관측), test5 흰색 화물차 0~47초 **트랙 1개**(관측 97%, 최대 공백 1.25초, 검은 끊김 포함).

@@ -166,4 +166,4 @@ Skia 쌍선형이 한 번에 1.5~2.2 ms 라 재생 FPS 가 8% 떨어졌다. ② 
   레터박스 버퍼는 다시 쓰므로 `_yoloLock` 안에서만 쓴다(아래 '동시성 규칙')
 - 추적 기준(`TrackerCheck track`, 루트 모델): test4 덤프트럭·test5 화물차 모두 트랙 1개 그대로, test4 끊김 후보 9 → 2. 덤프트럭 번호가 14 → 9 로 바뀐다(UI 테스트는 번호를 박지 않는다)
 - NPU 짝도 쌍선형으로 다시 보정했다(아래 "NPU" — 루트 `best.npu.onnx` `0B58A84E…`, 메타데이터 `npu_resize = linear`, GPU 대비 97.5% / 98.5%)
-- **배포 폴더(`publish`)는 다시 배포하지 않았다** — 지금 배포본은 Nearest 판이다. 다시 배포할 땐 배포 폴더 짝도 `-Model publishest.onnx` 로 다시 만든다(Nearest 로 보정한 옛 짝도 쓰긴 된다 — NpuBench README 결과 3)
+- **배포 폴더(`publish`)는 다시 배포하지 않았다** — 지금 배포본은 Nearest 판이다. 다시 배포할 땐 배포 폴더 짝도 `-Model publish\best.onnx` 로 다시 만든다(Nearest 로 보정한 옛 짝도 쓰긴 된다 — NpuBench README 결과 3)
