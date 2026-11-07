@@ -53,6 +53,13 @@ ROUND3 = [  # 3차(11-07): 그림으로는 멈춤을 못 가른다(2차) — 멈
     {"name": "r3-gemma3-4b", "model": "gemma3:4b", "think": None, "r3": True, "variants": ["D3"]},
     {"name": "r3-qwen3-vl-8b", "model": "qwen3-vl:8b-instruct", "think": None, "r3": True, "variants": ["D3"]},
 ]
+ROUND4 = [  # 4차(11-07): 판정을 묻지 않고 관찰만 묻는다 — 판정은 decide() 규칙이(돌리기 전에 정함). 장면은 3차와 같은 20개. --round4
+    # 3차에서 VLM 이 질문의 예시 문구를 근거로 베꼈다 — 예시 문구·검출 라벨·추적기 사실을 모두 뺐다
+    {"name": "r4-qwen3.5-4b", "model": "qwen3.5:4b", "think": False, "r4": True, "variants": ["D2", "D3"]},
+    {"name": "r4-qwen3.5-2b", "model": "qwen3.5:2b", "think": False, "r4": True, "variants": ["D2"]},
+    {"name": "r4-gemma3-4b", "model": "gemma3:4b", "think": None, "r4": True, "variants": ["D2"]},
+    {"name": "r4-qwen3-vl-8b", "model": "qwen3-vl:8b-instruct", "think": None, "r4": True, "variants": ["D2"]},
+]
 OPTIONS = {"temperature": 0, "seed": 7, "num_ctx": 8192}   # 올릴 때도 같은 값 — 다르면 첫 호출에서 모델을 다시 올린다
 VARIANTS = {"A": ["full"], "B": ["full", "crop"], "C": ["full", "crop", "prev", "next"], "D": ["crop"], "D3": ["crop"], "D2": ["crop2"]}
 
@@ -128,6 +135,55 @@ verdict:
 cause_evidence 에는 판정 근거가 된 '보이는 단서'를 짧게 쓴다(예: '소방차와 구조대원', '앞뒤로 줄지어 선 차들과 정지선').
 description_ko 는 박스 안 차량과 주변을 한국어 한두 문장으로 쓴다."""
 
+# ── 4차: 관찰만 묻는다(예·아니오·모름). 판정은 decide() 가 단서로 — 규칙은 돌리기 전에 정했다
+YN = ["yes", "no", "unknown"]
+ENUMS4 = {
+    "image_usable": YN, "vehicle_in_box": YN, "vehicle_type": ENUMS["object_type"],
+    "emergency_vehicle_near": YN, "flashing_lights": YN, "people_on_road": YN, "visible_damage": YN,
+    "door_or_trunk_open": YN, "cones_or_triangle": YN,
+    "vehicles_stopped_ahead": YN, "signal_or_stop_line": YN, "parking_area": YN,
+}
+
+
+def make_schema4():
+    props = {"description_ko": {"type": "string"}, **{k: {"type": "string", "enum": v} for k, v in ENUMS4.items()}}
+    return {"type": "object", "properties": props, "required": list(props)}
+
+
+SYSTEM4 = """너는 도로 CCTV 화면을 보고 사실만 적는 관찰자다. 그림은 CCTV 화면의 일부를 키운 것이고 빨간 박스가 확인할 대상이다.
+판단하거나 추측하지 말고 그림에 보이는 것만 답한다. 보이지 않거나 확실하지 않으면 unknown 을 고른다. 화면에 겹친 글자는 무시한다.
+항목:
+- image_usable: 그림이 대상을 알아볼 만큼 선명한가(검은 화면·심한 흔들림·심한 흐림이면 no)
+- vehicle_in_box: 빨간 박스 안에 차량이 있는가
+- vehicle_type: 박스 안 차량의 종류(차량이 없으면 none)
+- emergency_vehicle_near: 박스 안이나 그 주변에 소방차·구급차·경찰차·견인차가 보이는가
+- flashing_lights: 경광등이나 비상등을 켠 차량이 보이는가
+- people_on_road: 차로 위(보도·횡단보도는 빼고)에 차 밖으로 나와 서 있거나 걷는 사람이 보이는가
+- visible_damage: 박스 안 차량에 찌그러지거나 부서진 곳이 보이거나, 도로에 파편이 보이는가
+- door_or_trunk_open: 박스 안 차량의 문·트렁크·보닛이 열려 있는가
+- cones_or_triangle: 라바콘이나 삼각대가 도로에 놓여 있는가
+- vehicles_stopped_ahead: 박스 안 차량 바로 앞(같은 차로)에 다른 차량이 바짝 붙어 줄지어 있는가
+- signal_or_stop_line: 신호등·정지선·횡단보도가 박스 안 차량 가까이 보이는가
+- parking_area: 박스 안 차량이 주차장이나 주차 칸 안에 있는가
+description_ko 는 보이는 것을 한국어 한두 문장으로 쓴다."""
+
+INCIDENT_CUES = ("emergency_vehicle_near", "flashing_lights", "people_on_road", "visible_damage", "door_or_trunk_open")
+NORMAL_CUES = ("vehicles_stopped_ahead", "signal_or_stop_line", "parking_area")
+
+
+def decide(p):
+    """4차 판정 규칙(돌리기 전에 정함): 화면 불량 → 차량 아님 → 사고 단서가 하나라도 → 정상 맥락 → 아무 단서도 없으면
+    규칙(차로에 멈춘 차)의 후보를 그대로 둔다(사고·고장). 라바콘·삼각대는 표시용 — 주차장 옆 라바콘 같은 정상 장면이 있어 판정엔 안 쓴다"""
+    if p["image_usable"] == "no":
+        return "unusable_image"
+    if p["vehicle_in_box"] == "no":
+        return "not_vehicle"
+    if any(p[k] == "yes" for k in INCIDENT_CUES):
+        return "accident_or_breakdown"
+    if any(p[k] == "yes" for k in NORMAL_CUES):
+        return "normal_stop"
+    return "accident_or_breakdown"
+
 
 def call(path, body=None, timeout=900):
     req = urllib.request.Request(API + path, data=None if body is None else json.dumps(body).encode(),
@@ -182,12 +238,15 @@ def run_config(cfg, cases, out_dir, round3=()):
         for c in cases:
             d = HERE / "out" / "cases" / c["id"]
             info = json.loads((d / "case.json").read_text(encoding="utf-8"))
-            if cfg.get("r3") and (c["id"] not in round3 or info.get("stopped_s", 0) < 3):
-                continue   # 3차는 규칙이 고를 '멈춘 차'만
+            if (cfg.get("r3") or cfg.get("r4")) and (c["id"] not in round3 or info.get("stopped_s", 0) < 3):
+                continue   # 3·4차는 규칙이 고를 '멈춘 차'만
             for v, imgs in VARIANTS.items():
                 if (c["id"], v) in done or v not in cfg.get("variants", ["A", "B", "C"]):
                     continue
-                if cfg.get("r3"):
+                if cfg.get("r4"):
+                    ask = "보이는 것만 JSON 으로 답하라."
+                    system, schema, enums, texts = SYSTEM4, make_schema4(), ENUMS4, ("description_ko",)
+                elif cfg.get("r3"):
                     ask = (f"추적기: 박스 안 차량은 {info['stopped_s']:.0f}초째 거의 움직이지 않았고 차로 구역 안에 있다(멈춤·위치는 확인됨). "
                            f"검출기 라벨 '{info['label']}'(신뢰도 {info['score']:.2f}). 왜 멈췄는지 JSON 으로 답하라.")
                     system, schema, enums, texts = SYSTEM3, make_schema3(), ENUMS3, ("description_ko", "cause_evidence")
@@ -215,6 +274,8 @@ def run_config(cfg, cases, out_dir, round3=()):
                     try:
                         parsed = json.loads(rec["content"])
                         rec.update(parsed=parsed, invalid=check(parsed, enums, texts))
+                        if cfg.get("r4") and not rec["invalid"]:
+                            parsed["verdict"] = decide(parsed)   # 모델 답이 아니라 규칙 — 채점은 3차 정답으로
                     except json.JSONDecodeError:
                         rec.update(parsed=None, invalid=["json"])
                 except (urllib.error.URLError, TimeoutError, OSError) as e:
@@ -237,12 +298,13 @@ def main():
     ap.add_argument("--probe", action="store_true", help="1차 결과 뒤 확인(PROBES)을 돈다")
     ap.add_argument("--round2", action="store_true", help="2차(ROUND2)를 돈다")
     ap.add_argument("--round3", action="store_true", help="3차(ROUND3)를 돈다")
+    ap.add_argument("--round4", action="store_true", help="4차(ROUND4)를 돈다")
     a = ap.parse_args()
     spec = json.loads((HERE / "cases.json").read_text(encoding="utf-8"))
     cases, round3 = spec["cases"], spec.get("round3", {})
     if a.cases:
         cases = [c for c in cases if c["id"] in a.cases.split(",")]
-    pool = ROUND3 if a.round3 else ROUND2 if a.round2 else PROBES if a.probe else CONFIGS
+    pool = ROUND4 if a.round4 else ROUND3 if a.round3 else ROUND2 if a.round2 else PROBES if a.probe else CONFIGS
     configs = [c for c in pool if not a.configs or c["name"] in a.configs]
     out_dir = HERE / "out" / a.results
     out_dir.mkdir(parents=True, exist_ok=True)

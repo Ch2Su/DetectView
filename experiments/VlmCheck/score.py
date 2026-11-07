@@ -32,12 +32,13 @@ def score(rec, gt, confirm="incident"):
     p = rec.get("parsed") if not rec.get("invalid") else None
     out = {"valid": p is not None}
     out["verdict"] = p is not None and p["verdict"] in gt_verdicts(gt, rec["variant"])
+    # 4차는 항목 이름·값이 조금 다르다(vehicle_type, people_on_road yes/no, emergency_vehicle_near)
     if gt.get("object_type") is not None:
-        out["object"] = p is not None and p["object_type"] in gt["object_type"]
+        out["object"] = p is not None and p.get("object_type", p.get("vehicle_type")) in gt["object_type"]
     if gt.get("people") is not None:
-        out["people"] = p is not None and p["people_on_road"] in (("few", "many") if gt["people"] else ("none",))
+        out["people"] = p is not None and p["people_on_road"] in (("few", "many", "yes") if gt["people"] else ("none", "no"))
     if gt.get("emergency") is not None:
-        out["emergency"] = p is not None and p["emergency_vehicles"] == ("yes" if gt["emergency"] else "no")
+        out["emergency"] = p is not None and p.get("emergency_vehicles", p.get("emergency_vehicle_near")) == ("yes" if gt["emergency"] else "no")
     out["smoke"] = p is not None and p.get("smoke_or_fire") == "yes"     # 3차 스키마엔 이 항목이 없다
     # 앱에서 쓰는 꼴: VLM 이 유고를 '확인'(1·2차 incident, 3차 accident_or_breakdown)했나 안 했나. 정답 목록이 그것뿐이면
     # 확인해야 맞고, 없으면 확인하지 않아야 맞다. 섞여 있으면(T2·흐림·검은 화면의 C) 빼고 센다
@@ -57,7 +58,7 @@ def main():
     cases = {c["id"]: c for c in spec["cases"]}
     # 3차 결과 폴더(round3*)는 판정 이름이 다르다 — cases.json 의 round3 정답으로 바꿔 채점
     confirm = "incident"
-    if res_dir.name.startswith("round3"):
+    if res_dir.name.startswith(("round3", "round4")):   # 4차는 관찰을 규칙(decide)으로 바꾼 판정이 같은 이름으로 들어 있다
         confirm = "accident_or_breakdown"
         cases = {cid: dict(c, gt=dict(c["gt"], verdict=spec["round3"][cid])) for cid, c in cases.items() if cid in spec["round3"]}
     recs = []
