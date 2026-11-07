@@ -103,10 +103,16 @@ pwsh tests/ui/Run-All.ps1
   옛 판 `UiLatency` 형식이 남은 PowerShell 세션에선 분명한 메시지로 멈춘다(Add-Type 형식은 못 바꿈 — 새 pwsh 에서 돌릴 것)
 - 종료 코드 = 실패 건수(`Run-All` 은 0/1). 파일 열기 대화상자 자동화 요령 등은 `Common.ps1` 머리말에 정리해 두었다.
   `Run-All` 은 테스트 파일이 try 밖에서 throw 해도(영상·빌드 없음) 그 파일만 실패로 세고 다음 파일을 돈다(2026-10-30 — 예전엔 거기서 통째로 멈췄다)
-- 마지막 전체 실행: 2026-11-07 저녁, **Debug** — VLM 설명(`MainWindow.Vlm.cs` 등 — docs/vlm-annotation.md)을 넣은 뒤 worktree 에 `publish` 연결을 두고 `Run-All` 한 번에 278 항목 중 277 통과:
+- 마지막 전체 통과: 2026-11-07 저녁, **배포본 `publish`** — VLM 설명판 `4c05f5f` 로 다시 배포(작업 트리가 깨끗한 worktree 에서 임시 폴더로 내보내 exe 만 옮김 — 132,590,495 바이트,
+  배포 폴더 모델·NPU 짝은 그대로 `94A26C12…` · `BD18D32C…`, Release DLL 에 가짜 VLM·결함 이름 없음). worktree 에 `publish` 연결을 두고 `Run-All -ExeDir publish` 한 번에 251 항목 모두 통과:
+  `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 · `Test-SceneChange` 21 · `Test-ZoneEvents` 21 · `Test-Incident` 16 · **`Test-VlmAnnotation` 6(새 파일 — Release 라 기본 꺼짐·툴팁만)** ·
+  `Test-ViewIdentity` 27 · `Test-VfrPlayback` 26 · `Test-ScreenHud` 33(DXGI 2560×1440, 결함 주입은 Release 라 빠짐) · `Test-NpuSwitch` 28.
+  NPU 전환 5.1초(캐시), 준비 동안 창 응답 WM_NULL 최대 1~2 ms · UIA 최대 13~15 ms. 참고용 재생 처리 GPU 69.0 · NPU 40.9 FPS, HUD 84.4 FPS (UI 테스트의 FPS 는 한 번 읽은 값이라 벤치마크가 아니다).
+  배포본으로 진짜 Ollama 도 손으로 봤다 — 관설3교 사고 장면에서 Debug 와 같은 단서 넷·같은 설명(7.3초), 창을 닫으니 모델이 내려감 (docs/vlm-annotation.md '구현과 확인')
+- 그 전: 같은 날 저녁, **Debug** — VLM 설명(`MainWindow.Vlm.cs` 등 — docs/vlm-annotation.md)을 넣은 뒤 worktree 에 `publish` 연결을 두고 `Run-All` 한 번에 278 항목 중 277 통과:
   `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 · `Test-SceneChange` 21 · `Test-ZoneEvents` 21 · `Test-Incident` 16 · **`Test-VlmAnnotation` 27(새 파일)** · `Test-ViewIdentity` 27 ·
   `Test-VfrPlayback` 26 · `Test-ScreenHud` 39 · `Test-NpuSwitch` 28. 남은 1건은 `Test-ViewIdentity` 의 'A 로 돌아옴: 헤더 V1 · 1개' — 값은 표본 28개 모두 맞았는데 표본 수 기준(30)에 2개 모자랐다
-  (같은 실행 초반에 TrackerCheck 를 빌드해 PC 가 바빴다). 그 파일만 다시 돌리니 표본 38개로 27 항목 모두 통과. 배포본은 아직 이 판으로 다시 배포하지 않았다
+  (같은 실행 초반에 TrackerCheck 를 빌드해 PC 가 바빴다). 그 파일만 다시 돌리니 표본 38개로 27 항목 모두 통과
 - 그 전 전체 통과: 2026-11-06 아침, **배포본 `publish`** — `a378a58`(루트 모델 YOLO26m 640×384 · SAHI 타일 = 모델 입력 크기 · 창 제목에 입력 크기)로 다시 배포하고,
   사용자 승인으로 **배포 폴더 모델도** 같은 YOLO26m 640×384(`94A26C12…`)로 바꿨다. 옛 YOLO26s(09-17, `87D0E1CB…`)와 그 짝(`D889EA23…`)은 `best.yolo26s-0917.onnx` · `best.yolo26s-0917.npu.onnx` 로
   이름을 바꿔 옆에 두었다. 짝은 `Make-NpuModel.ps1 -Model publish\best.onnx` 로 만들어(33초) 루트 짝과 바이트까지 같다(`BD18D32C…`).
