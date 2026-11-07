@@ -78,6 +78,13 @@ STRATA_POOL = [  # Strata(11-08 — 사용자 요청): Qwen3.6-35B-A3B(Unsloth U
     {"name": "r4-strata-qwen3.6-35b-a3b", "model": "qwen3.6-35b-a3b", "think": False, "r4": True, "variants": ["D2", "D3"],
      "api": "openai", "base": STRATA},
 ]
+CLAUDE_POOL = [  # Claude API(11-08 — 사용자 요청): 같은 4차 질문·그림을 강한 모델에 — 로컬 VLM 의 한계가 모델 능력 탓인지 보는 상한선.
+    # 형식은 output_config.format(json_schema)으로 생성 중에 강제된다. Opus 5.5 는 temperature 를 못 정하고 생각을 끌 수 없다 — effort low.
+    # 실제 CCTV 크롭이 Anthropic 으로 나간다(사용자 승인). 키는 사용자 환경 변수 ANTHROPIC_API_KEY. --claude
+    {"name": "r4-claude-opus-5-5", "model": "claude-opus-5-5", "think": None, "r4": True, "variants": ["D2", "D3"],
+     "api": "anthropic", "effort": "low"},
+]
+PRICE_PER_MTOK = {"claude-opus-5-5": (4.0, 20.0), "claude-sonnet-5-5": (2.0, 10.0), "claude-haiku-5-5": (0.10, 0.50)}   # 입력·출력 달러(11-08)
 OPTIONS ={"temperature": 0, "seed": 7, "num_ctx": 8192}   # 올릴 때도 같은 값 — 다르면 첫 호출에서 모델을 다시 올린다
 VARIANTS = {"A": ["full"], "B": ["full", "crop"], "C": ["full", "crop", "prev", "next"], "D": ["crop"], "D3": ["crop"], "D2": ["crop2"]}
 
@@ -275,6 +282,34 @@ def openai_body(cfg, q, images_b64):
             "chat_template_kwargs": {"enable_thinking": bool(cfg["think"])}}
 
 
+def anthropic_client():
+    """공식 SDK 클라이언트. 키는 환경 변수 — 이 프로세스가 키를 넣기 전에 뜬 앱에서 왔으면 사용자 환경 변수(레지스트리)에서 읽는다.
+    키 값은 어디에도 찍거나 저장하지 않는다"""
+    import anthropic
+    key = os.environ.get("ANTHROPIC_API_KEY")
+    if not key and sys.platform == "win32":
+        import winreg
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as k:
+                key = winreg.QueryValueEx(k, "ANTHROPIC_API_KEY")[0]
+        except OSError:
+            key = None
+    return anthropic.Anthropic(api_key=key) if key else anthropic.Anthropic()
+
+
+def claude_call(client, cfg, q, images_b64):
+    """같은 질문을 Claude 에 — 그림은 base64 블록(글보다 먼저), 형식은 output_config.format 의 json_schema(additionalProperties false 를 더함),
+    생각은 Opus 5.5 가 늘 켜므로 effort 로만 줄인다. 거절되면 다른 모델이 잇는 fallbacks 'default' — 누가 답했는지는 기록에 남긴다"""
+    content = [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b}} for b in images_b64]
+    content.append({"type": "text", "text": q["text"]})
+    return client.beta.messages.create(
+        model=cfg["model"], max_tokens=cfg.get("max_tokens", 4096), system=q["system"],
+        messages=[{"role": "user", "content": content}],
+        output_config={"format": {"type": "json_schema", "schema": {**q["schema"], "additionalProperties": False}},
+                       "effort": cfg.get("effort", "low")},
+        betas=["server-side-fallback-2026-07-01"], fallbacks="default")
+
+
 def check(parsed, enums=ENUMS, texts=("description_ko",)):
     bad = [k for k, v in enums.items() if parsed.get(k) not in v]
     bad += [k for k in texts if not isinstance(parsed.get(k), str)]
@@ -292,7 +327,13 @@ def run_config(cfg, cases, out_dir, round3=()):
     # 모델 올리기 — 걸린 시간과 VRAM 을 남긴다
     before = gpu_mem_mib()
     t0 = time.time()
-    if cfg.get("api") == "openai":   # Strata: `strata launch` 가 이미 올려 두었다 — 서버 상태와 그때의 GPU 메모리만 남긴다
+    client = None
+    if cfg.get("api") == "anthropic":   # Claude API: 올릴 모델이 없다 — SDK 판만 남긴다
+        import anthropic
+        client = anthropic_client()
+        meta = {"config": cfg, "load_s": 0, "api": "anthropic", "sdk": anthropic.__version__}
+        print(f"== {cfg['name']} Claude API {cfg['model']} · SDK {anthropic.__version__} · effort {cfg.get('effort')}", flush=True)
+    elif cfg.get("api") == "openai":   # Strata: `strata launch` 가 이미 올려 두었다 — 서버 상태와 그때의 GPU 메모리만 남긴다
         status = call("/v1/status", base=cfg["base"], timeout=30)
         meta = {"config": cfg, "load_s": round(time.time() - t0, 2), "gpu_mib_before": before, "gpu_mib_after_load": gpu_mem_mib(),
                 "server": {k: status.get(k) for k in ("service", "model", "engine", "structured_output", "vision", "context", "concurrency")}}
@@ -319,9 +360,10 @@ def run_config(cfg, cases, out_dir, round3=()):
                     continue
                 q = question(cfg, info, v)
                 images = [base64.b64encode((d / f"{k}.jpg").read_bytes()).decode() for k in q["images"]]
+                body = None   # Claude API 는 claude_call 이 SDK 로 보낸다
                 if cfg.get("api") == "openai":
                     body = openai_body(cfg, q, images)
-                else:
+                elif not cfg.get("api"):
                     body = {"model": cfg["model"], "stream": False, "keep_alive": "20m", "format": q["schema"],
                             "messages": [{"role": "system", "content": q["system"]},
                                          {"role": "user", "content": q["text"], "images": images}],
@@ -331,7 +373,20 @@ def run_config(cfg, cases, out_dir, round3=()):
                 rec = {"config": cfg["name"], "case": c["id"], "variant": v, "error": None}
                 t0 = time.time()
                 try:
-                    if cfg.get("api") == "openai":
+                    if cfg.get("api") == "anthropic":
+                        r = claude_call(client, cfg, q, images)
+                        wall = round(time.time() - t0, 2)
+                        usage = r.usage
+                        price_in, price_out = PRICE_PER_MTOK.get(r.model, PRICE_PER_MTOK.get(cfg["model"], (0, 0)))
+                        rec.update(wall_s=wall, done_reason=r.stop_reason, prompt_tokens=usage.input_tokens, out_tokens=usage.output_tokens,
+                                   total_s=wall, load_s=0, content=next((b.text for b in r.content if b.type == "text"), ""),
+                                   thinking_chars=sum(len(getattr(b, "thinking", "") or "") for b in r.content if b.type == "thinking"),
+                                   served_by=r.model,
+                                   fallback=any(getattr(e, "type", None) == "fallback_message" for e in (getattr(usage, "iterations", None) or [])),
+                                   cost_usd=round((usage.input_tokens * price_in + usage.output_tokens * price_out) / 1e6, 5))
+                        if r.stop_reason == "refusal":
+                            rec["stop_details"] = str(getattr(r, "stop_details", None))[:300]
+                    elif cfg.get("api") == "openai":
                         r = call("/v1/chat/completions", body, base=cfg["base"])
                         choice, usage = r["choices"][0], r.get("usage") or {}
                         rec.update(wall_s=round(time.time() - t0, 2), done_reason=choice.get("finish_reason"),
@@ -355,6 +410,10 @@ def run_config(cfg, cases, out_dir, round3=()):
                     rec.update(wall_s=round(time.time() - t0, 2), error=f"{e} {e.read().decode('utf-8', 'replace')[:300]}")
                 except (urllib.error.URLError, TimeoutError, OSError) as e:
                     rec.update(wall_s=round(time.time() - t0, 2), error=str(e))
+                except Exception as e:   # Claude SDK 의 오류(APIStatusError 등 — 메시지에 키는 없다). 다른 길의 예외는 그대로 올린다
+                    if cfg.get("api") != "anthropic":
+                        raise
+                    rec.update(wall_s=round(time.time() - t0, 2), error=f"{type(e).__name__}: {e}"[:400])
                 f.write(json.dumps(rec, ensure_ascii=False) + "\n")
                 f.flush()
                 p = rec.get("parsed") or {}
@@ -378,14 +437,15 @@ def main():
     ap.add_argument("--round4", action="store_true", help="4차(ROUND4)를 돈다")
     ap.add_argument("--quant", action="store_true", help="4차 장면으로 양자화·크기 비교(QUANT)를 돈다")
     ap.add_argument("--strata", action="store_true", help="4차 장면을 Strata 엔진(STRATA_POOL — 먼저 strata launch)으로 돈다")
+    ap.add_argument("--claude", action="store_true", help="4차 장면을 Claude API(CLAUDE_POOL — 돈이 든다, 그림이 밖으로 나간다)로 돈다")
     a = ap.parse_args()
     sys.stdout.reconfigure(errors="replace")   # 콘솔이 cp949 면 설명의 '—' 같은 글자가 긴 실행을 멈추게 한다
     spec = json.loads((HERE / "cases.json").read_text(encoding="utf-8"))
     cases, round3 = spec["cases"], spec.get("round3", {})
     if a.cases:
         cases = [c for c in cases if c["id"] in a.cases.split(",")]
-    pool = (STRATA_POOL if a.strata else QUANT if a.quant else ROUND4 if a.round4 else ROUND3 if a.round3 else ROUND2 if a.round2
-            else PROBES if a.probe else CONFIGS)
+    pool = (CLAUDE_POOL if a.claude else STRATA_POOL if a.strata else QUANT if a.quant else ROUND4 if a.round4 else ROUND3 if a.round3
+            else ROUND2 if a.round2 else PROBES if a.probe else CONFIGS)
     configs = [c for c in pool if not a.configs or c["name"] in a.configs]
     out_dir = HERE / "out" / a.results
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -401,7 +461,7 @@ def main():
     try:
         prev_model = None   # Ollama 에 올린 앞 모델 — Strata 쪽 모델은 `strata launch --stop` 이 내린다
         for cfg in configs:
-            ollama = cfg.get("api") != "openai"
+            ollama = not cfg.get("api")
             if prev_model and (not ollama or prev_model != cfg["model"]):
                 call("/api/generate", {"model": prev_model, "keep_alive": 0})   # 앞 모델을 내린다
                 prev_model = None

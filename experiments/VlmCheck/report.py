@@ -72,7 +72,7 @@ RULES4 = [("미리 정한 규칙", ("usable", "vehicle", "incident", "normal")),
           ("사후 1 · 단서 먼저", ("vehicle", "incident", "normal", "usable")),     # 결과를 보고 고른 규칙(README 결과 5)
           ("사후 2 · 선명도 안 봄", ("vehicle", "incident", "normal"))]
 ALL_CONFIGS = {c["name"]: c for pool in (run_vlm.CONFIGS, run_vlm.PROBES, run_vlm.ROUND2, run_vlm.ROUND3, run_vlm.ROUND4,
-                                          run_vlm.QUANT, run_vlm.STRATA_POOL) for c in pool}
+                                          run_vlm.QUANT, run_vlm.STRATA_POOL, run_vlm.CLAUDE_POOL) for c in pool}
 
 
 def ko(v):
@@ -93,8 +93,9 @@ def short_name(name):
 
 
 def cfg_tags(cfg):
-    return [t for k, t in (("think", "생각 모드"), ("desc_first", "설명 먼저"), ("no_label", "라벨 없이"), ("api", "Strata 엔진"))
-            if cfg.get(k)]
+    tags = [t for k, t in (("think", "생각 모드"), ("desc_first", "설명 먼저"), ("no_label", "라벨 없이")) if cfg.get(k)]
+    api = {"openai": "Strata 엔진", "anthropic": "Claude API"}.get(cfg.get("api"))
+    return tags + ([api] if api else [])
 
 
 def frac(xs):
@@ -365,7 +366,8 @@ def _build(res_dir):
               "invalid": sum(not a["s"]["valid"] for _, a in done),
               "wall": [a["rec"]["wall_s"] for _, a in done],
               "out_tok": [a["rec"]["out_tokens"] for _, a in done if a["rec"].get("out_tokens") is not None],
-              "think": [a["rec"].get("thinking_chars") or 0 for _, a in done]}
+              "think": [a["rec"].get("thinking_chars") or 0 for _, a in done],
+              "cost": sum(a["rec"].get("cost_usd") or 0 for _, a in done)}   # Claude API 만 (달러)
         if kind == 4:
             st["rules"] = [([a["rules"][i]["ok"] if a.get("rules") else False for _, a in done],
                             [a["rules"][i]["conf"] if a.get("rules") else confirm not in a["gtv"] for _, a in done])
@@ -451,7 +453,8 @@ def _build(res_dir):
         cells += [f'<td class="num">{st["invalid"]}'] * show_invalid + [f'<td class="num">{st["err"]}'] * show_err
         cells += [f'<td class="num">{statistics.median(wall):.1f} · {max(wall):.1f}초' if wall else '<td class="num">–',
                   f'<td class="num">{statistics.median(st["out_tok"]):.0f}' if st["out_tok"] else '<td class="num">–',
-                  f'<td class="num">{meta["load_s"]}초 · {meta.get("size_vram_gib")}/{meta.get("size_gib")} GiB GPU' if "size_gib" in meta
+                  f'<td class="num">클라우드 · 합계 ${st["cost"]:.2f}' if meta.get("api") == "anthropic"
+                  else f'<td class="num">{meta["load_s"]}초 · {meta.get("size_vram_gib")}/{meta.get("size_gib")} GiB GPU' if "size_gib" in meta
                   # Strata 는 `strata launch` 가 미리 올린다 — 돌릴 때 GPU 전체 사용량(nvidia-smi)만 안다
                   else f'<td class="num">미리 올림 · GPU {meta["gpu_mib_after_load"] / 1024:.1f} GiB 사용' if meta.get("gpu_mib_after_load")
                   else "<td>–"]
@@ -542,8 +545,14 @@ def _build(res_dir):
                     t.append(f'입력 {rec["prompt_tokens"]:,} · 출력 {rec.get("out_tokens") or 0:,} 토큰')
                 if rec.get("thinking_chars"):
                     t.append(f'생각 {rec["thinking_chars"]:,}자')
-                if rec.get("done_reason") == "length":
+                if rec.get("done_reason") in ("length", "max_tokens"):
                     t.append("출력 한도에 걸림")
+                if rec.get("done_reason") == "refusal":
+                    t.append("거절됨")
+                if rec.get("cost_usd") is not None:
+                    t.append(f'${rec["cost_usd"]:.4f}')
+                if rec.get("fallback"):   # 거절돼 다른 모델이 이어서 답했다 — 이 답은 그 모델의 것
+                    t.append(f'{rec.get("served_by")} 이 대신 답함')
                 timing = " · ".join(t)
                 if p is None:
                     state, verdict = "bad", f'<span class="v na">형식 어긋남 ({E(", ".join(rec.get("invalid") or []))})</span>'

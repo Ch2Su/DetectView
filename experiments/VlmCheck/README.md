@@ -49,6 +49,7 @@ uv run --no-project --python 3.12 experiments/VlmCheck/run_vlm.py --round3 --res
 uv run --no-project --python 3.12 experiments/VlmCheck/run_vlm.py --round4 --results round4
 uv run --no-project --python 3.12 experiments/VlmCheck/run_vlm.py --quant --results round4_quant   # 결과 8·9 — 먼저 ollama pull qwen3.5:4b-q8_0 · qwen3.5:9b · qwen3.6:35b-a3b
 uv run --no-project --python 3.12 experiments/VlmCheck/run_vlm.py --strata --results round4_quant  # 결과 9 — 먼저 strata launch(이 노트북에선 아직 못 띄움)
+uv run --no-project --python 3.12 --with anthropic experiments/VlmCheck/run_vlm.py --claude --results round4_quant   # 결과 10 — 돈이 든다(40번 약 $0.55), 그림이 밖으로 나간다
 uv run --no-project --python 3.12 experiments/VlmCheck/score.py round4
 uv run --no-project --python 3.12 --with pillow experiments/VlmCheck/report.py   # 장면별 보고서 — 폴더 이름을 주면 그 차수만
 pwsh experiments/VlmCheck/Measure-GpuShare.ps1   # 결과 6 — 배포본 창이 실행마다 떴다 닫힌다
@@ -256,6 +257,32 @@ uv run --no-project --python 3.12 --with opencv-python-headless --with numpy --w
   서버가 뜨지 않아 **한 번도 돌리지 못했다** — 먼저 `strata launch --family qwen36 --model ud-q4_k_xl --data-dir E:\Strata\models --context 8k --vision on --parallel 1 --access local --no-api-key --yes --no-tui`
 - **판단: 앱은 4B 4비트 그대로.** MoE 는 판정 숫자는 낫지만 앱이 보여 주는 단서는 같고, 3배 느리며 CPU·RAM 을 크게 쓴다. Strata 는 이 노트북 GPU 로는 뜨지 않고, 떠도 형식 강제가 없어 이 용도엔 Ollama 가 맞다
 - 받은 것: Ollama `qwen3.6:35b-a3b`(E:, 21 GB — `ollama rm qwen3.6:35b-a3b`), Strata 모델 `E:\Strata\models`(22 GB)
+
+## 결과 10 — Claude API(Opus 5.5)로 상한선 (`--claude`, 2026-11-08)
+
+사용자 질문: Claude API 로도 해 볼까. 앱 후보가 아니라 **같은 질문·그림을 훨씬 강한 모델에 물었을 때 어디까지 나아지는가**를 본다 — 로컬 모델의 한계가 모델 능력 탓인지,
+그림 한 장으로 묻는 방식 탓인지. 실제 CCTV 크롭 20장이 Anthropic 으로 나간다(사용자 승인, 키는 사용자가 넣은 사용자 환경 변수 `ANTHROPIC_API_KEY` — 스크립트는 값을 찍지 않는다).
+공식 Python SDK 2.6.0, `claude-opus-5-5`, 형식은 `output_config.format`(json_schema — 생성 중에 강제, `additionalProperties: false` 를 더함), `effort: low`
+(Opus 5.5 는 생각을 끌 수 없고 temperature 를 못 정한다 — Ollama 처럼 매번 같은 답은 아니다, 한 번만 돌림), 거절되면 다른 모델이 잇는 `fallbacks: "default"`(대신 답한 호출 0 · 거절 0).
+
+| 판 | 한 번(중앙) | 비용·자원 | 미리 정한 규칙 D3 / D2 | 사후 1 D3 / D2 | '선명하지 않음' D3 / D2 | 앱 칩 출동 차량 · 차로 위 사람(D3) |
+|---|---|---|---|---|---|---|
+| qwen3.5:4b — 지금 앱 | 2.7초 | GPU 3.1 GiB, 앱 재생 −22%(결과 6) | 13 / 6 | 16 / 12 | 8 / 14 | 20/20 · 4/5 |
+| qwen3.6:35b-a3b — 로컬 최고 | 8.1초 | RAM 쪽 16 GiB | 18 / 17 | 19 / 18 | 3 / 4 | 20/20 · 4/5 |
+| **claude-opus-5-5** | **3.2초** | 40번 **$0.55**(한 번 약 1.4센트) · 이 노트북 GPU·CPU 안 씀 | **20 / 17** | **20 / 17** | 2 / 2 | 20/20 · 4/5 |
+
+- **3배 크롭(앱)에서 20개를 모두 맞혔다** — '선명하지 않음'은 회전 흐림(T1)·검은 화면(T3)에만 답했고, 나무 가짜 검출(S1)과 글자 박스(S2)엔 '박스에 차 없음'
+  (S1 을 맞힌 로컬 모델은 없다), 길모퉁이 차(N4)에선 횡단보도를 봐서 신호·정지선
+- **혼자 멈춘 차(P5~P8·T2)는 단서가 없어 '규칙 후보 그대로'로 맞았다 — 사고·고장을 알아본 것은 아니다.** 다만 설명이 덜 지어낸다: 멈춘 대상을 "주행 중"이라 한 것은 P7 하나
+  (4B 는 P7·P8·T2. Claude 의 P5·P6 설명에 나오는 "움직인다·주행 중"은 옆을 지나는 차 이야기다)
+- 2배 크롭은 17/20 — 신호 대기 줄(N1·R1)·길가 차(R3)가 좁게 잘려 신호·줄이 안 보이면 단서 없음 → 앱의 3배 크롭이 맞다
+- **앱이 띄우는 칩은 20장면 중 11장면이 4B 와 같다.** Claude 가 더한 칩: N4 신호·정지선, S1 박스에 차 없음, P11 라바콘·삼각대, P2 앞에 선 차.
+  뺀 칩: P5 차로 위 사람(설명엔 "사람으로 보이는 형체"), P4·P9·S2·N1 앞에 선 차
+- 입력 2,022~2,136 토큰(그림 포함), 출력 219~600 토큰(생각 포함)
+- **판단: 관찰자로서는 확실히 낫다** — 거짓 '흐림'이 없고 가짜 검출을 알아보며 설명을 덜 지어낸다. 로컬 4B 의 약점(흐림 남발·S1)은 모델 능력 탓이 컸다.
+  하지만 그림 한 장으로 혼자 멈춘 차가 사고인지 가르는 일은 Claude 도 못 한다. 앱 칩 차이는 몇 장면이고, 그림이 PC 밖으로 나가며 후보마다 약 1.4센트·네트워크·키가 든다 —
+  앱에 '클라우드 VLM' 을 둘지는 사용자 결정(지금은 넣지 않음)
+- 주의: 정답 초안도 Claude(이 세션의 모델)가 썼다 — 같은 계열의 '눈'이라 잘 맞는 몫이 있을 수 있다. 20장면은 작다
 
 ## 판단 (4차까지)
 
