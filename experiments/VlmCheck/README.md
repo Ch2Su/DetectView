@@ -47,6 +47,7 @@ uv run --no-project --python 3.12 experiments/VlmCheck/run_vlm.py --probe --resu
 uv run --no-project --python 3.12 experiments/VlmCheck/run_vlm.py --round2 --results round2
 uv run --no-project --python 3.12 experiments/VlmCheck/run_vlm.py --round3 --results round3
 uv run --no-project --python 3.12 experiments/VlmCheck/run_vlm.py --round4 --results round4
+uv run --no-project --python 3.12 experiments/VlmCheck/run_vlm.py --quant --results round4_quant   # 결과 8 — 먼저 ollama pull qwen3.5:4b-q8_0 · qwen3.5:9b
 uv run --no-project --python 3.12 experiments/VlmCheck/score.py round4
 uv run --no-project --python 3.12 --with pillow experiments/VlmCheck/report.py   # 장면별 보고서 — 폴더 이름을 주면 그 차수만
 pwsh experiments/VlmCheck/Measure-GpuShare.ps1   # 결과 6 — 배포본 창이 실행마다 떴다 닫힌다
@@ -204,6 +205,30 @@ uv run --no-project --python 3.12 --with opencv-python-headless --with numpy --w
 
 - **장면 33개 모두 그림이 화소까지 같고 요청 본문도 같다**(그림과 keep_alive 만 빼고 — 질문 글·스키마 항목 순서·허용 값·옵션·think). 프레임 가장자리에서 잘린 크롭(356×512 · 512×443 등)도 같다
 - 진짜 Ollama 로 앱을 돌린 결과(test4 덤프트럭 '단서 없음' · 관설3교 소방차 단서 넷)는 `docs/vlm-annotation.md` '구현과 확인'
+
+## 결과 8 — 양자화·크기 비교 (`--quant`, 2026-11-08)
+
+사용자 질문: 양자화한 로컬 모델이 쓸 만한가. 지금까지 쓴 모델이 모두 양자화판이다 — 언어 부분만 줄였고 그림 읽는 부분(projector)은 BF16/F16 그대로
+(GGUF 를 직접 읽음: qwen3.5:4b 는 Q4_K 68%·Q6_K 32% + projector BF16 0.6 GB, qwen3.5:2b 는 Q8_0, gemma3:4b·qwen3-vl:8b 는 Q4_K_M).
+4차 질문·장면 20개 그대로 **같은 4B 를 8비트로**(양자화의 몫), **같은 4비트로 9B**(크기의 몫) 돌렸다. 기준인 4B 4비트도 같은 폴더에서 다시 돌렸다(`out/round4_quant`).
+
+| 판 | 올린 크기 | 한 번(중앙) | 미리 정한 규칙 D3 / D2 | 사후 1 D3 / D2 | '선명하지 않음' D3 / D2 | 4비트와 다른 답(240 중) D3 / D2 | 앱 칩 기준 출동 차량 · 차로 위 사람(D3) |
+|---|---|---|---|---|---|---|---|
+| qwen3.5:4b — Q4_K_M, 지금 앱 | 3.1 GiB 모두 GPU | 2.7초 | 13 / 6 | 16 / 12 | 8 / 14 | — | 20/20 · 4/5 |
+| qwen3.5:4b-q8_0 | 4.8 GiB 모두 GPU | 3.7초 | 15 / 11 | 16 / 14 | 6 / 9 | 34 / 36 | 20/20 · 4/5 |
+| qwen3.5:9b — Q4_K_M | 6.0 GiB 중 5.2 GPU | 5.8초 | 15 / 15 | 16 / **17** | 5 / 6 | 65 / 103 | 20/20 · 4/5 |
+
+- **기준을 다시 돌리니 4차 응답 40개가 글자까지 같다**(temperature 0 · seed 7 — 결정적). 판끼리의 차이는 잡음이 아니다
+- **8비트**: 답의 14%(34/240)가 바뀌었다. 주로 '선명하지 않음'이 줄어 미리 정한 규칙이 13 → 15/20(P5·N3)이지만, 4비트가 잡던 P5 사고 승용차 옆 사람을 놓쳤고 사후 1 은 16 그대로다
+- **9B**: 좁은 크롭(D2)에서 크게 나아졌다(6 → 15/20) — 작은 모델은 좁게 키운 그림을 '선명하지 않다'고 했다. 앱의 3배 크롭(D3)에선 15/20(사후 1 은 16 그대로) —
+  N4 길모퉁이 차에서 신호를 보고 P1 의 '선명하지 않음'이 없어졌지만, P5 는 '앞에 선 차'로 정상 정차, S2 글자 박스엔 '차가 있다'로 틀렸다.
+  **설명은 여전히 혼자 멈춘 차(P5~P8·T2)를 "달리고 있다·주행 중"이라 한다** — 그림 한 장으로 멈춤을 못 가르는 한계는 크기로 안 풀렸다
+- **앱이 보여 주는 칩**('예'일 때만 뜬다)으로는 세 판이 같다 — 출동 차량 20/20, 차로 위 사람 4/5(P2 를 셋 다 놓침). `score.py` 의 출동 차량 13·15·18/20 차이는
+  출동 차량이 없는 장면에 '아니오' 대신 '모름'이라 한 것 — 앱 화면엔 안 나타난다
+- 비용: 8비트 +1초·+1.6 GiB(앱 YOLO·다른 앱까지 더하면 8 GB 를 넘길 것 — 앱과 같이 재진 않음), 9B 2.1배 느리고 앱 없이도 0.7 GiB 가 CPU 로 갔다
+- **판단: 앱은 4B 4비트 그대로.** 4비트의 손해는 작고 앱이 보여 주는 단서엔 차이가 없다. 판정 규칙을 쓰게 되면(지금은 안 씀) 9B·좁은 크롭이 가장 낫지만 느리다
+- MoE(qwen3.5:35b-a3b — 35B 중 3B 만 쓰는, Q4_K_M 22 GB)는 재지 않았다. 9B 가 앱의 단서를 낫게 하지 못했고, 이 노트북(GPU 8 GB · RAM 63 GB)에선 대부분 CPU 로 돈다
+- 받은 두 모델(E:, 약 11 GB)은 그대로 둔다 — 지우려면 `ollama rm qwen3.5:4b-q8_0 qwen3.5:9b`
 
 ## 판단 (4차까지)
 

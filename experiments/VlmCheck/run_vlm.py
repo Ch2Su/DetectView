@@ -61,7 +61,14 @@ ROUND4 = [  # 4차(11-07): 판정을 묻지 않고 관찰만 묻는다 — 판�
     {"name": "r4-gemma3-4b", "model": "gemma3:4b", "think": None, "r4": True, "variants": ["D2"]},
     {"name": "r4-qwen3-vl-8b", "model": "qwen3-vl:8b-instruct", "think": None, "r4": True, "variants": ["D2"]},
 ]
-OPTIONS = {"temperature": 0, "seed": 7, "num_ctx": 8192}   # 올릴 때도 같은 값 — 다르면 첫 호출에서 모델을 다시 올린다
+QUANT = [  # 양자화·크기 비교(11-08 — 사용자: 양자화 모델이 쓸 만한가): 4차 질문·장면 그대로, 같은 4B 를 4비트(지금 앱)·8비트로,
+    # 같은 4비트로 9B. 그림 읽는 부분(projector)은 셋 다 BF16 — 언어 부분만 다르다. 기준(4B 4비트)도 같은 폴더에서 다시 돌려
+    # 4차와 같은 답이 나오는지(재현)부터 본다. --quant
+    {"name": "r4-qwen3.5-4b", "model": "qwen3.5:4b", "think": False, "r4": True, "variants": ["D2", "D3"]},
+    {"name": "r4-qwen3.5-4b-q8", "model": "qwen3.5:4b-q8_0", "think": False, "r4": True, "variants": ["D2", "D3"]},
+    {"name": "r4-qwen3.5-9b", "model": "qwen3.5:9b", "think": False, "r4": True, "variants": ["D2", "D3"]},
+]
+OPTIONS ={"temperature": 0, "seed": 7, "num_ctx": 8192}   # 올릴 때도 같은 값 — 다르면 첫 호출에서 모델을 다시 올린다
 VARIANTS = {"A": ["full"], "B": ["full", "crop"], "C": ["full", "crop", "prev", "next"], "D": ["crop"], "D3": ["crop"], "D2": ["crop2"]}
 
 ENUMS = {
@@ -268,9 +275,10 @@ def run_config(cfg, cases, out_dir, round3=()):
     meta = {"config": cfg, "load_s": round(time.time() - t0, 2), "load_duration_s": round(warm.get("load_duration", 0) / 1e9, 2),
             "gpu_mib_before": before, "gpu_mib_after_load": gpu_mem_mib()}
     ps = call("/api/ps").get("models", [])
-    for m in ps:
-        if m.get("name", "").startswith(cfg["model"].split(":")[0]):
-            meta.update(size_gib=round(m["size"] / 2**30, 2), size_vram_gib=round(m.get("size_vram", 0) / 2**30, 2))
+    # 같은 계열(qwen3.5:4b · 4b-q8_0 · 9b)을 잇달아 올리면 앞 모델이 잠깐 남아 있을 수 있다 — 이름이 똑같은 것을 먼저 본다
+    hit = [m for m in ps if m.get("name") == cfg["model"]] or [m for m in ps if m.get("name", "").startswith(cfg["model"].split(":")[0])]
+    for m in hit[:1]:
+        meta.update(size_gib=round(m["size"] / 2**30, 2), size_vram_gib=round(m.get("size_vram", 0) / 2**30, 2))
     print(f"== {cfg['name']} 올림 {meta['load_s']}초 · {meta.get('size_vram_gib')}/{meta.get('size_gib')} GiB 가 GPU", flush=True)
 
     with res_path.open("a", encoding="utf-8") as f:
@@ -328,13 +336,15 @@ def main():
     ap.add_argument("--round2", action="store_true", help="2차(ROUND2)를 돈다")
     ap.add_argument("--round3", action="store_true", help="3차(ROUND3)를 돈다")
     ap.add_argument("--round4", action="store_true", help="4차(ROUND4)를 돈다")
+    ap.add_argument("--quant", action="store_true", help="4차 장면으로 양자화·크기 비교(QUANT)를 돈다")
     a = ap.parse_args()
     sys.stdout.reconfigure(errors="replace")   # 콘솔이 cp949 면 설명의 '—' 같은 글자가 긴 실행을 멈추게 한다
     spec = json.loads((HERE / "cases.json").read_text(encoding="utf-8"))
     cases, round3 = spec["cases"], spec.get("round3", {})
     if a.cases:
         cases = [c for c in cases if c["id"] in a.cases.split(",")]
-    pool = ROUND4 if a.round4 else ROUND3 if a.round3 else ROUND2 if a.round2 else PROBES if a.probe else CONFIGS
+    pool = (QUANT if a.quant else ROUND4 if a.round4 else ROUND3 if a.round3 else ROUND2 if a.round2 else PROBES if a.probe
+            else CONFIGS)
     configs = [c for c in pool if not a.configs or c["name"] in a.configs]
     out_dir = HERE / "out" / a.results
     out_dir.mkdir(parents=True, exist_ok=True)

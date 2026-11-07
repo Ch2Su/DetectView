@@ -47,7 +47,8 @@ VALUE_KO = {
 }
 TITLES = {"results": "1차 — 모델 5가지 × 입력 A·B·C", "probe": "1차 뒤 확인 — 설명 먼저 + 키운 그림만",
           "round2": "2차 — 장면 30개, 설명 먼저 + 키운 그림만", "round3": "3차 — 추적기 사실을 주고 '왜 멈췄나'만",
-          "round4": "4차 — 관찰만 묻고 판정은 코드 규칙"}
+          "round4": "4차 — 관찰만 묻고 판정은 코드 규칙",
+          "round4_quant": "양자화·크기 비교 — 4차 장면, qwen3.5 4B(4·8비트)·9B(4비트)"}
 VARIANT_KO = {"A": "화면 전체", "B": "화면 전체 + 키운 그림", "C": "B + 2초 전·뒤 화면", "D": "키운 그림만(박스의 3배)",
               "D3": "키운 그림만(박스의 3배)", "D2": "키운 그림만(박스의 2배)"}
 IMAGE_KO = {"full": "화면 전체", "crop": "키운 그림 — 박스의 3배", "crop2": "키운 그림 — 박스의 2배",
@@ -70,8 +71,8 @@ ABBR = {"emergency_vehicle_near": "출동", "flashing_lights": "경광", "people
 RULES4 = [("미리 정한 규칙", ("usable", "vehicle", "incident", "normal")),        # = run_vlm.decide
           ("사후 1 · 단서 먼저", ("vehicle", "incident", "normal", "usable")),     # 결과를 보고 고른 규칙(README 결과 5)
           ("사후 2 · 선명도 안 봄", ("vehicle", "incident", "normal"))]
-ALL_CONFIGS = {c["name"]: c for pool in (run_vlm.CONFIGS, run_vlm.PROBES, run_vlm.ROUND2, run_vlm.ROUND3, run_vlm.ROUND4)
-               for c in pool}
+ALL_CONFIGS = {c["name"]: c for pool in (run_vlm.CONFIGS, run_vlm.PROBES, run_vlm.ROUND2, run_vlm.ROUND3, run_vlm.ROUND4,
+                                          run_vlm.QUANT) for c in pool}
 
 
 def ko(v):
