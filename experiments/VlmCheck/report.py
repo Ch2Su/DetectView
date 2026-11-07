@@ -48,7 +48,7 @@ VALUE_KO = {
 TITLES = {"results": "1차 — 모델 5가지 × 입력 A·B·C", "probe": "1차 뒤 확인 — 설명 먼저 + 키운 그림만",
           "round2": "2차 — 장면 30개, 설명 먼저 + 키운 그림만", "round3": "3차 — 추적기 사실을 주고 '왜 멈췄나'만",
           "round4": "4차 — 관찰만 묻고 판정은 코드 규칙",
-          "round4_quant": "양자화·크기 비교 — 4차 장면, qwen3.5 4B(4·8비트)·9B(4비트)"}
+          "round4_quant": "양자화·크기 비교 — 4차 장면, qwen3.5 4B(4·8비트)·9B(4비트)·qwen3.6 35B-A3B MoE"}
 VARIANT_KO = {"A": "화면 전체", "B": "화면 전체 + 키운 그림", "C": "B + 2초 전·뒤 화면", "D": "키운 그림만(박스의 3배)",
               "D3": "키운 그림만(박스의 3배)", "D2": "키운 그림만(박스의 2배)"}
 IMAGE_KO = {"full": "화면 전체", "crop": "키운 그림 — 박스의 3배", "crop2": "키운 그림 — 박스의 2배",
@@ -72,7 +72,7 @@ RULES4 = [("미리 정한 규칙", ("usable", "vehicle", "incident", "normal")),
           ("사후 1 · 단서 먼저", ("vehicle", "incident", "normal", "usable")),     # 결과를 보고 고른 규칙(README 결과 5)
           ("사후 2 · 선명도 안 봄", ("vehicle", "incident", "normal"))]
 ALL_CONFIGS = {c["name"]: c for pool in (run_vlm.CONFIGS, run_vlm.PROBES, run_vlm.ROUND2, run_vlm.ROUND3, run_vlm.ROUND4,
-                                          run_vlm.QUANT) for c in pool}
+                                          run_vlm.QUANT, run_vlm.STRATA_POOL) for c in pool}
 
 
 def ko(v):
@@ -93,7 +93,8 @@ def short_name(name):
 
 
 def cfg_tags(cfg):
-    return [t for k, t in (("think", "생각 모드"), ("desc_first", "설명 먼저"), ("no_label", "라벨 없이")) if cfg.get(k)]
+    return [t for k, t in (("think", "생각 모드"), ("desc_first", "설명 먼저"), ("no_label", "라벨 없이"), ("api", "Strata 엔진"))
+            if cfg.get(k)]
 
 
 def frac(xs):
@@ -450,7 +451,10 @@ def _build(res_dir):
         cells += [f'<td class="num">{st["invalid"]}'] * show_invalid + [f'<td class="num">{st["err"]}'] * show_err
         cells += [f'<td class="num">{statistics.median(wall):.1f} · {max(wall):.1f}초' if wall else '<td class="num">–',
                   f'<td class="num">{statistics.median(st["out_tok"]):.0f}' if st["out_tok"] else '<td class="num">–',
-                  f'<td class="num">{meta["load_s"]}초 · {meta.get("size_vram_gib")}/{meta.get("size_gib")} GiB GPU' if meta else "<td>–"]
+                  f'<td class="num">{meta["load_s"]}초 · {meta.get("size_vram_gib")}/{meta.get("size_gib")} GiB GPU' if "size_gib" in meta
+                  # Strata 는 `strata launch` 가 미리 올린다 — 돌릴 때 GPU 전체 사용량(nvidia-smi)만 안다
+                  else f'<td class="num">미리 올림 · GPU {meta["gpu_mib_after_load"] / 1024:.1f} GiB 사용' if meta.get("gpu_mib_after_load")
+                  else "<td>–"]
         body.append(f'<tr class="k{i}">' + "".join(c if c.startswith("<td") else f"<td>{c}" for c in cells) + "</tr>")
     out.append(f'<h2 id="sum">설정별 요약</h2><div class="scroll sum"><table><tr>{"".join(f"<th>{E(h)}</th>" for h in head)}</tr>{"".join(body)}</table></div>')
     if any(st["think"] and max(st["think"]) for st in stats):

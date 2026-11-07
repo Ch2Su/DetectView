@@ -67,6 +67,16 @@ QUANT = [  # 양자화·크기 비교(11-08 — 사용자: 양자화 모델이 �
     {"name": "r4-qwen3.5-4b", "model": "qwen3.5:4b", "think": False, "r4": True, "variants": ["D2", "D3"]},
     {"name": "r4-qwen3.5-4b-q8", "model": "qwen3.5:4b-q8_0", "think": False, "r4": True, "variants": ["D2", "D3"]},
     {"name": "r4-qwen3.5-9b", "model": "qwen3.5:9b", "think": False, "r4": True, "variants": ["D2", "D3"]},
+    # MoE(11-08 — 사용자: Strata 엔진으로 써 보면?): Strata 가 그림용으로 돌리는 Qwen3.6-35B-A3B 와 같은 계열을 Ollama 로.
+    # 35B 중 토큰마다 3B 만 쓴다 — 23 GB 라 GPU(8 GB)엔 일부만 올라간다
+    {"name": "r4-qwen3.6-35b-a3b", "model": "qwen3.6:35b-a3b", "think": False, "r4": True, "variants": ["D2", "D3"]},
+]
+STRATA = "http://127.0.0.1:8080"   # Strata 엔진(OpenAI 호환) — 사용자가 E:\Strata 에 설치, `strata launch` 로 띄운다
+STRATA_POOL = [  # Strata(11-08 — 사용자 요청): Qwen3.6-35B-A3B(Unsloth UD-Q4_K_XL, 그림 읽는 부분은 24 GB 미만 카드면 CPU).
+    # JSON 형식을 생성 중에 강제하지 않는다 — 질문(system) 끝에 영어 지시문과 스키마를 붙이고 답을 검사한다
+    # (E:\Strata\control\serve\structured.py — prompt_and_validate). 그래서 Ollama 판과 '같은 질문'은 아니다. --strata
+    {"name": "r4-strata-qwen3.6-35b-a3b", "model": "qwen3.6-35b-a3b", "think": False, "r4": True, "variants": ["D2", "D3"],
+     "api": "openai", "base": STRATA},
 ]
 OPTIONS ={"temperature": 0, "seed": 7, "num_ctx": 8192}   # 올릴 때도 같은 값 — 다르면 첫 호출에서 모델을 다시 올린다
 VARIANTS = {"A": ["full"], "B": ["full", "crop"], "C": ["full", "crop", "prev", "next"], "D": ["crop"], "D3": ["crop"], "D2": ["crop2"]}
@@ -231,8 +241,8 @@ def question(cfg, info, variant):
     return {"system": system, "text": text, "images": imgs, "schema": schema, "enums": enums, "texts": texts}
 
 
-def call(path, body=None, timeout=900):
-    req = urllib.request.Request(API + path, data=None if body is None else json.dumps(body).encode(),
+def call(path, body=None, timeout=900, base=API):
+    req = urllib.request.Request(base + path, data=None if body is None else json.dumps(body).encode(),
                                  headers={"Content-Type": "application/json"}, method="GET" if body is None else "POST")
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode("utf-8"))
@@ -254,6 +264,17 @@ def gpu_mem_mib():
         return None
 
 
+def openai_body(cfg, q, images_b64):
+    """OpenAI 호환 서버(Strata)에 보낼 같은 질문 — 그림은 data URL, 형식은 response_format json_schema, 생각 끄기는 chat_template_kwargs"""
+    content = [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + b}} for b in images_b64]
+    content.append({"type": "text", "text": q["text"]})
+    return {"model": cfg["model"], "stream": False,
+            "messages": [{"role": "system", "content": q["system"]}, {"role": "user", "content": content}],
+            "response_format": {"type": "json_schema", "json_schema": {"name": "observation", "schema": q["schema"], "strict": True}},
+            "temperature": OPTIONS["temperature"], "seed": OPTIONS["seed"], "max_tokens": cfg.get("num_predict", 768),
+            "chat_template_kwargs": {"enable_thinking": bool(cfg["think"])}}
+
+
 def check(parsed, enums=ENUMS, texts=("description_ko",)):
     bad = [k for k, v in enums.items() if parsed.get(k) not in v]
     bad += [k for k in texts if not isinstance(parsed.get(k), str)]
@@ -271,15 +292,21 @@ def run_config(cfg, cases, out_dir, round3=()):
     # 모델 올리기 — 걸린 시간과 VRAM 을 남긴다
     before = gpu_mem_mib()
     t0 = time.time()
-    warm = call("/api/generate", {"model": cfg["model"], "prompt": "", "keep_alive": "20m", "options": OPTIONS})
-    meta = {"config": cfg, "load_s": round(time.time() - t0, 2), "load_duration_s": round(warm.get("load_duration", 0) / 1e9, 2),
-            "gpu_mib_before": before, "gpu_mib_after_load": gpu_mem_mib()}
-    ps = call("/api/ps").get("models", [])
-    # 같은 계열(qwen3.5:4b · 4b-q8_0 · 9b)을 잇달아 올리면 앞 모델이 잠깐 남아 있을 수 있다 — 이름이 똑같은 것을 먼저 본다
-    hit = [m for m in ps if m.get("name") == cfg["model"]] or [m for m in ps if m.get("name", "").startswith(cfg["model"].split(":")[0])]
-    for m in hit[:1]:
-        meta.update(size_gib=round(m["size"] / 2**30, 2), size_vram_gib=round(m.get("size_vram", 0) / 2**30, 2))
-    print(f"== {cfg['name']} 올림 {meta['load_s']}초 · {meta.get('size_vram_gib')}/{meta.get('size_gib')} GiB 가 GPU", flush=True)
+    if cfg.get("api") == "openai":   # Strata: `strata launch` 가 이미 올려 두었다 — 서버 상태와 그때의 GPU 메모리만 남긴다
+        status = call("/v1/status", base=cfg["base"], timeout=30)
+        meta = {"config": cfg, "load_s": round(time.time() - t0, 2), "gpu_mib_before": before, "gpu_mib_after_load": gpu_mem_mib(),
+                "server": {k: status.get(k) for k in ("service", "model", "engine", "structured_output", "vision", "context", "concurrency")}}
+        print(f"== {cfg['name']} 서버 {status.get('model')} · 엔진 {status.get('engine')} · GPU 메모리 {meta['gpu_mib_after_load']} MiB", flush=True)
+    else:
+        warm = call("/api/generate", {"model": cfg["model"], "prompt": "", "keep_alive": "20m", "options": OPTIONS})
+        meta = {"config": cfg, "load_s": round(time.time() - t0, 2), "load_duration_s": round(warm.get("load_duration", 0) / 1e9, 2),
+                "gpu_mib_before": before, "gpu_mib_after_load": gpu_mem_mib()}
+        ps = call("/api/ps").get("models", [])
+        # 같은 계열(qwen3.5:4b · 4b-q8_0 · 9b)을 잇달아 올리면 앞 모델이 잠깐 남아 있을 수 있다 — 이름이 똑같은 것을 먼저 본다
+        hit = [m for m in ps if m.get("name") == cfg["model"]] or [m for m in ps if m.get("name", "").startswith(cfg["model"].split(":")[0])]
+        for m in hit[:1]:
+            meta.update(size_gib=round(m["size"] / 2**30, 2), size_vram_gib=round(m.get("size_vram", 0) / 2**30, 2))
+        print(f"== {cfg['name']} 올림 {meta['load_s']}초 · {meta.get('size_vram_gib')}/{meta.get('size_gib')} GiB 가 GPU", flush=True)
 
     with res_path.open("a", encoding="utf-8") as f:
         for c in cases:
@@ -291,21 +318,32 @@ def run_config(cfg, cases, out_dir, round3=()):
                 if (c["id"], v) in done or v not in cfg.get("variants", ["A", "B", "C"]):
                     continue
                 q = question(cfg, info, v)
-                body = {"model": cfg["model"], "stream": False, "keep_alive": "20m", "format": q["schema"],
-                        "messages": [{"role": "system", "content": q["system"]},
-                                     {"role": "user", "content": q["text"],
-                                      "images": [base64.b64encode((d / f"{k}.jpg").read_bytes()).decode() for k in q["images"]]}],
-                        "options": {**OPTIONS, "num_predict": cfg.get("num_predict", 768)}}
-                if cfg["think"] is not None:
-                    body["think"] = cfg["think"]
+                images = [base64.b64encode((d / f"{k}.jpg").read_bytes()).decode() for k in q["images"]]
+                if cfg.get("api") == "openai":
+                    body = openai_body(cfg, q, images)
+                else:
+                    body = {"model": cfg["model"], "stream": False, "keep_alive": "20m", "format": q["schema"],
+                            "messages": [{"role": "system", "content": q["system"]},
+                                         {"role": "user", "content": q["text"], "images": images}],
+                            "options": {**OPTIONS, "num_predict": cfg.get("num_predict", 768)}}
+                    if cfg["think"] is not None:
+                        body["think"] = cfg["think"]
                 rec = {"config": cfg["name"], "case": c["id"], "variant": v, "error": None}
                 t0 = time.time()
                 try:
-                    r = call("/api/chat", body)
-                    rec.update(wall_s=round(time.time() - t0, 2), done_reason=r.get("done_reason"),
-                               prompt_tokens=r.get("prompt_eval_count"), out_tokens=r.get("eval_count"),
-                               total_s=round(r.get("total_duration", 0) / 1e9, 2), load_s=round(r.get("load_duration", 0) / 1e9, 2),
-                               content=r["message"].get("content", ""), thinking_chars=len(r["message"].get("thinking") or ""))
+                    if cfg.get("api") == "openai":
+                        r = call("/v1/chat/completions", body, base=cfg["base"])
+                        choice, usage = r["choices"][0], r.get("usage") or {}
+                        rec.update(wall_s=round(time.time() - t0, 2), done_reason=choice.get("finish_reason"),
+                                   prompt_tokens=usage.get("prompt_tokens"), out_tokens=usage.get("completion_tokens"),
+                                   total_s=round(time.time() - t0, 2), load_s=0, content=choice["message"].get("content") or "",
+                                   thinking_chars=len(choice["message"].get("reasoning_content") or ""))
+                    else:
+                        r = call("/api/chat", body)
+                        rec.update(wall_s=round(time.time() - t0, 2), done_reason=r.get("done_reason"),
+                                   prompt_tokens=r.get("prompt_eval_count"), out_tokens=r.get("eval_count"),
+                                   total_s=round(r.get("total_duration", 0) / 1e9, 2), load_s=round(r.get("load_duration", 0) / 1e9, 2),
+                                   content=r["message"].get("content", ""), thinking_chars=len(r["message"].get("thinking") or ""))
                     try:
                         parsed = json.loads(rec["content"])
                         rec.update(parsed=parsed, invalid=check(parsed, q["enums"], q["texts"]))
@@ -313,6 +351,8 @@ def run_config(cfg, cases, out_dir, round3=()):
                             parsed["verdict"] = decide(parsed)   # 모델 답이 아니라 규칙 — 채점은 3차 정답으로
                     except json.JSONDecodeError:
                         rec.update(parsed=None, invalid=["json"])
+                except urllib.error.HTTPError as e:   # 서버가 거절한 사유(Strata 는 형식 검사 실패를 4xx 로)도 남긴다
+                    rec.update(wall_s=round(time.time() - t0, 2), error=f"{e} {e.read().decode('utf-8', 'replace')[:300]}")
                 except (urllib.error.URLError, TimeoutError, OSError) as e:
                     rec.update(wall_s=round(time.time() - t0, 2), error=str(e))
                 f.write(json.dumps(rec, ensure_ascii=False) + "\n")
@@ -337,14 +377,15 @@ def main():
     ap.add_argument("--round3", action="store_true", help="3차(ROUND3)를 돈다")
     ap.add_argument("--round4", action="store_true", help="4차(ROUND4)를 돈다")
     ap.add_argument("--quant", action="store_true", help="4차 장면으로 양자화·크기 비교(QUANT)를 돈다")
+    ap.add_argument("--strata", action="store_true", help="4차 장면을 Strata 엔진(STRATA_POOL — 먼저 strata launch)으로 돈다")
     a = ap.parse_args()
     sys.stdout.reconfigure(errors="replace")   # 콘솔이 cp949 면 설명의 '—' 같은 글자가 긴 실행을 멈추게 한다
     spec = json.loads((HERE / "cases.json").read_text(encoding="utf-8"))
     cases, round3 = spec["cases"], spec.get("round3", {})
     if a.cases:
         cases = [c for c in cases if c["id"] in a.cases.split(",")]
-    pool = (QUANT if a.quant else ROUND4 if a.round4 else ROUND3 if a.round3 else ROUND2 if a.round2 else PROBES if a.probe
-            else CONFIGS)
+    pool = (STRATA_POOL if a.strata else QUANT if a.quant else ROUND4 if a.round4 else ROUND3 if a.round3 else ROUND2 if a.round2
+            else PROBES if a.probe else CONFIGS)
     configs = [c for c in pool if not a.configs or c["name"] in a.configs]
     out_dir = HERE / "out" / a.results
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -358,12 +399,15 @@ def main():
             time.sleep(1)
         print(f"Ollama 서버를 띄움(PID {started.pid})", flush=True)
     try:
-        prev_model = None
+        prev_model = None   # Ollama 에 올린 앞 모델 — Strata 쪽 모델은 `strata launch --stop` 이 내린다
         for cfg in configs:
-            if prev_model and prev_model != cfg["model"]:
+            ollama = cfg.get("api") != "openai"
+            if prev_model and (not ollama or prev_model != cfg["model"]):
                 call("/api/generate", {"model": prev_model, "keep_alive": 0})   # 앞 모델을 내린다
+                prev_model = None
             run_config(cfg, cases, out_dir, round3)
-            prev_model = cfg["model"]
+            if ollama:
+                prev_model = cfg["model"]
         if prev_model:
             call("/api/generate", {"model": prev_model, "keep_alive": 0})
     finally:

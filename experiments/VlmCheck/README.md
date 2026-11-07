@@ -47,7 +47,8 @@ uv run --no-project --python 3.12 experiments/VlmCheck/run_vlm.py --probe --resu
 uv run --no-project --python 3.12 experiments/VlmCheck/run_vlm.py --round2 --results round2
 uv run --no-project --python 3.12 experiments/VlmCheck/run_vlm.py --round3 --results round3
 uv run --no-project --python 3.12 experiments/VlmCheck/run_vlm.py --round4 --results round4
-uv run --no-project --python 3.12 experiments/VlmCheck/run_vlm.py --quant --results round4_quant   # 결과 8 — 먼저 ollama pull qwen3.5:4b-q8_0 · qwen3.5:9b
+uv run --no-project --python 3.12 experiments/VlmCheck/run_vlm.py --quant --results round4_quant   # 결과 8·9 — 먼저 ollama pull qwen3.5:4b-q8_0 · qwen3.5:9b · qwen3.6:35b-a3b
+uv run --no-project --python 3.12 experiments/VlmCheck/run_vlm.py --strata --results round4_quant  # 결과 9 — 먼저 strata launch(이 노트북에선 아직 못 띄움)
 uv run --no-project --python 3.12 experiments/VlmCheck/score.py round4
 uv run --no-project --python 3.12 --with pillow experiments/VlmCheck/report.py   # 장면별 보고서 — 폴더 이름을 주면 그 차수만
 pwsh experiments/VlmCheck/Measure-GpuShare.ps1   # 결과 6 — 배포본 창이 실행마다 떴다 닫힌다
@@ -227,8 +228,34 @@ uv run --no-project --python 3.12 --with opencv-python-headless --with numpy --w
   출동 차량이 없는 장면에 '아니오' 대신 '모름'이라 한 것 — 앱 화면엔 안 나타난다
 - 비용: 8비트 +1초·+1.6 GiB(앱 YOLO·다른 앱까지 더하면 8 GB 를 넘길 것 — 앱과 같이 재진 않음), 9B 2.1배 느리고 앱 없이도 0.7 GiB 가 CPU 로 갔다
 - **판단: 앱은 4B 4비트 그대로.** 4비트의 손해는 작고 앱이 보여 주는 단서엔 차이가 없다. 판정 규칙을 쓰게 되면(지금은 안 씀) 9B·좁은 크롭이 가장 낫지만 느리다
-- MoE(qwen3.5:35b-a3b — 35B 중 3B 만 쓰는, Q4_K_M 22 GB)는 재지 않았다. 9B 가 앱의 단서를 낫게 하지 못했고, 이 노트북(GPU 8 GB · RAM 63 GB)에선 대부분 CPU 로 돈다
+- MoE 는 같은 날 이어서 쟀다 — 아래 결과 9
 - 받은 두 모델(E:, 약 11 GB)은 그대로 둔다 — 지우려면 `ollama rm qwen3.5:4b-q8_0 qwen3.5:9b`
+
+## 결과 9 — MoE(qwen3.6:35b-a3b)와 Strata 엔진 (2026-11-08)
+
+사용자 질문: MoE 도 쓸 만한가, Strata 엔진으로 써 보면? Strata(GitHub `Niko1221/Strata`, MIT — llama.cpp 바탕 로컬 엔진, OpenAI·Anthropic 호환 API)가
+그림을 읽게 돌리는 모델은 Qwen3.6-35B-A3B(35B 중 토큰마다 3B 만 쓰는 MoE)다. 같은 계열을 Ollama 로 먼저 쟀다(`--quant` 의 `r4-qwen3.6-35b-a3b` — 결과 8 의 폴더에 같이).
+
+| 판 | 올린 크기 | 한 번(중앙) | 미리 정한 규칙 D3 / D2 | 사후 1 D3 / D2 | '선명하지 않음' D3 / D2 | 앱 칩 출동 차량 · 차로 위 사람(D3) |
+|---|---|---|---|---|---|---|
+| qwen3.5:4b — 지금 앱 | 3.1 GiB 모두 GPU | 2.7초 | 13 / 6 | 16 / 12 | 8 / 14 | 20/20 · 4/5 |
+| qwen3.6:35b-a3b — Q4_K_M 20.2 GiB + projector BF16 0.84 GiB | 21.0 GiB 중 4.8 GPU · 올리기 43초 | 8.1초(첫 호출 40초) | **18 / 17** | **19 / 18** | 3 / 4 | 20/20 · 4/5 |
+
+- **판정 규칙 숫자로는 가장 낫다** — '선명하지 않음'이 3번뿐이라 P1·P5·P8·T2·N3 을 맞혔다. 남은 틀림은 N4(횡단보도 옆 보행자를 '차로 위 사람'으로)와 S1(나무 — 흐림 + 차 없음, 사후 1 이면 맞음)
+- **하지만 앱이 보여 주는 칩은 4B 와 같고**(출동 차량 20/20 · 차로 위 사람 4/5 — P2 를 놓침), **설명은 여전히 혼자 멈춘 차(P5~P8·T2)를 "주행 중"**이라 한다 —
+  P8·T2 를 맞힌 것도 단서를 봐서가 아니라 '단서 없음 → 규칙 후보 그대로' 덕이다
+- 비용: 한 번 7~10초(4B 의 3배), 21 GiB 중 16 GiB 가 RAM·CPU 쪽 — 앱과 같이 돌리면 CPU 를 다퉈 앱이 느려진다(결과 6: CPU 로 돌린 VLM 도 재생 처리 FPS −22%)
+- **Strata 는 이 노트북에서 뜨지 않았다**: 사용자가 데스크톱 앱(0.2.12)을 `E:\Strata` 에 설치. 엔진(0.1.58 CUDA 13)은 앱이 `%LOCALAPPDATA%\Strata\components` 에 받았고,
+  모델(Unsloth UD-Q4_K_XL 22.9 GB + 그림 읽는 mmproj)은 `strata launch --data-dir E:\Strata\models` 로 받았다(앱의 기본 데이터 폴더가 OneDrive 의 문서 폴더라 옮김).
+  엔진이 덴스 가중치 4.40 GiB 를 GPU 에 올린 뒤 'hybrid experts' buffers and slots' 에 1,159 MiB 가 모자란다며 멈췄다 — RTX 5060 Laptop 8 GB 에서 다른 앱이 이미 1~1.3 GB 를 쓴다.
+  `--mtp off`·`--drafting off`(MTP 층은 그래도 올라감) · 컨텍스트 8K → 4K · `--set vram-reserve-mib=100`(이 엔진엔 없는 옵션이라 무시됨)으로 네 번 시도했지만 모두 같은 자리에서 멈췄다.
+  Strata 가 속도를 잰 카드는 12 GB 이상이다. 그림 읽기는 24 GB 미만 카드에선 CPU 로 돈다(`strata-vision`, 6 스레드)
+- **떠도 같은 질문이 아니다**: Strata 는 JSON 형식을 생성 중에 강제하지 않는다 — 서버 코드가 상태 응답에 `"method": "prompt_and_validate", "constrained_decoding": False` 라고 밝히고
+  (`E:\Strata\control\serve\server.py`), 질문 끝에 영어 지시문과 스키마를 붙인 뒤 답을 검사한다(`serve/structured.py`). 앱과 실험은 Ollama 의 형식 강제(항목 순서 — 설명 먼저, 허용 값)에 기댄다
+- `run_vlm.py --strata --results round4_quant`(OpenAI 호환 요청 `openai_body` — 그림은 data URL, `response_format` json_schema, `chat_template_kwargs` 로 생각 끄기)를 넣어 뒀지만
+  서버가 뜨지 않아 **한 번도 돌리지 못했다** — 먼저 `strata launch --family qwen36 --model ud-q4_k_xl --data-dir E:\Strata\models --context 8k --vision on --parallel 1 --access local --no-api-key --yes --no-tui`
+- **판단: 앱은 4B 4비트 그대로.** MoE 는 판정 숫자는 낫지만 앱이 보여 주는 단서는 같고, 3배 느리며 CPU·RAM 을 크게 쓴다. Strata 는 이 노트북 GPU 로는 뜨지 않고, 떠도 형식 강제가 없어 이 용도엔 Ollama 가 맞다
+- 받은 것: Ollama `qwen3.6:35b-a3b`(E:, 21 GB — `ollama rm qwen3.6:35b-a3b`), Strata 모델 `E:\Strata\models`(22 GB)
 
 ## 판단 (4차까지)
 
