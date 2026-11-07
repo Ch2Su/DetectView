@@ -48,6 +48,7 @@ uv run --no-project --python 3.12 experiments/VlmCheck/run_vlm.py --round2 --res
 uv run --no-project --python 3.12 experiments/VlmCheck/run_vlm.py --round3 --results round3
 uv run --no-project --python 3.12 experiments/VlmCheck/run_vlm.py --round4 --results round4
 uv run --no-project --python 3.12 experiments/VlmCheck/score.py round4
+pwsh experiments/VlmCheck/Measure-GpuShare.ps1   # 결과 6 — 배포본 창이 실행마다 떴다 닫힌다
 ```
 
 결과는 `out/`(gitignore) — `cases/<id>/` 입력 그림, `results*/<설정>.jsonl` 응답 원문, `summary.md` 장면별 판정표.
@@ -162,13 +163,30 @@ uv run --no-project --python 3.12 experiments/VlmCheck/score.py round4
 - **사후 분석**(결과를 보고 고른 규칙이라 과적합일 수 있다 — 새 장면으로 다시 재야 한다): 선명도를 단서 다음으로 미루면 qwen3.5-4b D3 16/20(앱 17/20 — 3차 최고 15/20 보다 낫다),
   선명도를 아예 안 보면 qwen3-vl-8b 15/20(앱 17)
 
+## 결과 6 — 앱과 GPU 나눠 쓰기 (`Measure-GpuShare.ps1`)
+
+배포본(`a378a58` — YOLO26m 640×384, DirectML)으로 test1.mp4 를 재생하며 처리 FPS 를 `tests/ui/Measure-Fps.ps1` 로 쟀다(3회 × 15초 — 실행별 중앙값의 중앙).
+그동안 `gpu_load.py` 가 qwen3.5:4b 에 4차 관찰 질문(P7 덤프트럭의 3배 크롭)을 **쉬지 않고** 보냈다 — 실제 앱(유고 후보 하나에 한 번)보다 훨씬 나쁜 조건이다.
+
+| 조건 | 재생 처리 FPS | VLM 한 번 | GPU 메모리 |
+|---|---|---|---|
+| 기준선 (앞) | 66.7 (실행별 66.7 / 70.1 / 65.5) | — | 1.1 GB |
+| VLM GPU | **52.6** (53.6 / 46.5 / 52.6) | 28번 — 중앙 3.44초 · 최대 4.30초 (앱이 돌 때 3.9~4.3초, 앱 창이 뜨고 닫히는 사이엔 2.4~2.6초) | 5.1 GB |
+| VLM CPU (`num_gpu 0`) | 52.4 (52.4 / 52.0 / 53.0) | 8번 — 중앙 14.0초 · 첫 호출 25.5초 | 1.1 GB |
+| 기준선 (뒤) | 69.9 (71.1 / 69.9 / 66.0) | — | — |
+
+- VLM 이 GPU 를 쓰면 앱이 약 22% 느려지고 VLM 한 번이 2.5 → 3.4~4.3초로 늘어난다
+- **CPU 로 돌려도 앱이 똑같이 느려진다** — 앱의 디코딩·전처리·그리기가 CPU 를 나눠 쓴다. 그러면서 VLM 은 4배 느리다 → 앱에 붙이면 GPU 로 돌린다
+- 앱 연결 설계는 `docs/vlm-annotation.md`
+
 ## 판단 (4차까지)
 
 - 로컬 VLM 에 판정을 묻지 말고 **관찰만 묻고 코드가 규칙으로 합치면** 투명하고 쓸 만한 단서가 나온다 — 출동 차량·경광등·차로 위 사람(사고 처리 현장), 신호·앞 줄·주차(정상 정차).
   혼자 멈춘 차처럼 단서가 없으면 규칙 후보를 그대로 둔다(VLM 이 판단하지 못하는 부분은 규칙이 맡는다)
 - 앱에 붙인다면: 유고 후보 로그 행에 VLM 단서와 한 줄 설명을 붙이고('출동 차량·경광등·사람 보임 → 사고 처리 중으로 보임', '신호·앞 줄 보임 → 신호 대기로 보임'), 후보를 지우지 않는다.
   qwen3.5-4b · 3배 크롭 · 관찰 질문(선명도는 단서 다음에 봄) · 한 번 3초 안팎 · VRAM 3.1 GiB
-- 아직 모르는 것: 새 장면(정답을 확인한 것)에서도 사후 규칙이 맞는지, 앱의 YOLO 와 GPU 를 같이 쓸 때의 지연, 밤·비·역광. 정답 초안 확인(P5·P6 · P3 · T3)도 남았다
+- 아직 모르는 것: 새 장면(정답을 확인한 것)에서도 사후 규칙이 맞는지, 밤·비·역광. 정답 초안 확인(P5·P6 · P3 · T3)도 남았다
+  (앱의 YOLO 와 GPU 를 같이 쓸 때의 지연은 그 뒤 결과 6 에서 쟀다)
 
 ## 판단 (3차까지 — 4차 전에 쓴 것)
 
