@@ -21,6 +21,7 @@ namespace DetectView
     ///   MainWindow.Inference.cs 모델 로드 · GPU 선택 · 검출
     ///   MainWindow.Npu.cs       추론 장치(GPU ↔ NPU) 바꿔 끼우기 · 툴바 "추론" 선택
     ///   MainWindow.Sahi.cs      SAHI 정밀 분석 (알고리즘은 Sahi.cs)
+    ///   MainWindow.Vlm.cs       유고 후보 행의 VLM 설명 (로컬 Ollama — 질문·호출은 VlmAnnotator.cs, 그림은 VlmCrop.cs)
     /// </summary>
     public partial class MainWindow : Window
     {
@@ -45,6 +46,7 @@ namespace DetectView
             // 화면 식별(ORB)의 첫 호출은 수백 ms 걸린다 — 재생 루프에서 처음 부르면 영상이 멈칫하니 다른 스레드에서 미리 한 번 돌려 둔다
             _ = Task.Run(() => { try { ViewMatcher.WarmUp(); } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"화면 식별 준비 실패: {ex.Message}"); } });
             InitEvents();
+            InitVlm();
             FrameBoxes.LegendTextChanged += ShowClassCounts;   // HUD 오버레이의 범례는 StartHud 에서 잇는다
             FrameBoxes.TrackTextChanged += ShowTrackMarks;
             Loaded += (_, _) => { RefreshCameras(); RefreshMonitors(); };
@@ -289,6 +291,7 @@ namespace DetectView
             await StopPlaybackAsync();
             DisposeCapture();
             CloseOverlay();
+            ShutdownVlm();          // VLM 작업을 끝내고 올린 모델을 내린다 (MainWindow.Vlm.cs — 루프가 멈춘 뒤라 새 일은 없다)
             _deviceTimer?.Stop();   // NPU 준비 경과 표시 (MainWindow.Npu.cs)
 
             // SAHI 는 Task.Run 에서 돌고 위 StopPlaybackAsync 가 기다려 주지 않는다. 분석 중에 창을 닫으면

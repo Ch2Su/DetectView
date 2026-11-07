@@ -241,6 +241,7 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <Button x:Name="Btn_EventToggle"
                                     Content="이벤트 0건" local:Ui.Glyph="&#xE70E;"
@@ -250,13 +251,20 @@
                             <!-- 풀리지 않은 유고 후보가 있을 때만 (IncidentRules.cs) — 로그를 접어 둬도 보이게 -->
                             <TextBlock x:Name="Txt_EventIncident" Grid.Column="1" Margin="12,0,6,0" VerticalAlignment="Center"
                                        FontWeight="SemiBold" Foreground="{StaticResource DangerBrush}" Visibility="Collapsed"/>
-                            <Button x:Name="Btn_EventSave" Grid.Column="2" Margin="6,0,0,0"
+                            <!-- VLM 설명 (MainWindow.Vlm.cs — docs/vlm-annotation.md): 유고 후보 행에 로컬 VLM(Ollama)의 단서·한 줄 설명을 붙인다. 기본 꺼짐.
+                                 켜짐은 강조 바탕(Ui.IsActive), 상태(꺼짐 · 확인 중 · 켜짐)는 UIA ItemStatus — 글자(Content)는 바꾸지 않는다 -->
+                            <Button x:Name="Btn_EventVlm" Grid.Column="2" Margin="6,0,0,0"
+                                    Content="VLM 설명" local:Ui.Glyph="&#xE8BD;"
+                                    Height="26" Style="{StaticResource SideButton}"
+                                    ToolTipService.ShowOnDisabled="True" ToolTipService.ShowDuration="60000"
+                                    Click="Btn_EventVlm_Click"/>
+                            <Button x:Name="Btn_EventSave" Grid.Column="3" Margin="6,0,0,0"
                                     Content="CSV 저장" local:Ui.Glyph="&#xE74E;"
                                     Height="26" Style="{StaticResource SideButton}"
                                     ToolTipService.ShowOnDisabled="True" ToolTipService.ShowDuration="60000"
                                     IsEnabled="False"
                                     Click="Btn_EventSave_Click"/>
-                            <Button x:Name="Btn_EventClear" Grid.Column="3" Margin="6,0,0,0"
+                            <Button x:Name="Btn_EventClear" Grid.Column="4" Margin="6,0,0,0"
                                     Content="비우기" local:Ui.Glyph="&#xE74D;" local:Ui.GlyphBrush="{StaticResource DangerBrush}"
                                     Height="26" Style="{StaticResource SideButton}"
                                     ToolTip="이벤트 목록을 비웁니다 (저장한 CSV 는 그대로)"
@@ -267,14 +275,42 @@
                                  Style="{StaticResource LogListBox}" Visibility="Collapsed">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
-                                    <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="{Binding Time}" Width="58" VerticalAlignment="Center"
-                                                   FontFamily="{StaticResource MonoFont}" FontSize="11" Foreground="{StaticResource SubTextBrush}"/>
-                                        <TextBlock Text="{Binding LabelText}" Width="124" VerticalAlignment="Center"
-                                                   FontFamily="{StaticResource MonoFont}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding LabelBrush}"/>
-                                        <TextBlock Text="{Binding ZoneText}" Width="118" VerticalAlignment="Center"
-                                                   FontFamily="{StaticResource MonoFont}" FontSize="11" Foreground="{Binding ZoneBrush}"/>
-                                        <TextBlock Text="{Binding ActionText}" VerticalAlignment="Center" FontSize="12" Foreground="{Binding ActionBrush}"/>
+                                    <StackPanel>
+                                        <StackPanel Orientation="Horizontal" Height="20">
+                                            <TextBlock Text="{Binding Time}" Width="58" VerticalAlignment="Center"
+                                                       FontFamily="{StaticResource MonoFont}" FontSize="11" Foreground="{StaticResource SubTextBrush}"/>
+                                            <TextBlock Text="{Binding LabelText}" Width="124" VerticalAlignment="Center"
+                                                       FontFamily="{StaticResource MonoFont}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding LabelBrush}"/>
+                                            <TextBlock Text="{Binding ZoneText}" Width="118" VerticalAlignment="Center"
+                                                       FontFamily="{StaticResource MonoFont}" FontSize="11" Foreground="{Binding ZoneBrush}"/>
+                                            <TextBlock Text="{Binding ActionText}" VerticalAlignment="Center" FontSize="12" Foreground="{Binding ActionBrush}"/>
+                                        </StackPanel>
+                                        <!-- VLM 줄 (MainWindow.Vlm.cs — 시안 '두 줄 행'): 유고 후보 행에 VLM 상태가 있을 때만. 'VLM' 표 + 단서 칩 + 설명 한 줄(넘치면 …, 전문은 행 툴팁).
+                                             라벨 열 밑(58px)에서 시작한다 -->
+                                        <DockPanel Height="20" Margin="58,0,0,0" Visibility="{Binding VlmVisibility}">
+                                            <Border DockPanel.Dock="Left" Height="16" Margin="0,0,6,0" Padding="4,0" CornerRadius="2" VerticalAlignment="Center"
+                                                    BorderThickness="1" BorderBrush="{StaticResource EdgeBrush}">
+                                                <TextBlock Text="VLM" FontFamily="{StaticResource MonoFont}" FontSize="10" VerticalAlignment="Center"
+                                                           Foreground="{StaticResource MutedTextBrush}"/>
+                                            </Border>
+                                            <ItemsControl DockPanel.Dock="Left" ItemsSource="{Binding VlmChips}" Focusable="False" VerticalAlignment="Center">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <StackPanel Orientation="Horizontal"/>
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Height="16" Margin="0,0,4,0" Padding="5,0" CornerRadius="2" BorderThickness="1"
+                                                                Background="{Binding Back}" BorderBrush="{Binding Edge}">
+                                                            <TextBlock Text="{Binding Text}" FontSize="11" VerticalAlignment="Center" Foreground="{Binding Fore}"/>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                            <TextBlock Text="{Binding VlmText}" Foreground="{Binding VlmTextBrush}" FontSize="12" Margin="2,0,0,0"
+                                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                        </DockPanel>
                                     </StackPanel>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>

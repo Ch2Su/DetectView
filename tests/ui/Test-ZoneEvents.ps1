@@ -94,7 +94,7 @@ try {
     $ok = WaitFor { Test-Path $csvFile } 3000
     $lines = if ($ok) { @(Get-Content $csvFile -Encoding utf8) } else { @() }
     $ok2 = WaitFor { (NameOf $status) -like '이벤트 저장:*' } 3000
-    Check 'CSV 저장: 영상 옆 events.csv, 헤더와 행 수' ($ok -and $lines.Count -ge 2 -and $lines[0] -eq 'ms,time,event,track,label,zone,zone_kind,dwell_ms,note' -and $lines.Count -eq $items.Count + 1) "줄 $($lines.Count) (항목 $($items.Count) + 헤더) · $((Split-Path $csvFile -Leaf))"
+    Check 'CSV 저장: 영상 옆 events.csv, 헤더와 행 수' ($ok -and $lines.Count -ge 2 -and $lines[0] -eq 'ms,time,event,track,label,zone,zone_kind,dwell_ms,note,vlm,vlm_cues,vlm_desc' -and $lines.Count -eq $items.Count + 1) "줄 $($lines.Count) (항목 $($items.Count) + 헤더) · $((Split-Path $csvFile -Leaf))"
     Check 'CSV 내용: initial 행(Z1 · lane)과 view_changed 행' (@($lines | Where-Object { $_ -match '^\d+,[\d:.]+,initial,\d+,(car|truck),Z1,lane,' }).Count -ge 1 -and @($lines | Where-Object { $_ -match ',view_changed,' }).Count -eq 1) "initial $(@($lines | Where-Object { $_ -match ',initial,' }).Count)행 · view_changed $(@($lines | Where-Object { $_ -match ',view_changed,' }).Count)행"
     Check '저장 뒤 상태바 문구' ($ok2 -and (NameOf $status) -match "^이벤트 저장: test4\.mp4\.events\.csv \(${expect}건\)$") "상태='$(NameOf $status)'"
 

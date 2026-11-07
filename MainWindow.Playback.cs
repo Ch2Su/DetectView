@@ -463,6 +463,7 @@ namespace DetectView
                     // 화면에 내보낼 프레임에만 추적기를 돌린다 — 위에서 버린 프레임(일시정지 중 옮긴 위치의 옛 프레임)을 넣으면 시각이 어긋난다.
                     // 시각: 파일은 영상 시각(VFR 도 실제 타임스탬프), 카메라는 이 루프의 벽시계. 추적기가 실패해도 재생은 이어간다(박스는 번호 없이)
                     List<ZoneEvent>? frameEvents = null;
+                    List<VlmJob>? vlmJobs = null;   // VLM 설명이 켜져 있으면 이 프레임의 유고 후보 그림 (MainWindow.Vlm.cs)
                     if (resetTracker)
                     {
                         tracker.Reset();
@@ -572,6 +573,8 @@ namespace DetectView
                                 if (ze.Count > 0) (frameEvents ??= []).AddRange(ze);
                                 var ie = incidents.Update(dets, viewZones, posMs, width, height);
                                 if (ie.Count > 0) (frameEvents ??= []).AddRange(ie);
+                                // VLM 설명: 유고 후보가 나온 이 프레임의 그림 영역만 떼어 둔다 — 행을 넣는 디스패치 뒤에 큐에 넣고 기다리지 않는다
+                                if (ie.Count > 0 && _vlmOn) vlmJobs = PrepareVlmJobs(ie, dets);
                                 // 유고 후보로 선언된 차량의 박스를 강조한다 (BoxLayer 가 빨갛게 그리고 라벨에 유고? 가 붙는다)
                                 if (incidents.ActiveCount > 0)
                                     dets = dets.Select(d => d.TrackId > 0 && incidents.IsActive(d.TrackId) ? d with { Incident = true } : d).ToList();
@@ -592,7 +595,7 @@ namespace DetectView
                         FrameBoxes.Show(dets, width, height);   // 영상과 같은 디스패치에서 — 박스가 다른 프레임 위에 남지 않게
                         ShowSceneBadge(badgeNow, badgeTextNow);
                         if (views != null) ShowCurrentView(viewShow);   // 구역 패널·그림이 이 뷰의 구역으로 — 프레임과 같은 디스패치에서
-                        if (frameEvents != null) AddZoneEvents(frameEvents);   // 이벤트 로그 — 이 프레임과 같은 디스패치에서
+                        if (frameEvents != null) AddZoneEvents(frameEvents, vlmJobs);   // 이벤트 로그 — 이 프레임과 같은 디스패치에서 (VLM 에 보낼 행은 '분석 중')
                         ShowIncidentCount(incidentNow);
 
                         // 시크가 대기 중이면 이 프레임은 이전 위치의 것 → 진행 표시를 되돌리지 않는다
@@ -611,6 +614,13 @@ namespace DetectView
                         Txt_InferenceFps.Text = $"{fpsToShow:F1} FPS";
                         Txt_DetectionCount.Text = $"검출 {dets.Count}";
                     });
+
+                    // VLM 일은 행이 생긴 뒤에 큐에 넣는다 (결과가 와도 붙일 행이 없는 일이 없게). 소스를 내리는 중이면 버린다
+                    if (vlmJobs != null)
+                    {
+                        if (ct.IsCancellationRequested) foreach (var job in vlmJobs) job.Dispose();
+                        else EnqueueVlmJobs(vlmJobs);
+                    }
                 }
             }
             finally

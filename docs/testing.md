@@ -49,7 +49,15 @@ pwsh tests/ui/Run-All.ps1
   (두 값을 읽는 사이 프레임이 넘어갈 수 있어 표시를 번호 앞뒤로 읽어 같은 표본만 센다): 5초 전 표시·강조 없음 + 멈춘 트럭엔 `정지` → 선언 뒤(7~10.3초) 헤더 `⚠ 유고 후보 1`·박스 번호 `#14 정지 유고`(같은 번호가 정지이기도 함) →
   처음 보인 위치 5.0~7.0초(실측 5.2초) → 카메라가 돈 뒤(11.7초~) 표시·강조가 사라짐 → 로그: 유고 후보 행 한 줄(5~9초)·같은 번호의 `유고 해소 (화면 전환) · 멈춤 10.3초` 행
   (라벨은 그 순간의 클래스라 같은 차가 TRUCK → BUS 로 바뀔 수 있어 번호로 맞춘다 — 11-05 배포 모델에서 실제로 그랬다) → CSV: `incident`(Z1 · lane · 멈춤 5000ms)·`incident_end` 각 한 행 →
-  비우고 2초로 시크해 재생하면 7~9.3초(실측 7.3초)에 다시 선언 → 선언 중에 다시 2초로 시크하면 `유고 해소 (시크)` 행. 항목 수 16
+  비우고 2초로 시크해 재생하면 7~9.3초(실측 7.3초)에 다시 선언 → 선언 중에 다시 2초로 시크하면 `유고 해소 (시크)` 행. 항목 수 16.
+  2026-11-07 CSV 끝에 VLM 열 셋이 붙어 incident 행 끝이 빈 열 넷(`,,,,` — note · vlm · vlm_cues · vlm_desc)이 됐다 (`Test-ZoneEvents` 의 헤더 검사도 같이)
+- `Test-VlmAnnotation.ps1`(2026-11-07): VLM 설명(위 "VLM 설명" — docs/vlm-annotation.md). 진짜 Ollama 없이 **Debug 빌드의 가짜 VLM**(`DETECTVIEW_TEST_FAULTS` — TestFaults.cs)으로 앱을 세 번 띄운다.
+  `Test-Incident` 와 같은 구역 파일을 test4 옆에 써 두고(끝나면 지움) 연 뒤 로그를 펼친다(접힌 목록은 UIA 에 없다). ① 결함 `vlm-fake`: [VLM 설명] 이 있고 기본 꺼짐(버튼 ItemStatus `꺼짐`)·툴팁에 '참고용' →
+  켜면 `켜짐` + 상태바 → 유고 후보 행(약 5.2초)의 ItemStatus 가 `분석 중` → 0.6초 뒤 `단서: 출동 차량, 차로 위 사람, 앞에 선 차 — 시험용 가짜 VLM 답 — 그림 512×512`(가짜가 받은 JPEG 를 풀어 크기를 적는다 —
+  실험과 같은 크롭이 갔다는 뜻) → 행의 UIA 이름은 `Test-Incident` 와 같음 · 행 툴팁(HelpText)에 모델·설명·'참고용' → CSV 헤더 끝 `vlm,vlm_cues,vlm_desc` · incident 행 `done` · 단서 키 셋 · 설명 →
+  끄면 `꺼짐` + 상태바, 끝난 행의 설명은 남음 → 비우고 2초로 시크해 다시 선언된 행엔 VLM 줄 없음(ItemStatus 빈칸) ② `vlm-down`: 켜지고 유고 후보 행은 `분석 중 → 실패 — Ollama 연결 안 됨 …`, 툴팁 '다시 시도'
+  ③ `vlm-absent`: 켜기가 실패해 `꺼짐` 그대로 + 상태바 'VLM 설명을 켜지 못함 — Ollama 가 꺼져 있음'. 항목 수 27(Debug — 앱을 세 번 띄우는 모델 로드·파일 열기 12 포함).
+  배포본(Release)은 가짜 VLM 이 컴파일되지 않아 ① 의 기본 꺼짐·툴팁만(6). 진짜 Ollama 는 손으로 본다(docs/vlm-annotation.md '구현과 확인')
 - `Test-ViewIdentity.ps1`(2026-11-03): 화면 식별(위 "화면 식별"). `TrackerCheck mkrevisit` 이 test4 조각을 이어 만든 `experiments\TrackerCheck\out\test4_revisit.mp4`(없으면 테스트가 만든다 — `publish\test4.mp4` 가 필요)에 옛 형식 구역 파일(판 1, 차로 Z1 — 트럭의 발 위치)을 옆에 써 두고 30초를 재생하며
   0.03초 간격으로 배지·구역 헤더(`Txt_ZoneCount`)·유고 표시를 기록한다(세 값을 위치 앞뒤로 읽어 같은 표본만 쓴다): A 0~8초 헤더 `V1 · 1개`·배지 없음·유고 후보 → B 8초 컷 `● 새 뷰 V2 · 구역 없음`·헤더 `V2 · 0개`·유고 표시 없음·배지는 2초 뒤 사라짐 →
   A 14초 `● 뷰 V1 · 아는 화면`·헤더 `V1 · 1개`·유고 후보가 다시 선언 → C 22초 `● 새 뷰 V3 · 구역 없음` → B 26초 `● 뷰 V2 · 아는 화면`. [CSV 저장]으로 로그를 읽는다(UIA 목록은 오래된 행이 안 보일 수 있다): 화면 전환 표시 네 줄(8.2·14.2·22.2·26.2초)·유고 후보 둘(5.2·19.4초)·해소(화면 전환) 둘.
@@ -95,7 +103,11 @@ pwsh tests/ui/Run-All.ps1
   옛 판 `UiLatency` 형식이 남은 PowerShell 세션에선 분명한 메시지로 멈춘다(Add-Type 형식은 못 바꿈 — 새 pwsh 에서 돌릴 것)
 - 종료 코드 = 실패 건수(`Run-All` 은 0/1). 파일 열기 대화상자 자동화 요령 등은 `Common.ps1` 머리말에 정리해 두었다.
   `Run-All` 은 테스트 파일이 try 밖에서 throw 해도(영상·빌드 없음) 그 파일만 실패로 세고 다음 파일을 돈다(2026-10-30 — 예전엔 거기서 통째로 멈췄다)
-- 마지막 전체 통과: 2026-11-06 아침, **배포본 `publish`** — `a378a58`(루트 모델 YOLO26m 640×384 · SAHI 타일 = 모델 입력 크기 · 창 제목에 입력 크기)로 다시 배포하고,
+- 마지막 전체 실행: 2026-11-07 저녁, **Debug** — VLM 설명(`MainWindow.Vlm.cs` 등 — docs/vlm-annotation.md)을 넣은 뒤 worktree 에 `publish` 연결을 두고 `Run-All` 한 번에 278 항목 중 277 통과:
+  `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 · `Test-SceneChange` 21 · `Test-ZoneEvents` 21 · `Test-Incident` 16 · **`Test-VlmAnnotation` 27(새 파일)** · `Test-ViewIdentity` 27 ·
+  `Test-VfrPlayback` 26 · `Test-ScreenHud` 39 · `Test-NpuSwitch` 28. 남은 1건은 `Test-ViewIdentity` 의 'A 로 돌아옴: 헤더 V1 · 1개' — 값은 표본 28개 모두 맞았는데 표본 수 기준(30)에 2개 모자랐다
+  (같은 실행 초반에 TrackerCheck 를 빌드해 PC 가 바빴다). 그 파일만 다시 돌리니 표본 38개로 27 항목 모두 통과. 배포본은 아직 이 판으로 다시 배포하지 않았다
+- 그 전 전체 통과: 2026-11-06 아침, **배포본 `publish`** — `a378a58`(루트 모델 YOLO26m 640×384 · SAHI 타일 = 모델 입력 크기 · 창 제목에 입력 크기)로 다시 배포하고,
   사용자 승인으로 **배포 폴더 모델도** 같은 YOLO26m 640×384(`94A26C12…`)로 바꿨다. 옛 YOLO26s(09-17, `87D0E1CB…`)와 그 짝(`D889EA23…`)은 `best.yolo26s-0917.onnx` · `best.yolo26s-0917.npu.onnx` 로
   이름을 바꿔 옆에 두었다. 짝은 `Make-NpuModel.ps1 -Model publish\best.onnx` 로 만들어(33초) 루트 짝과 바이트까지 같다(`BD18D32C…`).
   exe 126.4 MB(132,573,874 바이트 — 작업 트리가 깨끗한 `a378a58` 에서 임시 폴더로 내보내 exe 만 옮김), Release DLL 에 결함 이름 없음.

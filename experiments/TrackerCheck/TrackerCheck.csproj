@@ -23,6 +23,8 @@
     <Compile Include="..\..\IncidentRules.cs" />
     <Compile Include="..\..\ViewIdentity.cs" />
     <Compile Include="..\..\YoloLetterbox.cs" />
+    <Compile Include="..\..\VlmAnnotator.cs" />
+    <Compile Include="..\..\VlmCrop.cs" />
   </ItemGroup>
 
   <ItemGroup>

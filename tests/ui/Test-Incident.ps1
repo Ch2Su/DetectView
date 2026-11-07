@@ -116,8 +116,9 @@ try {
     Click (ById $root 'Btn_EventSave')
     $ok = WaitFor { Test-Path $csvFile } 3000
     $lines = if ($ok) { @(Get-Content $csvFile -Encoding utf8) } else { @() }
-    $incCsv = @($lines | Where-Object { $_ -match '^\d+,[\d:.]+,incident,\d+,(car|truck|bus|motorcycle|scooter|bicycle),Z1,lane,(\d+),$' })   # 끝의 빈 note 열
-    $dwellOk = $incCsv.Count -eq 1 -and [int]($incCsv[0] -split ',')[-2] -ge 5000
+    # 끝의 빈 열 넷 — note · vlm · vlm_cues · vlm_desc (VLM 설명은 꺼져 있다 — Test-VlmAnnotation)
+    $incCsv = @($lines | Where-Object { $_ -match '^\d+,[\d:.]+,incident,\d+,(car|truck|bus|motorcycle|scooter|bicycle),Z1,lane,(\d+),,,,$' })
+    $dwellOk = $incCsv.Count -eq 1 -and [int]($incCsv[0] -split ',')[7] -ge 5000
     Check 'CSV: incident 행(Z1 · lane · 멈춤 5000ms 이상)과 incident_end 행' ($ok -and $dwellOk -and @($lines | Where-Object { $_ -match ',incident_end,' }).Count -eq 1) "incident $($incCsv.Count)행 · incident_end $(@($lines | Where-Object { $_ -match ',incident_end,' }).Count)행 · $(if ($incCsv.Count) { $incCsv[0] })"
 
     # 6) 시크: 다시 세어 선언하고, 선언 중에 다시 시크하면 '시크' 해소 행이 남는다

@@ -49,6 +49,8 @@ uv run --no-project --python 3.12 experiments/VlmCheck/run_vlm.py --round3 --res
 uv run --no-project --python 3.12 experiments/VlmCheck/run_vlm.py --round4 --results round4
 uv run --no-project --python 3.12 experiments/VlmCheck/score.py round4
 pwsh experiments/VlmCheck/Measure-GpuShare.ps1   # 결과 6 — 배포본 창이 실행마다 떴다 닫힌다
+dotnet build experiments/TrackerCheck -c Release
+uv run --no-project --python 3.12 --with opencv-python-headless --with numpy --with onnxruntime experiments/VlmCheck/check_app_parity.py   # 결과 7
 ```
 
 결과는 `out/`(gitignore) — `cases/<id>/` 입력 그림, `results*/<설정>.jsonl` 응답 원문, `summary.md` 장면별 판정표.
@@ -178,6 +180,15 @@ pwsh experiments/VlmCheck/Measure-GpuShare.ps1   # 결과 6 — 배포본 창이
 - VLM 이 GPU 를 쓰면 앱이 약 22% 느려지고 VLM 한 번이 2.5 → 3.4~4.3초로 늘어난다
 - **CPU 로 돌려도 앱이 똑같이 느려진다** — 앱의 디코딩·전처리·그리기가 CPU 를 나눠 쓴다. 그러면서 VLM 은 4배 느리다 → 앱에 붙이면 GPU 로 돌린다
 - 앱 연결 설계는 `docs/vlm-annotation.md`
+
+## 결과 7 — 앱에 붙인 뒤: 같은 그림·질문인가 (`check_app_parity.py`, 2026-11-07)
+
+같은 날 앱에 붙였다(`MainWindow.Vlm.cs` · `VlmAnnotator.cs` · `VlmCrop.cs` — 유고 후보 행 아래 둘째 줄에 단서 칩·한 줄 설명, 판정은 그대로).
+위 결과가 앱에서도 맞으려면 앱이 **같은 그림을 같은 질문으로** 보내야 한다 — 장면마다 `make_cases.read_frame` 의 원본 프레임을 PNG 로 두고, `TrackerCheck vlm` 이
+앱 코드로 그림(JPEG 전)과 `/api/chat` 본문을 쓰면 `crop_around`·4차 D3 본문과 견준다.
+
+- **장면 33개 모두 그림이 화소까지 같고 요청 본문도 같다**(그림과 keep_alive 만 빼고 — 질문 글·스키마 항목 순서·허용 값·옵션·think). 프레임 가장자리에서 잘린 크롭(356×512 · 512×443 등)도 같다
+- 진짜 Ollama 로 앱을 돌린 결과(test4 덤프트럭 '단서 없음' · 관설3교 소방차 단서 넷)는 `docs/vlm-annotation.md` '구현과 확인'
 
 ## 판단 (4차까지)
 

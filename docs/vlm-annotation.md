@@ -1,6 +1,6 @@
-# VLM 설명 — 앱 연결 설계 (2026-11-07, 구현 전 · 화면은 시안 2 '두 줄 행')
+# VLM 설명 — 앱 연결 (2026-11-07 구현 · 화면은 시안 2 '두 줄 행')
 
-유고 후보에 로컬 VLM(Ollama)이 그림을 보고 적은 **관찰 단서와 한 줄 설명**을 이벤트 로그 행에 붙이는 설계다. 아직 코드는 없다.
+유고 후보에 로컬 VLM(Ollama)이 그림을 보고 적은 **관찰 단서와 한 줄 설명**을 이벤트 로그 행에 붙인다. 같은 날 설계하고 구현했다 — 확인 결과는 끝의 '구현과 확인'.
 실험(`experiments/VlmCheck/README.md`, [incident-detection.md](incident-detection.md) 끝)의 결론을 따른다 — VLM 에 판정을 묻지 않고 관찰만 묻는다,
 **후보를 지우거나 덮어쓰지 않는다**(혼자 멈춘 차가 사고·고장인지는 VLM 이 판단하지 못한다 — 판정은 지금 규칙이 한다).
 
@@ -77,7 +77,7 @@
 
 ### 켜기 · 끄기 · 실패
 
-- **켤 때**: `GET /api/tags`(2초 제한)로 서버와 모델을 확인한다. 없으면 상태바에 사유('Ollama 가 꺼져 있음' · '모델 qwen3.5:4b 가 없음 — ollama pull qwen3.5:4b')를 내고 토글을 끈 채 둔다.
+- **켤 때**: `GET /api/tags`(3초 제한 — 그동안 버튼은 '확인 중'으로 막힌다)로 서버와 모델을 확인한다. 없으면 상태바에 사유('Ollama 가 꺼져 있음' · '모델 qwen3.5:4b 이 없음 — ollama pull qwen3.5:4b')를 내고 토글을 끈 채 둔다.
   있으면 바로 모델을 올려 둔다(빈 요청 — 첫 후보도 3초 안팎. 올리는 4초쯤 재생이 잠깐 느려질 수 있다). 켜 있는 동안 `keep_alive 30m`(요청마다 다시 잰다)
 - **실패**: 연결이 안 되면(서버가 꺼짐) 그 행은 '실패 — Ollama 연결 안 됨', 토글은 켠 채 다음 후보 때 다시 시도한다. 60초 안에 답이 없으면 '실패 — 응답 없음',
   스키마대로 못 읽으면 '실패 — 답을 읽지 못함'(원문은 Debug 출력)
@@ -92,22 +92,27 @@
 
 ### 로그 · CSV · UIA
 
-- `EventListItem` 에 VLM 상태(없음 · 분석 중 · 끝 · 실패 · 건너뜀)와 표시 글자를 더한다. **`DisplayName`(UIA 이름 — 테스트가 읽는다)은 그대로** 두고 VLM 글자는 `AutomationProperties.HelpText` 로 따로 낸다
-- CSV 끝에 열 셋: `vlm`(done · failed · skipped · 빈칸) · `vlm_cues`(예인 항목 이름을 `;` 로) · `vlm_desc` — 기존 열 순서는 그대로. `Test-ZoneEvents`·`Test-Incident` 의 헤더 검사를 같이 고친다
+- `EventListItem` 에 VLM 상태(없음 · 분석 중 · 끝 · 실패 · 건너뜀)와 표시 글자를 더했다(`INotifyPropertyChanged` — 끝나면 그 행만 다시 그려진다).
+  **`DisplayName`(UIA 이름 — 테스트가 읽는다)은 그대로** 두고 VLM 은 행의 UIA ItemStatus('분석 중' · '단서: 출동 차량, 경광등 — 설명' · '실패 — 사유' · '건너뜀 — 사유')와
+  툴팁(문자열이라 HelpText — 모델·걸린 시간·설명 전문·단서)으로 낸다. 토글 상태는 버튼의 ItemStatus(꺼짐 · 확인 중 · 켜짐) — 버튼 글자는 그대로
+- 목록 항목 스타일(`App.xaml` 의 `LogListItem`)은 높이 20 고정 → 최소 20 (VLM 줄이 붙은 행만 40)
+- CSV 끝에 열 셋: `vlm`(pending · done · failed · skipped · 빈칸) · `vlm_cues`(그렇다고 답한 단서 이름을 `;` 로 — `emergency_vehicle_near;flashing_lights` 처럼,
+  박스에 차가 없다는 답은 `no_vehicle_in_box`) · `vlm_desc`(설명, 실패·건너뜀이면 사유) — 기존 열 순서는 그대로. `Test-ZoneEvents`·`Test-Incident` 의 헤더·행 검사를 같이 고쳤다
 
 ## 파일
 
-| 파일 | 할 일 |
+| 파일 | 내용 |
 |---|---|
-| `VlmAnnotator.cs` | 질문·스키마·요청 JSON·응답 읽기·단서 목록·표시 글자 (WPF·OpenCV 없음) |
-| `VlmCrop.cs` | 위 크롭 (OpenCvSharp) |
-| `MainWindow.Vlm.cs` | 토글·켤 때 확인·모델 올리기·큐·작업·행 갱신·끄기/닫기 |
-| `MainWindow.Playback.cs` | Incident 때 크롭 영역 복제 → 디스패치 뒤 큐에 |
-| `MainWindow.Events.cs` · `MainWindow.xaml` | `EventListItem` 의 VLM 속성, 행 템플릿(두 줄 행 — 둘째 줄은 VLM 상태가 있을 때만), 토글 버튼 `Btn_EventVlm`, CSV 열 |
-| `TestFaults.cs` | Debug 전용 가짜 VLM — `vlm-fake`(0.3초 뒤 정해진 답) · `vlm-down`(연결 실패). UI 테스트가 Ollama 없이 돈다 |
-| `tests/ui/Test-Incident.ps1` | 켜기 → '분석 중' → 단서·설명, 실패 경로, 끄면 표시 없음, CSV 열 |
+| `VlmAnnotator.cs` | 질문·스키마·요청 JSON·답 읽기(`VlmPrompt`), 단서 표(`VlmCue`), 결과(`VlmResult`), Ollama HTTP 호출(`OllamaVlmClient`) — WPF·OpenCV 없음 |
+| `VlmCrop.cs` | 위 크롭 — 자르기(`Cut`, 루프) · 그리기와 축소(`Render`) · JPEG(`Encode`, 작업) (OpenCvSharp) |
+| `MainWindow.Vlm.cs` | 토글·켤 때 확인·모델 올리기/내리기·큐·작업·행 갱신·끄기/닫기 |
+| `MainWindow.Playback.cs` | Incident 때 크롭 영역 복제(`PrepareVlmJobs`) → 디스패치 뒤 큐에(`EnqueueVlmJobs`) |
+| `MainWindow.Events.cs` · `MainWindow.xaml` · `App.xaml` | `EventListItem` 의 VLM 속성, 행 템플릿(두 줄 행 — 둘째 줄은 VLM 상태가 있을 때만), 토글 버튼 `Btn_EventVlm`, CSV 열, 항목 스타일(최소 높이·ItemStatus·툴팁) |
+| `TestFaults.cs` | Debug 전용 가짜 VLM — `vlm-fake`(0.6초 뒤 정해진 답 — 받은 JPEG 를 풀어 그 크기를 설명에) · `vlm-down`(부를 때마다 0.1초 뒤 연결 실패) · `vlm-absent`(켤 때 확인 실패). UI 테스트가 Ollama 없이 돈다 |
+| `tests/ui/Test-VlmAnnotation.ps1` | 기본 꺼짐 · 켜기 → '분석 중' → 단서·설명(그림 512×512) · 행 이름 그대로 · 툴팁 · CSV 열 · 끄면 새 행엔 없음 · 실패 · 켜기 실패 (`Test-Incident`·`Test-ZoneEvents` 는 CSV 열만 고침) |
+| `experiments/TrackerCheck` `vlm` · `experiments/VlmCheck/check_app_parity.py` | 앱의 그림·요청이 실험과 같은지 장면마다 견준다 (아래 '구현과 확인') |
 
-진짜 Ollama 로는 손으로 본다(test4 덤프트럭 · `publish\incidents` 의 사고 장면) — 자동 테스트에는 넣지 않는다(모델·GPU 가 필요하고 답이 모델 판마다 바뀔 수 있다).
+진짜 Ollama 로는 손으로 본다(아래 '구현과 확인') — 자동 테스트에는 넣지 않는다(모델·GPU 가 필요하고 답이 모델 판마다 바뀔 수 있다).
 
 ## 화면 — 시안 2 '두 줄 행' (2026-11-07 사용자가 셋 중 골랐다)
 
@@ -123,7 +128,24 @@
 | **2 · 두 줄 행 (골랐다)** | 유고 행 아래 둘째 줄에 단서 칩 + 설명 한 줄(줄임표, 전문은 툴팁) | 단서와 설명이 마우스 없이 한눈에 보이고, 최소 창 폭(900)에서도 목록이 멀쩡하다 | 유고 행이 두 줄이라 목록(112px)에 보이는 행이 5 → 4. 설명이 한 줄로 잘린다 |
 | 3 · 오른쪽 상세 칸 | 목록 오른쪽 400px 칸에 고른 유고 행의 크롭 그림(VLM 이 본 것) + 단서 + 설명 전문 | **VLM 이 본 그림을 같이 보여** 지어낸 설명을 바로 가려낼 수 있다 | 구현이 가장 크고(행마다 크롭 JPEG 보관·행 고르기), 최소 창 폭(900)에선 목록 칸이 230px 안팎만 남아 글자가 잘린다 |
 
+## 구현과 확인 (2026-11-07)
+
+- **실험과의 대조**(`experiments/VlmCheck/check_app_parity.py` — 장면마다 원본 프레임을 PNG 로 두고 `TrackerCheck vlm` 이 앱 코드로 그림·요청을 쓰면 실험 코드와 견준다):
+  cases.json 장면 **33개 모두 그림이 화소까지 같고**(프레임 가장자리에서 잘려 356×512 · 512×443 처럼 정사각형이 아닌 크롭 포함) **요청 본문도 같다**
+  (질문 글·스키마 항목 순서·허용 값·옵션·think — 그림과 keep_alive 만 빼고). 4차 실험 결과가 그대로 앱의 결과라는 뜻이다
+- **UI 테스트**: `Test-VlmAnnotation` 27 항목(가짜 VLM — docs/testing.md), `Run-All`(Debug) 278 항목 중 277 — 남은 1건은 부하로 표본이 모자란 `Test-ViewIdentity` 항목이라 다시 돌려 통과
+- **진짜 Ollama**(Debug 빌드, qwen3.5:4b, 전원 연결 — 앱을 띄워 UIA 로 켜고 재생):
+
+| 장면 | 유고 후보 | VLM 줄 (켠 뒤 첫 후보) |
+|---|---|---|
+| test4 덤프트럭 (`Test-Incident` 의 차로 구역) | 5.2초 `TRUCK #2` | 4.2초 뒤 `단서 없음` · '도로 중앙에 대형 트럭이 주행 중이며, 그 뒤로 흰색 승용차가 따라오고 있다.' — 4차 P7 과 거의 같은 답(멈춘 차를 "주행 중") |
+| 관설3교 사고 처리(`publish\incidents\20261107_gwanseol3_1.mp4`, 4차 P9 의 소방차 둘레에 임시 차로 구역) | 5.2초 `TRUCK #21` | 7.1초 뒤 `출동 차량` `경광등` `차로 위 사람` `앞에 선 차` · '도로에 정체된 차량들이 줄어 있고, 중앙에는 경광등이 켜진 소방차가 정차해 있다.' — 4차 P9 와 같은 단서 넷 |
+
+  켤 때 확인은 0.1~0.3초. 첫 후보가 4~7초 걸린 것은 켤 때 올리기 시작한 모델이 아직 올라가는 중이었거나 재생과 GPU 를 나눠 써서다(혼자면 2.4~3.0초 — 위 '근거가 된 실측').
+  CSV 에 `done` · 단서 키 · 설명(쉼표가 있어 따옴표로)이 남았고, 창을 닫으니 Ollama 에서 모델이 내려갔다(`/api/ps` 빔 — 켜 있는 동안 3.13 GiB)
+
 ## 남은 것
 
-- 구현 (위 '파일' 표)
+- 배포본(`publish`)에는 아직 없다 — 다음 배포 때 (배포본 UI 테스트에선 `Test-VlmAnnotation` 이 기본 꺼짐·툴팁만 본다)
 - 4차 정답 초안 확인(P5·P6 · P3 · T3) — 사후 규칙을 새 장면으로 다시 잴 때 쓴다. 앱 연결과는 별개
+- 확인하지 않은 것: 밤·비·역광 장면의 단서, 유고 후보가 한꺼번에 몰려 대기열(4칸)이 차는 장면(실제 영상에선 아직 못 봄 — 코드로만), Ollama 를 켜 둔 채 다른 모델로 바꾸기(상수 `qwen3.5:4b`)

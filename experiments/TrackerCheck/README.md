@@ -30,6 +30,8 @@ experiments/TrackerCheck/bin/Release/net10.0-windows10.0.19041.0/TrackerCheck.ex
   ① 저장한 검출로 박스 수 전후·뺀 박스 종류·목표 정지 차량 자리의 이중 박스 ② SAHI — 타일 검출을 GPU 로 다시 해(N 프레임에 하나, 기본 15) 병합 결과 전후
 - `render <test4|test5> <x,y,w,h|full> <배율> <초...>`: 트랙 ID(번호+라벨 첫 글자, 정지 판정이면 뒤에 `*`)를 그린 프레임을 세로로 이어 `out/render_*.png` 로. 의심 연결은 이걸로 눈으로 봤다
 - `testsplit <데이터셋 폴더> <출력 폴더> <이름=모델.onnx> ...` · `inputbench [반복]`: YOLO 입력 축소 방식(`InputCheck.cs`) — 아래 "YOLO 입력 축소"
+- `vlm <프레임.png> <x1> <y1> <x2> <y2> <출력 앞부분>`(2026-11-07, `VlmParity.cs`): 앱의 VLM 설명(루트 `VlmCrop.cs` · `VlmAnnotator.cs` 링크)이 만드는 그림(JPEG 전 PNG)과
+  `/api/chat` 요청 본문(JSON)을 쓴다 — `experiments/VlmCheck/check_app_parity.py` 가 장면마다 불러 실험(make_cases · run_vlm 4차)과 화소·글자로 견준다
 - **검출(`detect`·`dedup`·`sahi`)은 본 앱 `DetectBgra` 와 같은 길이다** — 루트 `YoloLetterbox.cs` 를 링크한다(2026-11-05: OpenCV 쌍선형 레터박스 → YoloDotNet 배율 1 → 박스 +0.5 로 되돌림, 좌표가 실수).
   `detect nearest` 면 그 전의 앱(YoloDotNet 이 Nearest 로 직접 줄이고 정수 박스 그대로). 아래 "결과"·"중복 박스 필터"·"화면 가장자리" 표는 Nearest 때 잰 것이다
 

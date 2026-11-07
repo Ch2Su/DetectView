@@ -420,14 +420,18 @@
         </Style>
 
         <!-- ===== 이벤트 로그 목록 (영상 아래 접이식 로그) — 항목은 EventListItem (MainWindow.Events.cs). 한 줄 20px, 바탕 없이 얇게 (구역 목록의 큰 칸과 다르다).
-             UIA 이름은 "00:11.2 CAR #40 Z1 차로 진입" ===== -->
+             VLM 설명이 붙은 유고 후보 행만 두 줄(40px — MainWindow.Vlm.cs)이라 높이는 최소값으로 둔다.
+             UIA 이름은 "00:11.2 CAR #40 Z1 차로 진입", VLM 은 ItemStatus("분석 중" · "단서: … — 설명" · "실패 — 사유")와 툴팁(HelpText — 설명 전문) ===== -->
         <Style x:Key="LogListItem" TargetType="ListBoxItem">
-            <Setter Property="Height" Value="20"/>
+            <Setter Property="MinHeight" Value="20"/>
             <Setter Property="Padding" Value="6,0"/>
             <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="SnapsToDevicePixels" Value="True"/>
             <Setter Property="AutomationProperties.Name" Value="{Binding DisplayName}"/>
+            <Setter Property="AutomationProperties.ItemStatus" Value="{Binding VlmStatus}"/>
+            <Setter Property="ToolTip" Value="{Binding VlmToolTip}"/>
+            <Setter Property="ToolTipService.ShowDuration" Value="60000"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ListBoxItem">

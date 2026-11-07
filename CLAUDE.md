@@ -82,7 +82,10 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
 | `SceneThumbnail.cs` | 프레임 → 64×36 흑백 그림(면적 평균 축소 — 썸네일 + 감지기로 프레임당 약 0.8 ms). 앱과 실험 도구가 **같은 코드**로 만들어야 도구가 잰 임계값이 앱에서도 맞는다 (OpenCvSharp — TrackerCheck 도 소스로 링크) |
 | `MainWindow.Scene.cs` | 영상 위 화면 전환 배지(`SceneBadge` — `ShowSceneBadge`). 감지·추적기 연결은 `PlaybackLoop` |
 | `ZoneEvents.cs` | 구역 진입·나감 이벤트 순수 알고리즘(`ZoneEventDetector`) — 추적기를 거친 박스의 발 위치가 구역 안인지로 본다. WPF 없음 — experiments 가 소스로 링크 (2026-11-03, 아래 "구역 진입·나감 이벤트") |
-| `MainWindow.Events.cs` | 영상 아래 접이식 이벤트 로그 패널(`EventLogPanel` — 목록·CSV 저장·비우기·헤더의 `⚠ 유고 후보 N`)과 구역 스냅샷을 루프에 넘기는 `PublishZoneShapes` |
+| `MainWindow.Events.cs` | 영상 아래 접이식 이벤트 로그 패널(`EventLogPanel` — 목록·CSV 저장·비우기·헤더의 `⚠ 유고 후보 N`)과 구역 스냅샷을 루프에 넘기는 `PublishZoneShapes`. 유고 후보 행의 VLM 둘째 줄(`EventListItem` 의 VLM 속성 — 단서 칩·한 줄 설명, CSV 끝 `vlm`·`vlm_cues`·`vlm_desc`) |
+| `MainWindow.Vlm.cs` | VLM 설명(2026-11-07 — 아래 "VLM 설명"): [VLM 설명] 토글·Ollama 확인·모델 올리고 내리기, 루프가 떼어 준 그림 영역을 큐(4칸)에 넣고 작업 하나가 VLM 을 불러 그 행에 붙인다 |
+| `VlmAnnotator.cs` | VLM 질문·스키마·요청 JSON·답 읽기(`VlmPrompt` — 실험 4차와 글자까지 같게)와 Ollama HTTP 호출(`OllamaVlmClient`), 단서(`VlmCue`)·결과(`VlmResult`). WPF·OpenCV 없음 — TrackerCheck 가 소스로 링크 |
+| `VlmCrop.cs` | VLM 에 보낼 그림 — 실험(`make_cases.crop_around`)과 같은 3배 정사각 크롭·빨간 박스·긴 변 512·JPEG 90. 자르기는 루프, 그리기·JPEG 은 작업 스레드 (OpenCvSharp — TrackerCheck 가 소스로 링크) |
 | `ViewIdentity.cs` | 화면 식별(뷰 식별 2b) — `ViewMatcher`(ORB 특징점 + RANSAC 호모그래피로 두 화면이 같은 카메라 자세인지)·`ViewRegistry`(알고 있는 뷰들: 알아보고, 처음 보는 안정 화면은 새 뷰로 기억)·`ViewInfo`(번호 + 기준 화면 JPEG — 구역 파일에 들어감). OpenCvSharp 만 쓰고 WPF 없음 — experiments 가 소스로 링크 (2026-11-03, 아래 "화면 식별") |
 | `IncidentRules.cs` | 유고 규칙 순수 알고리즘(`IncidentDetector`) — 차로에 멈춘 차량이 정지로 5초 이어지면 유고 후보. 이벤트는 `ZoneEvent`(Incident·IncidentEnd). WPF 없음 — experiments 가 소스로 링크 (2026-11-03, 아래 "유고 규칙") |
 | `GpuAdapters.cs` | GPU 어댑터 목록(DXGI 하드웨어)과 고성능/저전력 판정 — **내장 여부(DXCore `IsIntegrated`)** 로 가르고 못 읽으면 전용 VRAM. 추론 GPU 선택(`SelectBestGpu`)과 HUD 안내(`DisplayTopology.FindMonitorGpu`)가 같은 함수(`IsHighPerformance`·`Best`)를 쓴다. WPF 없음 — experiments 가 소스로 링크 |
@@ -95,7 +98,7 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
 | `Detection.cs` | `Det` 레코드 구조체 — SAHI와 HUD가 공유하는 검출 결과 타입. 추적기를 거친 박스는 `TrackId`·`Stationary`(init 속성)가 붙고, 유고 후보로 선언된 박스는 `Incident` 도 붙는다(아래 "유고 규칙"). `DuplicateBoxes` — 같은 자리 중복 박스 판정(앱 표시·추적기 공용, 아래 3번) |
 | `App.xaml` | 화면 모양 전체를 한 곳에 — 색(색 조합 B2 스틸 블루)·글꼴·버튼/콤보/슬라이더/툴팁/스크롤바 스타일·박스 색(`Box.*`) (아래 "화면 디자인") |
 | `Ui.cs` | 스타일이 읽는 첨부 속성 — 버튼 아이콘(`Glyph`·`GlyphBrush`)·`HoverBackground`·`IconOnly`·지금 소스 버튼(`IsActive`) |
-| `TestFaults.cs` | Debug 빌드 전용 결함 주입 — 환경 변수 `DETECTVIEW_TEST_FAULTS`(쉼표 구분): `hud-create-fail` · `hud-capture-lost` · `hud-detect-fail`. 훅은 `[Conditional("DEBUG")]` 라 Release 엔 호출 자체가 없다(Release DLL 에 결함 이름 문자열 없음 확인). `Test-ScreenHud.ps1` 이 쓴다 |
+| `TestFaults.cs` | Debug 빌드 전용 결함 주입 — 환경 변수 `DETECTVIEW_TEST_FAULTS`(쉼표 구분): `hud-create-fail` · `hud-capture-lost` · `hud-detect-fail`. 훅은 `[Conditional("DEBUG")]` 라 Release 엔 호출 자체가 없다(Release DLL 에 결함 이름 문자열 없음 확인). `Test-ScreenHud.ps1` 이 쓴다. 가짜 VLM `vlm-fake` · `vlm-down` · `vlm-absent`(값을 돌려줘야 해서 `#if DEBUG` — `Test-VlmAnnotation.ps1`) |
 | `Directory.Build.props` | OpenCvSharp 판(`OpenCvSharpVersion`)을 두는 한 곳 — 본 앱·실험 프로젝트 넷이 같이 읽는다 ("절대 건드리면 안 되는 것들" 1번, 이슈 #9) |
 | `old/` | **2026-11-06 지웠다** — 사용자가 클라우드에 백업한 뒤. 있던 것: 이전 CPU 버전 보관본·최적화 전 백업(`backup_20260911_*`)·학교 과제 제출본(폴더·zip)·`old/docs/`(SRS·아키텍처 설계서)·옛 모델(9.5 MB)·공개 전 git 기록 bundle(아래 '도구 사용 주의'의 원격 항목). `.csproj` 의 제외 글롭과 `.gitignore` 의 `/old/` 는 그대로 둔다 — 다시 생겨도 빌드·graft 가 안전하게(아래 5번·graft 함정 1) |
 | `publish/` | 배포 산출물 + 테스트 영상(`test1~4.mp4`, 1280×720 30fps · `test5.mp4`, 아래 "테스트 영상 내용"). 원래의 VFR 테스트 파일 `recording.webm` 은 없어졌고, 대신 합성 파일 `tests/ui/media/vfr60_nodur.webm` 을 쓴다 |
@@ -105,7 +108,7 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
 | `LICENSE` · `THIRD-PARTY-NOTICES.md` | 저장소 라이선스 GNU AGPL-3.0 (2026-11-02 — 들어 있는 `best.onnx` 가 Ultralytics YOLO26 파인튜닝이라 Ultralytics 가 프로젝트 전체에 AGPL-3.0 을 요구)과 저장소 안 남의 저작물 고지(모델 AGPL-3.0 · `WindowsMlExecutionProvider.cs` 의 바탕 YoloDotNet MIT · `.claude/` 의 graft 연동 파일 MIT — 각 전문). 남의 코드·파일을 가져오면 여기에 더한다 |
 | `tools/` | `Make-NpuModel.ps1`(+ `npu_quantize.py`): YOLO 모델의 NPU 용 짝 `<이름>.npu.onnx` 만들기 (아래 "NPU") |
 | `best.npu.onnx` | 루트 `best.onnx` 의 NPU 짝 (A16W8·가중치 채널별 QDQ, 21.4 MB, git 추적 — 2026-11-06 YOLO26m 640×384 로 다시 만듦, MD5 `BD18D32C…`). 원본을 바꾸면 다시 만든다 |
-| `experiments/` | 따로 빌드하는 실험 프로젝트(각자 `.csproj`). 본 `.csproj` 의 `Compile/Page/None Remove` 로 빠져 있다. `NpuBench/`: AMD NPU 실험 — 짝 확인(`npu_quant`·`npu_source_md5`) 뒤에만 NPU 에 넣는다 (아래 "NPU"). `RuntimeParity/`: 런타임 교체 전후 검출 결과 비교 (1번 항목, GPU 선택은 두 빌드 모두 `GpuAdapters.cs`, 레터박스는 `YoloLetterbox.cs` 링크 — 2026-11-05 부터 좌표가 실수라 그 전 CSV 와 견주지 말 것). `TrackerCheck/`: 추적기 검증 (아래 "추적기")·테두리 멈춤 판정 합성 장면(`selftest` — 관심 구역 `Roi.cs` 의 판정·파일 검사 ⑧, 화면 전환 감지 합성 장면 ⑨, 구역 진입·나감 이벤트 ⑩, 유고 규칙 ⑪, 화면 식별 ⑫도 여기)·화면 식별 맞춤 실측(`views`)·화면 전환이 있는 합성 영상 만들기(`mkrevisit`)·화면 전환 감지 임계값 실측(`scene`)·GPU 고성능/저전력 판정(`gpu`)·중복 박스 필터 전후 비교 (3번 항목)·YOLO 입력 축소 방식(`InputCheck.cs` — 데이터셋 시험 분할을 앱 경로로 검출하고 Skia·OpenCV 축소를 화소 비교 `testsplit`, 축소 시간·결정성 `inputbench`). `RfDetrBench/`: RF-DETR 를 앱 런타임(DirectML)에서 — 노드 배치·속도·결과 일치, 같은 COCO 정확도의 YOLO26 과 비교. `step2/` 는 같은 데이터로 학습(WSL)·내보내기·시험 분할 평가, YOLO 변형(NMS 내보내기·640×384 — 속도는 `yolo`)도 (아래 "RF-DETR 검토"). `VlmCheck/`: 유고 후보를 로컬 VLM(Ollama)으로 2차 확인하는 실험(파이썬 — 앱에는 없음, `docs/incident-detection.md` 끝)과 앱과 GPU 를 나눠 쓸 때의 계측(`Measure-GpuShare.ps1` — 앱 연결 설계는 `docs/vlm-annotation.md`). 산출물 `*/out/`·`*/bin/`·`*/obj/`·`*/.venv/` 는 gitignore |
+| `experiments/` | 따로 빌드하는 실험 프로젝트(각자 `.csproj`). 본 `.csproj` 의 `Compile/Page/None Remove` 로 빠져 있다. `NpuBench/`: AMD NPU 실험 — 짝 확인(`npu_quant`·`npu_source_md5`) 뒤에만 NPU 에 넣는다 (아래 "NPU"). `RuntimeParity/`: 런타임 교체 전후 검출 결과 비교 (1번 항목, GPU 선택은 두 빌드 모두 `GpuAdapters.cs`, 레터박스는 `YoloLetterbox.cs` 링크 — 2026-11-05 부터 좌표가 실수라 그 전 CSV 와 견주지 말 것). `TrackerCheck/`: 추적기 검증 (아래 "추적기")·테두리 멈춤 판정 합성 장면(`selftest` — 관심 구역 `Roi.cs` 의 판정·파일 검사 ⑧, 화면 전환 감지 합성 장면 ⑨, 구역 진입·나감 이벤트 ⑩, 유고 규칙 ⑪, 화면 식별 ⑫도 여기)·화면 식별 맞춤 실측(`views`)·화면 전환이 있는 합성 영상 만들기(`mkrevisit`)·화면 전환 감지 임계값 실측(`scene`)·GPU 고성능/저전력 판정(`gpu`)·중복 박스 필터 전후 비교 (3번 항목)·YOLO 입력 축소 방식(`InputCheck.cs` — 데이터셋 시험 분할을 앱 경로로 검출하고 Skia·OpenCV 축소를 화소 비교 `testsplit`, 축소 시간·결정성 `inputbench`)·앱의 VLM 그림·요청이 실험과 같은지(`vlm` — `VlmCheck/check_app_parity.py` 가 부른다). `RfDetrBench/`: RF-DETR 를 앱 런타임(DirectML)에서 — 노드 배치·속도·결과 일치, 같은 COCO 정확도의 YOLO26 과 비교. `step2/` 는 같은 데이터로 학습(WSL)·내보내기·시험 분할 평가, YOLO 변형(NMS 내보내기·640×384 — 속도는 `yolo`)도 (아래 "RF-DETR 검토"). `VlmCheck/`: 유고 후보를 로컬 VLM(Ollama)으로 2차 확인하는 실험(파이썬 — 앱에는 없음, `docs/incident-detection.md` 끝)과 앱과 GPU 를 나눠 쓸 때의 계측(`Measure-GpuShare.ps1` — 앱 연결 설계는 `docs/vlm-annotation.md`). 산출물 `*/out/`·`*/bin/`·`*/obj/`·`*/.venv/` 는 gitignore |
 | `graft/` · `.claude/` | 코드 인덱스(graft)와 그 에이전트 연동. graft 는 CLI 로만 쓴다 — MCP 서버 등록은 2026-11-02 사용자 결정으로 전역(`~/.claude.json`)과 이 저장소(`.mcp.json` 삭제) 모두 뺐다. `graft/` 는 재생성 가능한 캐시라 커밋하지 않는다. `.claude/helpers/graft-statusline.cjs`(상태줄)는 graft 설치 경로를 `%APPDATA%\npm` 에서 계산한다(2026-11-02 — graft 가 박아 넣은 `C:\Users\<이름>\…` 경로를 저장소에서 뺌. graft 를 다시 설치해 박힌 경로로 돌아오면 다시 고칠 것). graft 훅은 전역 `~/.claude/settings.json` 에만 둔다 — 프로젝트에도 있으면 둘 다 돌아 세션마다 graft 안내문이 두 번 들어가고 도구마다 훅이 두 번 돈다(2026-11-02 프로젝트 쪽 훅과 `graft-hooks.cjs` 를 뺌. graft 를 이 저장소에 다시 설치해 돌아오면 다시 뺄 것) |
 
 ## 자세한 문서 (`docs/` — 세션마다 자동으로 읽히지 않는다)
@@ -121,7 +124,7 @@ CLAUDE.md 가 매 세션 컨텍스트를 너무 많이 차지해서(13만 자) 2
 | `docs/npu.md` | NPU — 장치 전환 · 짝 모델 · 컴파일 캐시 키 · 실측 |
 | `docs/ui-design.md` | 화면 디자인 — 배치 · `App.xaml` · 박스 그리기 · 클래스별 개수 범례 |
 | `docs/rf-detr.md` | RF-DETR 검토 — 단계별 결과(실험 자체는 `experiments/RfDetrBench/README.md`) |
-| `docs/vlm-annotation.md` | VLM 설명 — 유고 후보에 로컬 VLM 단서·설명을 붙이는 앱 연결 설계(구현 전): 흐름·크롭·단서 표시·실패·GPU 공유 실측·화면 시안 |
+| `docs/vlm-annotation.md` | VLM 설명 — 유고 후보에 로컬 VLM 단서·설명을 붙인다(2026-11-07 구현 — 화면 '두 줄 행'): 흐름·크롭·단서 표시·실패·GPU 공유 실측·실험과의 대조·진짜 Ollama 확인 |
 | `docs/testing.md` | UI 테스트 — 파일별 설명 · 지난 전체 통과 기록 · 테스트가 확인하지 않는 것 |
 
 새로 알게 된 실측·경과는 해당 `docs/` 문서에 쓰고, CLAUDE.md 에는 모든 세션이 알아야 할 규칙·함정만 더한다.
@@ -288,6 +291,15 @@ SDK 기본 글롭이 `old/**` 의 소스와 생성 `.g.cs` 까지 끌어와 **72
 - 영상을 열 때·시크 뒤·전환이 안정된 뒤에만 식별한다. 첫 호출이 느려 **앱을 켤 때 `ViewMatcher.WarmUp`** 을 돌린다(빼면 세션 첫 재생이 0.8배속 안팎). 구역 파일은 구역을 편집할 때만 저장한다
 - 뷰로 돌아올 때마다 번호·유고 5초를 새로 센다(방문 사이 이어 붙이기는 미구현)
 
+## 도메인 지식 — VLM 설명 (유고 후보에 로컬 VLM 단서·설명 — 2026-11-07)
+
+자세한 설명·실측은 [docs/vlm-annotation.md](docs/vlm-annotation.md) (실험은 `experiments/VlmCheck/README.md`). 꼭 지킬 것:
+- **판정은 바꾸지 않는다** — 유고 후보 행 아래 둘째 줄에 단서 칩·한 줄 설명만 붙인다(실험 1~4차: 혼자 멈춘 차가 사고·고장인지 VLM 은 판단하지 못하고 근거를 지어낸다). 기본 꺼짐, 파일 재생만
+- 질문·스키마·옵션(`VlmPrompt`)과 그림(`VlmCrop`)은 **실험 4차와 글자·화소까지 같게** 둔다 — 바꾸면 VlmCheck 로 다시 재고 `check_app_parity.py`(TrackerCheck `vlm`)로 둘이 같은지 본다
+- 루프는 그림 영역만 복제하고 VLM 을 기다리지 않는다. 일은 행을 넣는 디스패치 **뒤에** 큐에 넣는다(결과가 와도 붙일 행이 없는 일이 없게). 끄기·비우기·소스 전환은 `_vlmEpoch` 를 올려 기다리던 일·진행 중 요청을 버린다(`ForgetVlmWork`)
+- Ollama 는 사용자가 띄운다 — 앱은 HTTP 로만 부른다(새 NuGet 없음 — 위 1번과 무관). 끄거나 창을 닫으면 모델을 내린다(GPU 메모리 약 4 GB). CPU 로 돌려도 앱이 똑같이 느려져(실측) GPU 로 돈다
+- UI 테스트는 가짜 VLM(`DETECTVIEW_TEST_FAULTS=vlm-fake` 등 — Debug 만)으로 돈다. 행의 UIA 이름(`DisplayName`)은 그대로 두고 VLM 은 ItemStatus·툴팁(HelpText)으로 낸다
+
 ## 도메인 지식 — RF-DETR 검토 (2026-11-04~06 — 3단계: 사용자가 YOLO26m 640×384 를 골라 루트 모델을 바꿨다)
 
 경과·수치는 [docs/rf-detr.md](docs/rf-detr.md)와 `experiments/RfDetrBench/README.md`. 요점:
@@ -369,12 +381,12 @@ pwsh tests/ui/Run-All.ps1
 - 요소는 **`x:Name`(UIA AutomationId)** 으로 찾고 [파일 열기]만 버튼 글자로 찾는다. 버튼 아이콘은 `Ui.Glyph` 로 그린다 — `Content` 를 문자열이 아닌 것으로 바꾸면 UIA 이름이 비어 버튼을 못 찾는다.
   툴팁도 문자열로(UIA HelpText). 상태 문구·버튼 글자·툴팁 문구·창 제목 형식도 검사 대상이다 — **이름·문구를 바꾸면 테스트도 같이 고칠 것**
 - 파일: `Test-FilePlayback`(재생·시크·SAHI·EOF·범례·번호) · `Test-Tracking`(test4 덤프트럭의 번호·정지, 시크 뒤 새 번호) · `Test-Roi`(실제 마우스로 구역 편집·파일) ·
-  `Test-SceneChange`(전환 배지·검은 끊김) · `Test-ZoneEvents`(이벤트 로그·CSV) · `Test-Incident`(유고 후보·해소) · `Test-ViewIdentity`(합성 재방문 영상의 뷰 식별) ·
+  `Test-SceneChange`(전환 배지·검은 끊김) · `Test-ZoneEvents`(이벤트 로그·CSV) · `Test-Incident`(유고 후보·해소) · `Test-VlmAnnotation`(가짜 VLM 으로 VLM 줄·CSV·끄기·실패) · `Test-ViewIdentity`(합성 재방문 영상의 뷰 식별) ·
   `Test-VfrPlayback`(VFR webm 두 개) · `Test-ScreenHud`(HUD·캡처 방식·결함 주입) · `Test-NpuSwitch`(NPU 전환·창 응답·실패 경로)
 - `Measure-Fps.ps1 -ExeDir <폴더>` 는 테스트가 아니라 A/B 계측이다 — 실행 묶음끼리 수 FPS 흔들리니 기준선을 앞뒤로 두 번 잰다
 - 종료 코드 = 실패 건수(`Run-All` 은 0/1). 스크립트는 UTF-8 **BOM** 으로 저장한다(Windows PowerShell 5.1 이 한국어를 깨뜨리지 않게). 파일 열기 대화상자 자동화 요령은 `Common.ps1` 머리말
-- 마지막 전체 통과: 2026-11-06 아침, 배포본 `publish`(`a378a58` — 배포 폴더 모델도 YOLO26m 640×384) `Run-All` 237 항목 모두 통과. 같은 날 Debug 251 항목도 모두 통과.
-  자세한 기록과 그 전 기록은 docs/testing.md
+- 마지막 전체 실행: 2026-11-07 저녁, Debug(VLM 설명을 넣은 뒤) `Run-All` 278 항목 중 277 통과 — 남은 1건(`Test-ViewIdentity` 표본 수가 부하로 기준에 2개 모자람)은 그 파일만 다시 돌려 통과.
+  배포본의 마지막 전체 통과는 2026-11-06 아침(`a378a58`, 237 항목). 자세한 기록과 그 전 기록은 docs/testing.md
 
 ### 테스트 영상 내용 (유고 감지 구상용 기준 사례, 2026-10-23 분석)
 

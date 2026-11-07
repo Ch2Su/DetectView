@@ -15,6 +15,7 @@
 //       TrackerCheck render <test4|test5> <x,y,w,h|full> <배율> <초> [<초> ...]
 //       TrackerCheck testsplit <데이터셋 폴더> <출력 폴더> <이름=모델.onnx> [...]   (InputCheck.cs)
 //       TrackerCheck inputbench [반복=200]                                          (InputCheck.cs)
+//       TrackerCheck vlm <프레임.png> <x1> <y1> <x2> <y2> <출력 앞부분>            (VlmParity.cs — VLM 그림·요청이 실험과 같은지, check_app_parity.py 가 부른다)
 
 using System.Globalization;
 using System.Text;
@@ -75,13 +76,14 @@ return args.FirstOrDefault() switch
                                              args.Skip(4).Select(s => double.Parse(s, CultureInfo.InvariantCulture)).ToArray()),
     "testsplit" => InputCheck.TestSplit(args.Skip(1).ToArray()),
     "inputbench" => InputCheck.InputBench(args.Skip(1).ToArray()),
+    "vlm" => VlmParity.Run(args.Skip(1).ToArray()),
     _ => Usage(),
 };
 
 static int Usage()
 {
     Console.WriteLine("사용법: detect [nearest] | track [이름=값 ...] [noreset] [noframe] | selftest | gpu | dedup [Every=N] | sahi [Every=N] [영상@초 ...] | render <영상> <x,y,w,h|full> <배율> <초...> | " +
-                      "testsplit <데이터셋> <출력 폴더> <이름=모델.onnx> ... | inputbench [반복]");
+                      "testsplit <데이터셋> <출력 폴더> <이름=모델.onnx> ... | inputbench [반복] | vlm <프레임.png> <x1> <y1> <x2> <y2> <출력 앞부분>");
     return 2;
 }
 
