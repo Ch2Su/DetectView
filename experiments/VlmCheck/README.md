@@ -23,7 +23,7 @@
 
 - 후보 박스는 앱 모델(루트 `best.onnx`, YOLO26m 640×384)로 검출해 `hint` 에 가장 가까운 것을 골랐다(`make_cases.py` — 앱처럼 쌍선형·검은 여백).
   상계교의 노란 화살표 표지 차량은 **앱 모델이 아예 못 잡아서** 옆의 경광등 경찰차를 후보로 썼다. 가짜 검출·흐림·검은 화면은 박스를 직접 줬다
-- **정답(gt)은 Claude 가 화면을 보고 쓴 초안이다 — 사용자 확인 전**
+- **정답(gt)은 Claude 가 화면을 보고 쓴 초안이다 — 사용자 확인 전**. 1차 뒤 따로 여쭌 장면(P3·P5·P6·T3)과 그 질문은 `cases.json` 의 `gt_unsure`(보고서가 장면에 표시)
 
 ## 입력과 질문
 
@@ -48,12 +48,27 @@ uv run --no-project --python 3.12 experiments/VlmCheck/run_vlm.py --round2 --res
 uv run --no-project --python 3.12 experiments/VlmCheck/run_vlm.py --round3 --results round3
 uv run --no-project --python 3.12 experiments/VlmCheck/run_vlm.py --round4 --results round4
 uv run --no-project --python 3.12 experiments/VlmCheck/score.py round4
+uv run --no-project --python 3.12 --with pillow experiments/VlmCheck/report.py   # 장면별 보고서 — 폴더 이름을 주면 그 차수만
 pwsh experiments/VlmCheck/Measure-GpuShare.ps1   # 결과 6 — 배포본 창이 실행마다 떴다 닫힌다
 dotnet build experiments/TrackerCheck -c Release
 uv run --no-project --python 3.12 --with opencv-python-headless --with numpy --with onnxruntime experiments/VlmCheck/check_app_parity.py   # 결과 7
 ```
 
-결과는 `out/`(gitignore) — `cases/<id>/` 입력 그림, `results*/<설정>.jsonl` 응답 원문, `summary.md` 장면별 판정표.
+결과는 `out/`(gitignore) — `cases/<id>/` 입력 그림, `results*/<설정>.jsonl` 응답 원문, `summary.md` 장면별 판정표,
+**`<결과 폴더>/report.html` 장면별 보고서**(목차 `index.html`).
+
+### 장면별 보고서 (`report.py`, 2026-11-08)
+
+점수표만으로는 모델이 무엇을 보고 뭐라고 했는지 안 보여서 더했다(사용자 요청). `run_vlm.py` 도 돌린 뒤 그 결과 폴더의 보고서를 만들고, 화면에도 호출마다 단서·설명 원문을 찍는다.
+
+- 맨 위: 설정별 요약(채점은 `score.py` 그대로 — 1~4차 수치가 아래 결과 표와 같음을 확인), 장면 × 설정 판정표(4차는 칸마다 '예'라고 한 단서 줄임말)
+- 장면마다: 모델이 본 그림(입력 방식마다)과 참고용 화면 전체, 영상·시각·후보 라벨·박스 크기·멈춘 시간, 정답과 정답 항목,
+  설정마다 판정 ✓/✗·설명 원문·항목별 답 칩(4차 단서는 앱과 같은 이름 — 빨강 사고 단서 · 파랑 정상 맥락, 정답 항목과 다른 답은 ✗)·
+  4차 규칙이 그 판정을 낸 까닭과 사후 규칙 둘·시간·토큰, 질문(`run_vlm.question` 그대로)·응답 원문
+- '틀린 장면만'·'설정 하나만'·'그림 크게'는 자바스크립트 없이 CSS 로 거른다
+- 그림을 파일 안에 넣어 파일 하나로 열린다(4차 4.3 MB, 1차 6.6 MB) — **실제 CCTV 그림이 들어 있으니 `out/` 밖이나 저장소에 두지 않는다**.
+  pillow 가 있으면 화면 전체·2초 전·뒤 그림만 표시용으로 줄인다(모델이 본 키운 그림은 원본 그대로)
+- 질문 만드는 부분을 `run_vlm.question()` 으로 떼어 냈다 — 떼기 전과 요청 본문 926개(모든 설정·장면·입력)가 같음을 확인
 
 ## 결과 1 — 1차: JSON 이 물체 종류부터 고르게 한 순서 (모델 5가지 × A·B·C)
 

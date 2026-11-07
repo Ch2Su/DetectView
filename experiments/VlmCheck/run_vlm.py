@@ -2,7 +2,8 @@
 
 입력: make_cases.py 가 만든 out/cases/<id>/ 의 그림
   A = 화면 전체(후보 빨간 박스) · B = A + 후보 주변 확대 · C = B + 2초 전·뒤 화면
-출력: out/results/<설정>.jsonl (한 줄에 한 번 호출 — 응답 원문·파싱한 JSON·시간), out/results/<설정>.meta.json (모델 올리는 시간·VRAM)
+출력: out/results/<설정>.jsonl (한 줄에 한 번 호출 — 응답 원문·파싱한 JSON·시간), out/results/<설정>.meta.json (모델 올리는 시간·VRAM),
+끝나면 report.py 가 out/results/report.html(장면마다 그림·답 원문·정답 — 화면에도 호출마다 단서·설명을 찍는다)
 이미 성공한 (장면, 입력) 은 건너뛴다(다시 돌리면 이어서).
 
 Ollama 서버가 떠 있으면 그것을 쓰고, 없으면 OLLAMA_MODELS=E:/Ollama/models 로 `ollama serve` 를 띄웠다가 끝에 끈다.
@@ -185,6 +186,44 @@ def decide(p):
     return "accident_or_breakdown"
 
 
+# 항목 이름(화면 출력·report.py) — 4차 단서는 앱(VlmAnnotator.cs 의 CueTable)과 같은 이름
+FIELD_KO = {
+    "object_type": "물체 종류", "object_state": "상태", "location": "위치", "people_on_road": "차로 위 사람",
+    "emergency_vehicles": "출동 차량", "cones_or_signs": "라바콘·표지", "damage_visible": "손상", "smoke_or_fire": "연기·불",
+    "congestion": "정체", "queue_or_signal": "줄·신호", "parking_area": "주차 구역", "cause_evidence": "근거",
+    "image_usable": "선명함", "vehicle_in_box": "박스 안 차량", "vehicle_type": "차종", "emergency_vehicle_near": "출동 차량",
+    "flashing_lights": "경광등", "visible_damage": "손상", "door_or_trunk_open": "문·트렁크 열림", "cones_or_triangle": "라바콘·삼각대",
+    "vehicles_stopped_ahead": "앞에 선 차", "signal_or_stop_line": "신호·정지선", "description_ko": "설명", "verdict": "판정",
+}
+
+
+def cue_text(p):
+    """4차 답 한 줄 — '예'라고 한 단서와, 판정을 가르는 '아니오'(선명하지 않음·박스에 차 없음)"""
+    yes = [FIELD_KO[k] for k in (*INCIDENT_CUES, *NORMAL_CUES, "cones_or_triangle") if p.get(k) == "yes"]
+    flags = [t for k, t in (("image_usable", "선명하지 않음"), ("vehicle_in_box", "박스에 차 없음")) if p.get(k) == "no"]
+    return "단서 " + ("·".join(yes) or "없음") + (f" ({', '.join(flags)})" if flags else "")
+
+
+def question(cfg, info, variant):
+    """한 번 호출의 질문 — system 글·사용자 글·보낼 그림(out/cases/<id>/ 의 이름)·스키마·검사할 허용 값.
+    report.py 도 이걸로 장면마다 보낸 질문 원문을 보인다(따로 만들면 실제 질문과 어긋날 수 있다)"""
+    imgs = VARIANTS[variant]
+    if cfg.get("r4"):
+        ask = "보이는 것만 JSON 으로 답하라."
+        system, schema, enums, texts = SYSTEM4, make_schema4(), ENUMS4, ("description_ko",)
+    elif cfg.get("r3"):
+        ask = (f"추적기: 박스 안 차량은 {info['stopped_s']:.0f}초째 거의 움직이지 않았고 차로 구역 안에 있다(멈춤·위치는 확인됨). "
+               f"검출기 라벨 '{info['label']}'(신뢰도 {info['score']:.2f}). 왜 멈췄는지 JSON 으로 답하라.")
+        system, schema, enums, texts = SYSTEM3, make_schema3(), ENUMS3, ("description_ko", "cause_evidence")
+    else:
+        ask = ("빨간 박스 안 물체를 확인해 JSON 으로 답하라." if cfg.get("no_label") else
+               f"검출기는 빨간 박스 안 물체를 '{info['label']}'(으)로 봤다(신뢰도 {info['score']:.2f}). 이 후보를 확인해 JSON 으로 답하라.")
+        system = SYSTEM_PROBE if cfg.get("desc_first") else SYSTEM
+        schema, enums, texts = make_schema(cfg.get("desc_first", False)), ENUMS, ("description_ko",)
+    text = "\n".join([f"그림 {len(imgs)}장: " + " / ".join(f"{i + 1}) {IMAGE_TEXT[k]}" for i, k in enumerate(imgs)), ask])
+    return {"system": system, "text": text, "images": imgs, "schema": schema, "enums": enums, "texts": texts}
+
+
 def call(path, body=None, timeout=900):
     req = urllib.request.Request(API + path, data=None if body is None else json.dumps(body).encode(),
                                  headers={"Content-Type": "application/json"}, method="GET" if body is None else "POST")
@@ -240,26 +279,14 @@ def run_config(cfg, cases, out_dir, round3=()):
             info = json.loads((d / "case.json").read_text(encoding="utf-8"))
             if (cfg.get("r3") or cfg.get("r4")) and (c["id"] not in round3 or info.get("stopped_s", 0) < 3):
                 continue   # 3·4차는 규칙이 고를 '멈춘 차'만
-            for v, imgs in VARIANTS.items():
+            for v in VARIANTS:
                 if (c["id"], v) in done or v not in cfg.get("variants", ["A", "B", "C"]):
                     continue
-                if cfg.get("r4"):
-                    ask = "보이는 것만 JSON 으로 답하라."
-                    system, schema, enums, texts = SYSTEM4, make_schema4(), ENUMS4, ("description_ko",)
-                elif cfg.get("r3"):
-                    ask = (f"추적기: 박스 안 차량은 {info['stopped_s']:.0f}초째 거의 움직이지 않았고 차로 구역 안에 있다(멈춤·위치는 확인됨). "
-                           f"검출기 라벨 '{info['label']}'(신뢰도 {info['score']:.2f}). 왜 멈췄는지 JSON 으로 답하라.")
-                    system, schema, enums, texts = SYSTEM3, make_schema3(), ENUMS3, ("description_ko", "cause_evidence")
-                else:
-                    ask = ("빨간 박스 안 물체를 확인해 JSON 으로 답하라." if cfg.get("no_label") else
-                           f"검출기는 빨간 박스 안 물체를 '{info['label']}'(으)로 봤다(신뢰도 {info['score']:.2f}). 이 후보를 확인해 JSON 으로 답하라.")
-                    system = SYSTEM_PROBE if cfg.get("desc_first") else SYSTEM
-                    schema, enums, texts = make_schema(cfg.get("desc_first", False)), ENUMS, ("description_ko",)
-                lines = [f"그림 {len(imgs)}장: " + " / ".join(f"{i + 1}) {IMAGE_TEXT[k]}" for i, k in enumerate(imgs)), ask]
-                body = {"model": cfg["model"], "stream": False, "keep_alive": "20m", "format": schema,
-                        "messages": [{"role": "system", "content": system},
-                                     {"role": "user", "content": "\n".join(lines),
-                                      "images": [base64.b64encode((d / f"{k}.jpg").read_bytes()).decode() for k in imgs]}],
+                q = question(cfg, info, v)
+                body = {"model": cfg["model"], "stream": False, "keep_alive": "20m", "format": q["schema"],
+                        "messages": [{"role": "system", "content": q["system"]},
+                                     {"role": "user", "content": q["text"],
+                                      "images": [base64.b64encode((d / f"{k}.jpg").read_bytes()).decode() for k in q["images"]]}],
                         "options": {**OPTIONS, "num_predict": cfg.get("num_predict", 768)}}
                 if cfg["think"] is not None:
                     body["think"] = cfg["think"]
@@ -273,7 +300,7 @@ def run_config(cfg, cases, out_dir, round3=()):
                                content=r["message"].get("content", ""), thinking_chars=len(r["message"].get("thinking") or ""))
                     try:
                         parsed = json.loads(rec["content"])
-                        rec.update(parsed=parsed, invalid=check(parsed, enums, texts))
+                        rec.update(parsed=parsed, invalid=check(parsed, q["enums"], q["texts"]))
                         if cfg.get("r4") and not rec["invalid"]:
                             parsed["verdict"] = decide(parsed)   # 모델 답이 아니라 규칙 — 채점은 3차 정답으로
                     except json.JSONDecodeError:
@@ -283,9 +310,11 @@ def run_config(cfg, cases, out_dir, round3=()):
                 f.write(json.dumps(rec, ensure_ascii=False) + "\n")
                 f.flush()
                 p = rec.get("parsed") or {}
-                print(f"{cfg['name']} {c['id']} {v}: {p.get('verdict', '-'):14} {p.get('object_type', '-'):18} "
+                print(f"{cfg['name']} {c['id']} {v}: {p.get('verdict', '-'):14} {p.get('object_type', p.get('vehicle_type', '-')):18} "
                       f"{rec['wall_s']:6.1f}초 출력 {rec.get('out_tokens')}토큰{' 생각 ' + str(rec.get('thinking_chars')) + '자' if cfg['think'] else ''}"
                       f"{' 오류 ' + rec['error'] if rec['error'] else ''}{' 형식 어긋남 ' + str(rec.get('invalid')) if rec.get('invalid') else ''}", flush=True)
+                if p:   # 점수만으론 무엇을 봤는지 안 보인다(11-08 사용자) — 단서와 설명 원문도 바로 찍는다
+                    print(f"    {cue_text(p) + ' | ' if cfg.get('r4') else ''}{p.get('description_ko', '')}", flush=True)
     (out_dir / f"{cfg['name']}.meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
     return meta
 
@@ -300,6 +329,7 @@ def main():
     ap.add_argument("--round3", action="store_true", help="3차(ROUND3)를 돈다")
     ap.add_argument("--round4", action="store_true", help="4차(ROUND4)를 돈다")
     a = ap.parse_args()
+    sys.stdout.reconfigure(errors="replace")   # 콘솔이 cp949 면 설명의 '—' 같은 글자가 긴 실행을 멈추게 한다
     spec = json.loads((HERE / "cases.json").read_text(encoding="utf-8"))
     cases, round3 = spec["cases"], spec.get("round3", {})
     if a.cases:
@@ -329,6 +359,11 @@ def main():
     finally:
         if started:
             started.terminate()
+    try:   # 장면별 보고서(그림·답 원문·정답) — 실패해도 결과(jsonl)는 이미 남았다
+        import report
+        print(f"보고서: {report.build(out_dir)}", flush=True)
+    except Exception as e:
+        print(f"보고서를 못 만듦: {e!r} (report.py 로 다시)", flush=True)
 
 
 if __name__ == "__main__":
