@@ -17,7 +17,7 @@ from collections import defaultdict
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-GROUP = {"P": "유고", "N": "정상", "T": "함정", "S": "가짜 검출"}
+GROUP = {"P": "유고", "N": "정상", "C": "사고 화면 속 정상", "T": "함정", "S": "가짜 검출"}
 SHORT = {"incident": "유고", "normal": "정상", "detection_error": "오검출", "cannot_judge": "판단불가", None: "×"}
 
 
@@ -37,6 +37,11 @@ def score(rec, gt):
     if gt.get("emergency") is not None:
         out["emergency"] = p is not None and p["emergency_vehicles"] == ("yes" if gt["emergency"] else "no")
     out["smoke"] = p is not None and p["smoke_or_fire"] == "yes"
+    # 앱에서 쓰는 꼴: VLM 이 유고를 '확인'(incident)했나 안 했나. 정답 목록이 incident 뿐이면 확인해야 맞고,
+    # incident 가 없으면 확인하지 않아야 맞다. 섞여 있으면(T2·흐림·검은 화면의 C) 빼고 센다
+    want = gt_verdicts(gt, rec["variant"])
+    if all(v == "incident" for v in want) or "incident" not in want:
+        out["confirm"] = (p is not None and p["verdict"] == "incident") == ("incident" in want)
     return out
 
 
@@ -70,11 +75,12 @@ def main():
         matrix[r["case"]][key] = f"{SHORT.get(verdict, verdict)}{'' if s['verdict'] else '✗'}"
 
     keys = sorted(agg, key=lambda k: (list(metas).index(k[0]) if k[0] in metas else 99, k[1]))
-    lines = ["| 설정 | 입력 | 판정 맞음 | 유고 | 정상 | 함정 | 가짜 검출 | 물체 종류 | 사람 있음 | 출동 차량 | 연기·불 지어냄 | 형식 어긋남 | 시간 중앙값 |",
-             "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    lines = ["| 설정 | 입력 | 판정 맞음 | 유고 확인 맞음(앱 기준) | 유고 | 정상 | 사고 화면 속 정상 | 함정 | 가짜 검출 | 물체 종류 | 사람 있음 | 출동 차량 | 연기·불 지어냄 | 형식 어긋남 | 시간 중앙값 |",
+             "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for k in keys:
         a = agg[k]
-        lines.append(f"| {k[0]} | {k[1]} | **{pct(a['verdict'])}** | {pct(a['v_유고'])} | {pct(a['v_정상'])} | {pct(a['v_함정'])} | {pct(a['v_가짜 검출'])} | "
+        lines.append(f"| {k[0]} | {k[1]} | **{pct(a['verdict'])}** | {pct(a['confirm'])} | {pct(a['v_유고'])} | {pct(a['v_정상'])} | {pct(a['v_사고 화면 속 정상'])} | "
+                     f"{pct(a['v_함정'])} | {pct(a['v_가짜 검출'])} | "
                      f"{pct(a['object'])} | {pct(a['people'])} | {pct(a['emergency'])} | {sum(a['smoke'])} | {a['valid'].count(False)} | "
                      f"{statistics.median(a['wall']):.1f}초 |")
     lines += ["", "모델 올리기(설정마다 처음 한 번):", ""]

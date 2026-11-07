@@ -38,6 +38,14 @@ PROBES = [  # 1차 결과 뒤 확인(11-07): Qwen 이 박스 안 차를 '없음'
     {"name": "qwen3.5-4b-descfirst", "model": "qwen3.5:4b", "think": False, "desc_first": True, "variants": ["B", "D"]},
     {"name": "gemma3-4b-descfirst", "model": "gemma3:4b", "think": None, "desc_first": True, "variants": ["B", "D"]},
 ]
+ROUND2 = [  # 2차(11-07): 확인에서 가장 나았던 '설명 먼저 + 키운 그림만(D)' 을 네 모델 모두에, 장면 30개. --round2 로 돈다
+    {"name": "r2-qwen3.5-2b", "model": "qwen3.5:2b", "think": False, "desc_first": True, "variants": ["D"]},
+    {"name": "r2-qwen3.5-4b", "model": "qwen3.5:4b", "think": False, "desc_first": True, "variants": ["D"]},
+    # 검출기 라벨을 믿는 문제(T2 — 'bus' 라벨이면 버스라고 함): 라벨·신뢰도를 알려 주지 않으면 어떤가
+    {"name": "r2-qwen3.5-4b-nolabel", "model": "qwen3.5:4b", "think": False, "desc_first": True, "variants": ["D"], "no_label": True},
+    {"name": "r2-gemma3-4b", "model": "gemma3:4b", "think": None, "desc_first": True, "variants": ["D"]},
+    {"name": "r2-qwen3-vl-8b", "model": "qwen3-vl:8b-instruct", "think": None, "desc_first": True, "variants": ["D"]},
+]
 OPTIONS = {"temperature": 0, "seed": 7, "num_ctx": 8192}   # 올릴 때도 같은 값 — 다르면 첫 호출에서 모델을 다시 올린다
 VARIANTS = {"A": ["full"], "B": ["full", "crop"], "C": ["full", "crop", "prev", "next"], "D": ["crop"]}
 
@@ -141,8 +149,9 @@ def run_config(cfg, cases, out_dir):
             for v, imgs in VARIANTS.items():
                 if (c["id"], v) in done or v not in cfg.get("variants", ["A", "B", "C"]):
                     continue
-                lines = [f"그림 {len(imgs)}장: " + " / ".join(f"{i + 1}) {IMAGE_TEXT[k]}" for i, k in enumerate(imgs)),
-                         f"검출기는 빨간 박스 안 물체를 '{info['label']}'(으)로 봤다(신뢰도 {info['score']:.2f}). 이 후보를 확인해 JSON 으로 답하라."]
+                ask = ("빨간 박스 안 물체를 확인해 JSON 으로 답하라." if cfg.get("no_label") else
+                       f"검출기는 빨간 박스 안 물체를 '{info['label']}'(으)로 봤다(신뢰도 {info['score']:.2f}). 이 후보를 확인해 JSON 으로 답하라.")
+                lines = [f"그림 {len(imgs)}장: " + " / ".join(f"{i + 1}) {IMAGE_TEXT[k]}" for i, k in enumerate(imgs)), ask]
                 body = {"model": cfg["model"], "stream": False, "keep_alive": "20m", "format": make_schema(cfg.get("desc_first", False)),
                         "messages": [{"role": "system", "content": SYSTEM_PROBE if cfg.get("desc_first") else SYSTEM},
                                      {"role": "user", "content": "\n".join(lines),
@@ -181,11 +190,12 @@ def main():
     ap.add_argument("--cases", help="장면 id 를 쉼표로(없으면 모두) — 시험 삼아 몇 개만")
     ap.add_argument("--results", default="results", help="out/ 아래 결과 폴더 이름")
     ap.add_argument("--probe", action="store_true", help="1차 결과 뒤 확인(PROBES)을 돈다")
+    ap.add_argument("--round2", action="store_true", help="2차(ROUND2)를 돈다")
     a = ap.parse_args()
     cases = json.loads((HERE / "cases.json").read_text(encoding="utf-8"))["cases"]
     if a.cases:
         cases = [c for c in cases if c["id"] in a.cases.split(",")]
-    pool = PROBES if a.probe else CONFIGS
+    pool = ROUND2 if a.round2 else PROBES if a.probe else CONFIGS
     configs = [c for c in pool if not a.configs or c["name"] in a.configs]
     out_dir = HERE / "out" / a.results
     out_dir.mkdir(parents=True, exist_ok=True)
