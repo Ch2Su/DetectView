@@ -17,8 +17,10 @@ from collections import defaultdict
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-GROUP = {"P": "유고", "N": "정상", "C": "사고 화면 속 정상", "T": "함정", "S": "가짜 검출"}
-SHORT = {"incident": "유고", "normal": "정상", "detection_error": "오검출", "cannot_judge": "판단불가", None: "×"}
+GROUP = {"P": "유고", "N": "정상", "R": "정상", "C": "사고 화면 속 정상", "T": "함정", "S": "가짜 검출"}
+SHORT = {"incident": "유고", "normal": "정상", "detection_error": "오검출", "cannot_judge": "판단불가", None: "×",
+         # 3차 판정
+         "accident_or_breakdown": "사고·고장", "normal_stop": "정상 정차", "not_vehicle": "차량 아님", "unusable_image": "화면 불량"}
 
 
 def gt_verdicts(gt, variant):
@@ -26,7 +28,7 @@ def gt_verdicts(gt, variant):
     return v.get(variant, v["B"]) if isinstance(v, dict) else v   # D(키운 그림만)는 B 와 같은 답을 기대
 
 
-def score(rec, gt):
+def score(rec, gt, confirm="incident"):
     p = rec.get("parsed") if not rec.get("invalid") else None
     out = {"valid": p is not None}
     out["verdict"] = p is not None and p["verdict"] in gt_verdicts(gt, rec["variant"])
@@ -36,12 +38,12 @@ def score(rec, gt):
         out["people"] = p is not None and p["people_on_road"] in (("few", "many") if gt["people"] else ("none",))
     if gt.get("emergency") is not None:
         out["emergency"] = p is not None and p["emergency_vehicles"] == ("yes" if gt["emergency"] else "no")
-    out["smoke"] = p is not None and p["smoke_or_fire"] == "yes"
-    # 앱에서 쓰는 꼴: VLM 이 유고를 '확인'(incident)했나 안 했나. 정답 목록이 incident 뿐이면 확인해야 맞고,
-    # incident 가 없으면 확인하지 않아야 맞다. 섞여 있으면(T2·흐림·검은 화면의 C) 빼고 센다
+    out["smoke"] = p is not None and p.get("smoke_or_fire") == "yes"     # 3차 스키마엔 이 항목이 없다
+    # 앱에서 쓰는 꼴: VLM 이 유고를 '확인'(1·2차 incident, 3차 accident_or_breakdown)했나 안 했나. 정답 목록이 그것뿐이면
+    # 확인해야 맞고, 없으면 확인하지 않아야 맞다. 섞여 있으면(T2·흐림·검은 화면의 C) 빼고 센다
     want = gt_verdicts(gt, rec["variant"])
-    if all(v == "incident" for v in want) or "incident" not in want:
-        out["confirm"] = (p is not None and p["verdict"] == "incident") == ("incident" in want)
+    if all(v == confirm for v in want) or confirm not in want:
+        out["confirm"] = (p is not None and p["verdict"] == confirm) == (confirm in want)
     return out
 
 
@@ -51,7 +53,13 @@ def pct(xs):
 
 def main():
     res_dir = HERE / "out" / (sys.argv[1] if len(sys.argv) > 1 else "results")
-    cases = {c["id"]: c for c in json.loads((HERE / "cases.json").read_text(encoding="utf-8"))["cases"]}
+    spec = json.loads((HERE / "cases.json").read_text(encoding="utf-8"))
+    cases = {c["id"]: c for c in spec["cases"]}
+    # 3차 결과 폴더(round3*)는 판정 이름이 다르다 — cases.json 의 round3 정답으로 바꿔 채점
+    confirm = "incident"
+    if res_dir.name.startswith("round3"):
+        confirm = "accident_or_breakdown"
+        cases = {cid: dict(c, gt=dict(c["gt"], verdict=spec["round3"][cid])) for cid, c in cases.items() if cid in spec["round3"]}
     recs = []
     for f in sorted(res_dir.glob("*.jsonl")):
         last = {}
@@ -64,8 +72,9 @@ def main():
 
     agg = defaultdict(lambda: defaultdict(list))
     matrix = defaultdict(dict)
+    recs = [r for r in recs if r["case"] in cases]
     for r in recs:
-        s = score(r, cases[r["case"]]["gt"])
+        s = score(r, cases[r["case"]]["gt"], confirm)
         key = (r["config"], r["variant"])
         for k, v in s.items():
             agg[key][k].append(v)
@@ -89,6 +98,8 @@ def main():
     lines += ["", "장면별 판정(✗ = 틀림, × = 형식 어긋남):", "",
               "| 장면 | 정답 | " + " | ".join(f"{c} {v}" for c, v in keys) + " |", "|---|---|" + "---|" * len(keys)]
     for cid, c in cases.items():
+        if cid not in matrix:
+            continue   # 이 결과 폴더에서 돌리지 않은 장면(3차의 움직이는 후보 등)
         gv = c["gt"]["verdict"]
         gv = "·".join(SHORT[x] for x in (gv["A"] if isinstance(gv, dict) else gv))
         lines.append(f"| {cid} {c['name']} | {gv} | " + " | ".join(matrix[cid].get(k, "") for k in keys) + " |")

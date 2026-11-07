@@ -1,5 +1,17 @@
 {
  "_설명": "로컬 VLM 유고 후보 확인 실험의 장면 목록. video 는 --media(기본 E:/DetectView/publish) 기준. hint 는 후보를 고를 프레임 좌표(그 점을 담은·가까운 검출 박스), box 는 직접 준 후보(가짜 검출·검은 화면). gt 는 Claude 가 쓴 초안 — 사용자 확인 전. verdict 는 입력 방식(A·B·C)마다 맞다고 볼 답 목록, 나머지 null 은 채점하지 않음.",
+ "_3차": "round3 = 3차(추적기 사실을 글로 주고 '왜 멈췄나'만 묻는다)에 쓰는 장면과 정답. 멈춘 시간은 make_cases.py 가 앞 프레임과 박스를 맞춰 재고(3초 미만이면 3차에서 뺌), 직접 준 박스는 round3_stopped_s 를 쓴다",
+ "round3": {
+  "P1": ["accident_or_breakdown"], "P2": ["accident_or_breakdown"], "P3": ["accident_or_breakdown"], "P4": ["accident_or_breakdown"],
+  "P5": ["accident_or_breakdown"], "P6": ["accident_or_breakdown"], "P7": ["accident_or_breakdown"], "P8": ["accident_or_breakdown"],
+  "P9": ["accident_or_breakdown"], "P10": ["accident_or_breakdown"], "P11": ["accident_or_breakdown"], "P12": ["accident_or_breakdown"],
+  "T2": ["accident_or_breakdown"],
+  "N1": ["normal_stop"], "N3": ["normal_stop"], "N4": ["normal_stop"], "R1": ["normal_stop"], "R2": ["normal_stop"], "R3": ["normal_stop"], "C6": ["normal_stop"],
+  "T1": ["unusable_image"], "T3": ["unusable_image"],
+  "S1": ["not_vehicle"], "S2": ["not_vehicle"]
+ },
+ "round3_stopped_s": {"T1": 10, "T2": 10, "T3": 25, "S1": 8, "S2": 8},
+ "_3차_멈춤": "T2 는 카메라가 도는 중이라 재면 0초지만 실제로는 멈춘 덤프트럭이라 직접 준다. 재 보니 P3 경찰차 1초 · P10 작업자 0.5초 · P12 사람 2초 · C6 정체 속 SUV 0초 — 움직이는 중이라 규칙이 고르지 않으므로 3차에서 빠진다",
  "cases": [
   {"id": "P1", "name": "관설3교_1 갓길 출동 차량(아래에 구조대·작업자)", "video": "incidents/20261107_gwanseol3_1.mp4", "t": 12.0, "hint": [416, 259],
    "gt": {"verdict": ["incident"], "object_type": ["car", "emergency_vehicle", "tow_truck", "work_vehicle", "truck"], "people": true, "emergency": true}},
@@ -42,6 +54,12 @@
   {"id": "C8", "name": "test4 덤프트럭 옆을 지나는 승용차(2차)", "video": "test4.mp4", "t": 5.0, "hint": [736, 384],
    "gt": {"verdict": ["normal"], "object_type": ["car"], "people": null, "emergency": false}},
   {"id": "N1", "name": "test4 신호 대기 행렬", "video": "test4.mp4", "t": 25.0, "hint": [613, 400],
+   "gt": {"verdict": ["normal"], "object_type": ["car"], "people": null, "emergency": false}},
+  {"id": "R1", "name": "test4 신호 대기 줄의 트럭(3차)", "video": "test4.mp4", "t": 25.0, "hint": [686, 353],
+   "gt": {"verdict": ["normal"], "object_type": ["truck"], "people": null, "emergency": false}},
+  {"id": "R2", "name": "test4 신호 대기 줄의 승용차 2(3차)", "video": "test4.mp4", "t": 25.0, "hint": [489, 359],
+   "gt": {"verdict": ["normal"], "object_type": ["car"], "people": null, "emergency": false}},
+  {"id": "R3", "name": "test3 길가에 서 있는 차(3차)", "video": "test3.mp4", "t": 20.0, "hint": [723, 194],
    "gt": {"verdict": ["normal"], "object_type": ["car"], "people": null, "emergency": false}},
   {"id": "N2", "name": "test3 교차로 승합차", "video": "test3.mp4", "t": 15.0, "hint": [459, 293],
    "gt": {"verdict": ["normal"], "object_type": ["car"], "people": null, "emergency": false}},

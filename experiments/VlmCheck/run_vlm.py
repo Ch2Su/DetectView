@@ -46,8 +46,15 @@ ROUND2 = [  # 2차(11-07): 확인에서 가장 나았던 '설명 먼저 + 키운
     {"name": "r2-gemma3-4b", "model": "gemma3:4b", "think": None, "desc_first": True, "variants": ["D"]},
     {"name": "r2-qwen3-vl-8b", "model": "qwen3-vl:8b-instruct", "think": None, "desc_first": True, "variants": ["D"]},
 ]
+ROUND3 = [  # 3차(11-07): 그림으로는 멈춤을 못 가른다(2차) — 멈춤·차로는 추적기 사실로 글에 주고 '왜 멈췄나'만 묻는다. --round3
+    # 장면은 cases.json 의 round3 중 멈춘 지 3초 이상인 것. D3 = 키운 그림(박스의 3배), D2 = 좁게(2배 — 옆의 사고에 덜 끌리는지)
+    {"name": "r3-qwen3.5-4b", "model": "qwen3.5:4b", "think": False, "r3": True, "variants": ["D3", "D2"]},
+    {"name": "r3-qwen3.5-2b", "model": "qwen3.5:2b", "think": False, "r3": True, "variants": ["D3"]},
+    {"name": "r3-gemma3-4b", "model": "gemma3:4b", "think": None, "r3": True, "variants": ["D3"]},
+    {"name": "r3-qwen3-vl-8b", "model": "qwen3-vl:8b-instruct", "think": None, "r3": True, "variants": ["D3"]},
+]
 OPTIONS = {"temperature": 0, "seed": 7, "num_ctx": 8192}   # 올릴 때도 같은 값 — 다르면 첫 호출에서 모델을 다시 올린다
-VARIANTS = {"A": ["full"], "B": ["full", "crop"], "C": ["full", "crop", "prev", "next"], "D": ["crop"]}
+VARIANTS = {"A": ["full"], "B": ["full", "crop"], "C": ["full", "crop", "prev", "next"], "D": ["crop"], "D3": ["crop"], "D2": ["crop2"]}
 
 ENUMS = {
     "object_type": ["car", "truck", "bus", "motorcycle", "bicycle", "person", "emergency_vehicle", "tow_truck", "work_vehicle", "none", "unknown"],
@@ -89,7 +96,37 @@ SYSTEM_PROBE = SYSTEM.replace(
     "그림은 사용자 글에 적힌 순서다(CCTV 화면 전체·후보 주변을 키운 그림·2초 전과 뒤 화면 중 일부). 모든 그림에서 빨간 박스가 후보다.")
 assert SYSTEM_PROBE != SYSTEM
 
-IMAGE_TEXT = {"full": "CCTV 화면 전체(빨간 박스 = 후보)", "crop": "후보 주변을 키운 그림", "prev": "2초 전 화면", "next": "2초 뒤 화면"}
+IMAGE_TEXT = {"full": "CCTV 화면 전체(빨간 박스 = 후보)", "crop": "후보 주변을 키운 그림", "crop2": "후보 주변을 키운 그림",
+              "prev": "2초 전 화면", "next": "2초 뒤 화면"}
+
+# ── 3차: 추적기 사실을 주고 '왜 멈췄나'만 묻는다. 판정 이름도 바꿨다(2차에서 detection_error 를 '아무 일 없음' 뜻으로 썼다)
+ENUMS3 = {
+    "object_type": ENUMS["object_type"],
+    "emergency_vehicles": ["yes", "no", "unknown"],
+    "people_on_road": ["none", "few", "many", "unknown"],
+    "damage_visible": ["yes", "no", "unknown"],
+    "queue_or_signal": ["yes", "no", "unknown"],
+    "parking_area": ["yes", "no", "unknown"],
+    "verdict": ["accident_or_breakdown", "normal_stop", "not_vehicle", "unusable_image"],
+}
+
+
+def make_schema3():
+    props = {"description_ko": {"type": "string"}, "cause_evidence": {"type": "string"},
+             **{k: {"type": "string", "enum": v} for k, v in ENUMS3.items()}}
+    return {"type": "object", "properties": props, "required": list(props)}
+
+
+SYSTEM3 = """너는 도로 CCTV 관제 보조다. 유고 감지 규칙이 '차로 구역 안에서 몇 초째 멈춰 있는 차량'을 후보로 골랐다.
+멈춤과 위치는 추적기가 이미 확인했으니 다시 따지지 않는다. 네 일은 그림에서 '왜 멈췄는지'를 찾는 것이다.
+그림은 후보 주변을 키운 것이고 빨간 박스가 후보다. 보이는 것만 쓰고, 확실하지 않으면 unknown 을 고른다. 화면에 겹친 글자(지명·안내 문구)는 근거로 쓰지 않는다.
+verdict:
+- accident_or_breakdown: 박스 안 차량이 사고·고장으로 멈췄거나 그 현장 처리의 일부다(손상·비상등·차 밖의 사람·삼각대, 현장에 출동한 소방·구급·경찰·견인·작업 차량)
+- normal_stop: 정상적인 정차다(신호 대기 줄, 차들이 줄지어 선 정체, 주차장·길가 주차, 정류장·요금소)
+- not_vehicle: 박스 안에 차량이 없다(나무·건물·표지판·글자·그림자·빈 도로)
+- unusable_image: 화면이 검거나 심하게 흔들리거나 흐려 볼 수 없다
+cause_evidence 에는 판정 근거가 된 '보이는 단서'를 짧게 쓴다(예: '소방차와 구조대원', '앞뒤로 줄지어 선 차들과 정지선').
+description_ko 는 박스 안 차량과 주변을 한국어 한두 문장으로 쓴다."""
 
 
 def call(path, body=None, timeout=900):
@@ -115,14 +152,13 @@ def gpu_mem_mib():
         return None
 
 
-def check(parsed):
-    bad = [k for k, v in ENUMS.items() if parsed.get(k) not in v]
-    if not isinstance(parsed.get("description_ko"), str):
-        bad.append("description_ko")
+def check(parsed, enums=ENUMS, texts=("description_ko",)):
+    bad = [k for k, v in enums.items() if parsed.get(k) not in v]
+    bad += [k for k in texts if not isinstance(parsed.get(k), str)]
     return bad
 
 
-def run_config(cfg, cases, out_dir):
+def run_config(cfg, cases, out_dir, round3=()):
     res_path = out_dir / f"{cfg['name']}.jsonl"
     done = set()
     if res_path.exists():
@@ -146,14 +182,23 @@ def run_config(cfg, cases, out_dir):
         for c in cases:
             d = HERE / "out" / "cases" / c["id"]
             info = json.loads((d / "case.json").read_text(encoding="utf-8"))
+            if cfg.get("r3") and (c["id"] not in round3 or info.get("stopped_s", 0) < 3):
+                continue   # 3차는 규칙이 고를 '멈춘 차'만
             for v, imgs in VARIANTS.items():
                 if (c["id"], v) in done or v not in cfg.get("variants", ["A", "B", "C"]):
                     continue
-                ask = ("빨간 박스 안 물체를 확인해 JSON 으로 답하라." if cfg.get("no_label") else
-                       f"검출기는 빨간 박스 안 물체를 '{info['label']}'(으)로 봤다(신뢰도 {info['score']:.2f}). 이 후보를 확인해 JSON 으로 답하라.")
+                if cfg.get("r3"):
+                    ask = (f"추적기: 박스 안 차량은 {info['stopped_s']:.0f}초째 거의 움직이지 않았고 차로 구역 안에 있다(멈춤·위치는 확인됨). "
+                           f"검출기 라벨 '{info['label']}'(신뢰도 {info['score']:.2f}). 왜 멈췄는지 JSON 으로 답하라.")
+                    system, schema, enums, texts = SYSTEM3, make_schema3(), ENUMS3, ("description_ko", "cause_evidence")
+                else:
+                    ask = ("빨간 박스 안 물체를 확인해 JSON 으로 답하라." if cfg.get("no_label") else
+                           f"검출기는 빨간 박스 안 물체를 '{info['label']}'(으)로 봤다(신뢰도 {info['score']:.2f}). 이 후보를 확인해 JSON 으로 답하라.")
+                    system = SYSTEM_PROBE if cfg.get("desc_first") else SYSTEM
+                    schema, enums, texts = make_schema(cfg.get("desc_first", False)), ENUMS, ("description_ko",)
                 lines = [f"그림 {len(imgs)}장: " + " / ".join(f"{i + 1}) {IMAGE_TEXT[k]}" for i, k in enumerate(imgs)), ask]
-                body = {"model": cfg["model"], "stream": False, "keep_alive": "20m", "format": make_schema(cfg.get("desc_first", False)),
-                        "messages": [{"role": "system", "content": SYSTEM_PROBE if cfg.get("desc_first") else SYSTEM},
+                body = {"model": cfg["model"], "stream": False, "keep_alive": "20m", "format": schema,
+                        "messages": [{"role": "system", "content": system},
                                      {"role": "user", "content": "\n".join(lines),
                                       "images": [base64.b64encode((d / f"{k}.jpg").read_bytes()).decode() for k in imgs]}],
                         "options": {**OPTIONS, "num_predict": cfg.get("num_predict", 768)}}
@@ -169,7 +214,7 @@ def run_config(cfg, cases, out_dir):
                                content=r["message"].get("content", ""), thinking_chars=len(r["message"].get("thinking") or ""))
                     try:
                         parsed = json.loads(rec["content"])
-                        rec.update(parsed=parsed, invalid=check(parsed))
+                        rec.update(parsed=parsed, invalid=check(parsed, enums, texts))
                     except json.JSONDecodeError:
                         rec.update(parsed=None, invalid=["json"])
                 except (urllib.error.URLError, TimeoutError, OSError) as e:
@@ -191,11 +236,13 @@ def main():
     ap.add_argument("--results", default="results", help="out/ 아래 결과 폴더 이름")
     ap.add_argument("--probe", action="store_true", help="1차 결과 뒤 확인(PROBES)을 돈다")
     ap.add_argument("--round2", action="store_true", help="2차(ROUND2)를 돈다")
+    ap.add_argument("--round3", action="store_true", help="3차(ROUND3)를 돈다")
     a = ap.parse_args()
-    cases = json.loads((HERE / "cases.json").read_text(encoding="utf-8"))["cases"]
+    spec = json.loads((HERE / "cases.json").read_text(encoding="utf-8"))
+    cases, round3 = spec["cases"], spec.get("round3", {})
     if a.cases:
         cases = [c for c in cases if c["id"] in a.cases.split(",")]
-    pool = ROUND2 if a.round2 else PROBES if a.probe else CONFIGS
+    pool = ROUND3 if a.round3 else ROUND2 if a.round2 else PROBES if a.probe else CONFIGS
     configs = [c for c in pool if not a.configs or c["name"] in a.configs]
     out_dir = HERE / "out" / a.results
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -213,7 +260,7 @@ def main():
         for cfg in configs:
             if prev_model and prev_model != cfg["model"]:
                 call("/api/generate", {"model": prev_model, "keep_alive": 0})   # 앞 모델을 내린다
-            run_config(cfg, cases, out_dir)
+            run_config(cfg, cases, out_dir, round3)
             prev_model = cfg["model"]
         if prev_model:
             call("/api/generate", {"model": prev_model, "keep_alive": 0})

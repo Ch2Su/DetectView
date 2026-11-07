@@ -100,6 +100,35 @@ def crop_around(img, box, factor=3.0, min_side=256, long_side=512):
                       interpolation=cv2.INTER_CUBIC if s > 1 else cv2.INTER_AREA)
 
 
+def iou(a, b):
+    ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+    iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+    inter = ix * iy
+    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
+    return inter / union if union > 0 else 0.0
+
+
+def stopped_seconds(det, path, t, box, step=0.5, horizon=10.0):
+    """3차: 후보가 그 자리에 몇 초째 있었나 — 0.5초씩 거슬러 올라가며 같은 자리 검출(IoU ≥ 0.5, 또는 중심이 박스 크기의
+    35% 안)이 이어지는 동안. 앱 추적기(정지 판정은 두 변의 움직임)를 흉내 낸 대략값이다"""
+    side = max(box[2] - box[0], box[3] - box[1])
+    cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+    s = 0.0
+    while s + step <= min(horizon, t):
+        f, _, _ = read_frame(path, t - s - step)
+        ok = False
+        for d in det(f):
+            b = d["box"]
+            near = np.hypot((b[0] + b[2]) / 2 - cx, (b[1] + b[3]) / 2 - cy) < 0.35 * side
+            if iou(b, box) >= 0.5 or near:
+                ok = True
+                break
+        if not ok:
+            break
+        s += step
+    return s
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--media", default="E:/DetectView/publish")
@@ -108,7 +137,8 @@ def main():
     a = ap.parse_args()
     media, out = Path(a.media), Path(a.out)
     det = Detector(a.model)
-    cases = json.loads((HERE / "cases.json").read_text(encoding="utf-8"))["cases"]
+    spec = json.loads((HERE / "cases.json").read_text(encoding="utf-8"))
+    cases, round3, given_stop = spec["cases"], spec.get("round3", {}), spec.get("round3_stopped_s", {})
     chosen, review = {}, []
     for c in cases:
         path = media / c["video"]
@@ -130,13 +160,18 @@ def main():
         d.mkdir(parents=True, exist_ok=True)
         cv2.imwrite(str(d / "full.jpg"), draw(frame, cand["box"]), [cv2.IMWRITE_JPEG_QUALITY, 90])
         cv2.imwrite(str(d / "crop.jpg"), crop_around(frame, cand["box"]), [cv2.IMWRITE_JPEG_QUALITY, 90])
+        # 3차: 조금 좁게(박스의 2배, 한 변 최소 160px) — 옆의 사고 현장에 덜 끌리는지
+        cv2.imwrite(str(d / "crop2.jpg"), crop_around(frame, cand["box"], factor=2.0, min_side=160), [cv2.IMWRITE_JPEG_QUALITY, 90])
         for tag, dt in (("prev", -2.0), ("next", 2.0)):
             f2, _, _ = read_frame(path, min(max(0.0, c["t"] + dt), dur - 0.1))
             cv2.imwrite(str(d / f"{tag}.jpg"), draw(f2, cand["box"]), [cv2.IMWRITE_JPEG_QUALITY, 90])
         info = {"id": c["id"], "video": c["video"], "t": round(t, 3), "frame": [frame.shape[1], frame.shape[0]],
                 "box": [round(v, 1) for v in cand["box"]], "label": cand["label"], "score": round(cand["score"], 3), "manual": cand["manual"]}
+        if c["id"] in round3:
+            info["stopped_s"] = given_stop[c["id"]] if c["id"] in given_stop else stopped_seconds(det, path, t, cand["box"])
         (d / "case.json").write_text(json.dumps(info, ensure_ascii=False), encoding="utf-8")
-        print(f"{c['id']}: {c['video']} {t:.2f}s 후보 {cand['label']} {cand['score']:.2f} {info['box']}{' (직접 준 박스)' if cand['manual'] else ''} · 검출 {len(dets)}개")
+        print(f"{c['id']}: {c['video']} {t:.2f}s 후보 {cand['label']} {cand['score']:.2f} {info['box']}{' (직접 준 박스)' if cand['manual'] else ''} · 검출 {len(dets)}개"
+              f"{' · 3차 멈춤 ' + str(info['stopped_s']) + '초' if 'stopped_s' in info else ''}")
         # 확인용: 다른 검출은 얇은 초록, 후보는 빨강, 장면 번호
         r = frame.copy()
         for o in dets:
