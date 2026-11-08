@@ -35,9 +35,9 @@ namespace DetectView
     /// </summary>
     internal static class DuplicateBoxes
     {
-        // 한 물체로 볼 수 있는 클래스 묶음. 같은 차가 truck↔car 로 흔들리고, 멀리 있는 이륜차도 서로·승용차와 흔들린다
+        // 한 물체로 볼 수 있는 클래스 묶음. 같은 차가 truck↔car(8클래스 모델부터는 pickup 과도) 로 흔들리고, 멀리 있는 이륜차도 서로·승용차와 흔들린다
         private static readonly HashSet<string> VehicleLabels =
-            ["car", "truck", "bus", "motorcycle", "scooter", "bicycle"];
+            ["car", "truck", "bus", "motorcycle", "scooter", "bicycle", "pickup"];
 
         /// <summary>
         /// 같은 묶음의 작은 박스가 큰 박스 안에 이 비율 이상 들어 있으면(IoS) 중복이다.
@@ -51,7 +51,7 @@ namespace DetectView
         /// </summary>
         public const double DefaultMinAreaRatio = 0.5;
 
-        /// <summary>클래스 묶음. 차량 6종은 "vehicle", 나머지는 라벨 그대로.</summary>
+        /// <summary>클래스 묶음. 차량 7종은 "vehicle", 나머지는 라벨 그대로.</summary>
         public static string GroupOf(string label) => VehicleLabels.Contains(label) ? "vehicle" : label;
 
         /// <summary>한 프레임 안의 두 박스가 한 물체의 중복 출력인지.</summary>

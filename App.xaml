@@ -71,6 +71,7 @@
              왼쪽 위 클래스별 개수 범례도 같은 글꼴·클래스 색을 쓴다(바탕은 Box.LegendBack) (범례 줄 순서는 아래 클래스 순서 — BoxLayer.LegendOrder) -->
         <Color x:Key="Box.car">#7CC4FF</Color>
         <Color x:Key="Box.truck">#FFAB5E</Color>
+        <Color x:Key="Box.pickup">#F09CF0</Color>             <!-- 2026-11-08 8클래스 모델 — 다른 클래스 색과 색상환에서 가장 먼 자홍(300°) -->
         <Color x:Key="Box.bus">#B9A2FF</Color>
         <Color x:Key="Box.motorcycle">#5FD8C8</Color>
         <Color x:Key="Box.scooter">#F6DE6B</Color>

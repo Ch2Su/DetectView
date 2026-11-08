@@ -29,7 +29,7 @@ using DetectView;
 using Tracker = DetectView.Tracker;   // OpenCvSharp.Tracker 와 겹친다
 
 const double Confidence = 0.3, Iou = 0.7;   // 본 앱 ConfidenceThreshold · IouThreshold
-string[] TargetClasses = ["person", "car", "motorcycle", "truck", "bus", "scooter", "bicycle"];   // 본 앱 TargetClasses
+string[] TargetClasses = ["person", "car", "motorcycle", "truck", "bus", "scooter", "bicycle", "pickup"];   // 본 앱 TargetClasses
 
 // 테스트 영상은 gitignore 대상이라 워크트리에는 없다 — 원래 저장소의 배포 폴더에서 읽는다
 // 영상 폴더는 RepoPaths.VideoDir (저장소 루트의 publish — 절대 경로를 박지 않는다)

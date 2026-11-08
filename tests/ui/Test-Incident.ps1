@@ -7,7 +7,7 @@
 #   2) 선언 뒤(약 5.2초): 헤더에 '⚠ 유고 후보 1', 그 차의 박스 번호에 '유고'가 붙음 — 같은 번호가 '정지'이기도 하다
 #   3) 로그(펼침): '⚠ TRUCK #14 Z1 차로 유고 후보 — 차로 정차 (높음)' 행 (5~9초 사이)
 #   4) 카메라가 돈 뒤(11.7초~): 유고 표시·박스 강조가 사라지고 로그에 그 차(같은 번호)의 '유고 해소 (화면 전환)' 행 — 열린 채 남지 않는다
-#      로그 라벨은 그 순간의 클래스라 같은 차가 TRUCK → BUS 처럼 바뀔 수 있다(추적기는 차량 6종을 한 묶음으로 본다) — 라벨이 아니라 번호로 맞춘다.
+#      로그 라벨은 그 순간의 클래스라 같은 차가 TRUCK → BUS 처럼 바뀔 수 있다(추적기는 차량 7종을 한 묶음으로 본다) — 라벨이 아니라 번호로 맞춘다.
 #      2026-11-05 배포 모델(09-17)에 쌍선형 입력을 넣자 카메라가 돌기 시작하는 10.5초의 덤프트럭이 BUS 로 잡혀 'BUS #10 … 유고 해소' 가 됐다
 #   5) CSV: incident 행(Z1 · lane · 멈춤 5000ms 이상)과 incident_end 행
 #   6) 시크(2초): 그 위치에서 다시 세어 8초 안에 유고 후보가 다시 선언되고, 선언 중에 다시 시크하면 '유고 해소 (시크)' 행
@@ -103,7 +103,7 @@ try {
     $null = WaitFor { $null -ne (ById $root 'EventList') } 3000
     $list = ById $root 'EventList'
     $items = Get-LogItems $list
-    $veh = '(CAR|TRUCK|BUS|MOTORCYCLE|SCOOTER|BICYCLE)'   # 차량 6종 — 로그 라벨은 그 순간의 클래스라 같은 차라도 바뀔 수 있다(머리말 4)
+    $veh = '(CAR|TRUCK|BUS|MOTORCYCLE|SCOOTER|BICYCLE|PICKUP)'   # 차량 7종 — 로그 라벨은 그 순간의 클래스라 같은 차라도 바뀔 수 있다(머리말 4)
     $incRow = @($items | Where-Object { $_.Name -match "^\d\d:\d\d\.\d ⚠ $veh #(\d+) Z1 차로 유고 후보 — 차로 정차 \(높음\)$" })
     Check '로그: 유고 후보 행 한 줄 (5~9초 사이)' ($incRow.Count -eq 1 -and $incRow[0].Ms -ge 5000 -and $incRow[0].Ms -le 9000) "행 $($incRow.Count)개 · $($incRow | ForEach-Object { $_.Name })"
     $incNo = if ($incRow.Count -eq 1 -and $incRow[0].Name -match ' #(\d+) ') { $Matches[1] } else { 'x' }
@@ -117,7 +117,7 @@ try {
     $ok = WaitFor { Test-Path $csvFile } 3000
     $lines = if ($ok) { @(Get-Content $csvFile -Encoding utf8) } else { @() }
     # 끝의 빈 열 넷 — note · vlm · vlm_cues · vlm_desc (VLM 설명은 꺼져 있다 — Test-VlmAnnotation)
-    $incCsv = @($lines | Where-Object { $_ -match '^\d+,[\d:.]+,incident,\d+,(car|truck|bus|motorcycle|scooter|bicycle),Z1,lane,(\d+),,,,$' })
+    $incCsv = @($lines | Where-Object { $_ -match '^\d+,[\d:.]+,incident,\d+,(car|truck|bus|motorcycle|scooter|bicycle|pickup),Z1,lane,(\d+),,,,$' })
     $dwellOk = $incCsv.Count -eq 1 -and [int]($incCsv[0] -split ',')[7] -ge 5000
     Check 'CSV: incident 행(Z1 · lane · 멈춤 5000ms 이상)과 incident_end 행' ($ok -and $dwellOk -and @($lines | Where-Object { $_ -match ',incident_end,' }).Count -eq 1) "incident $($incCsv.Count)행 · incident_end $(@($lines | Where-Object { $_ -match ',incident_end,' }).Count)행 · $(if ($incCsv.Count) { $incCsv[0] })"
 

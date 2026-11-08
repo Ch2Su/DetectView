@@ -59,6 +59,8 @@
 - **YOLO26m 640×384 짝 (2026-11-06 — 루트 모델을 바꾸며, NpuBench README 결과 4)**: 같은 도구로 43초, 21.4 MB(보정 입력도 640×384 — 도구가 모델 입력 크기를 읽는다).
   `session.Run` GPU 8.8 ms vs NPU 20.4 ms(2.3배, 첫 컴파일 64초 — NpuBench), GPU 검출 대비 **96.1% / 97.8%**, 작은 물체 94.7%.
   CPU 로 돌린 같은 짝은 98.8% / 97.5% 라 어긋남의 대부분은 NPU 실행 몫이다. 어긋난 박스는 모두 신뢰도 0.3 경계 근처
+- **8클래스 YOLO26m 640×384 짝 (2026-11-08 — 루트 모델을 바꾸며, NpuBench README 결과 5)**: 29초, 21.4 MB, MD5 `546567CB…`. `session.Run` GPU 8.9 ms vs NPU 20.4 ms(7클래스 판과 같다),
+  GPU 검출 대비 **96.5% / 98.6%**, 작은 물체 95.8%. 새 짝이라 NPU 첫 전환은 다시 컴파일한다(약 1분 — 캐시 키가 NPU 모델 MD5 로 바뀐다)
 - **짝 모델 `best.npu.onnx`**: `pwsh tools\Make-NpuModel.ps1 [-Model <경로>] [-Bench]` 로 원본 옆에 만든다(약 30~40초, uv 로 `tools/npu_quantize.py` 실행).
   메타데이터 `npu_source_md5`(원본 파일 MD5)·`npu_quant`·`npu_calib`·`npu_resize`(보정 입력의 축소 방식 — 2026-11-05 부터 `linear`, 없으면 Nearest 로 보정한 옛 짝)가 들어간다 — 앱은 앞의 둘로 원본과 짝인지 확인한다(`CheckNpuModel` — `npu_resize` 는 보지 않는다).
   **루트 `best.npu.onnx` 는 git 으로 추적한다**(루트 `best.onnx` 의 짝). `publish\best.onnx` 를 바꾸면 **그 짝도 다시 만든다**

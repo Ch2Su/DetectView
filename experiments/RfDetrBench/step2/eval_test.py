@@ -159,7 +159,7 @@ def iou(a, b) -> float:
     return inter / u if u > 0 else 0.0
 
 
-VEHICLE_LABELS = {"car", "truck", "bus", "motorcycle", "scooter", "bicycle"}   # Detection.cs DuplicateBoxes 의 묶음 — 차량 6종은 한 묶음
+VEHICLE_LABELS = {"car", "truck", "bus", "motorcycle", "scooter", "bicycle", "pickup"}   # Detection.cs DuplicateBoxes 의 묶음 — 차량 7종은 한 묶음 (pickup 은 8클래스 모델부터, 7클래스 데이터엔 없다)
 
 
 def app_dedup(dets: list, names: list[str]) -> list:

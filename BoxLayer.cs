@@ -23,8 +23,9 @@ namespace DetectView
         // 유고 후보(Det.Incident) 박스는 클래스 색 대신 이 키의 붓(App.xaml Box.Incident)으로 그린다 — 라벨 이름과 겹치지 않는 키
         private const string IncidentKey = "\u0001incident";
         // 범례 줄 순서: 도로 CCTV 에서 흔한 것부터 (App.xaml 의 Box.* 순서와 같게), 목록에 없는 라벨은 그 뒤 이름순.
+        // pickup(2026-11-08 8클래스 모델)은 드물지만 truck 과 헷갈리는 것이라 truck 바로 아래에 둔다.
         // 개수순으로 줄을 세우면 재생 중 개수가 엇갈릴 때마다 줄이 자리를 바꿔 읽기 어렵다
-        private static readonly string[] LegendOrder = ["car", "truck", "bus", "motorcycle", "scooter", "bicycle", "person"];
+        private static readonly string[] LegendOrder = ["car", "truck", "pickup", "bus", "motorcycle", "scooter", "bicycle", "person"];
         private const double LegendMinWidth = 128;   // DIP — 개수 자릿수가 바뀌어도 범례 폭이 흔들리지 않게
 
         private IReadOnlyList<Det> _dets = Array.Empty<Det>();

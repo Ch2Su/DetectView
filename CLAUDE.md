@@ -10,7 +10,7 @@ WPF(.NET 10) 실시간 객체 검출 애플리케이션. YOLO ONNX 모델을 **D
 | 폴더 | `E:\DetectView` | 예전 `E:\VS_E\YOLO11_Test` — 2026-11-03 옮김 (옛 폴더는 사용자가 백업한 뒤 지웠다 — 2026-11-04 무렵) |
 | 프로젝트·솔루션 / 네임스페이스 / `AssemblyName` / 제품명 / 창 제목 | `DetectView` (`DetectView.csproj`·`DetectView.slnx`·`namespace DetectView`) | 예전엔 `YOLO11_Test` 였다 — 옛 이름은 git 기록(`old-history` 태그)과 클라우드에 백업한 옛 `old/` 안에만 남는다 |
 | 배포 폴더 | `publish` | 예전 `publish_gpu_ver` |
-| 모델 | YOLO**26m** 파인튜닝 ONNX, 입력 **640×384**(16:9 영상용) (`best.onnx`, 78 MB, **7클래스**) | 2026-11-06 교체 — 아래 "RF-DETR 검토" 3단계에서 사용자가 골랐다. 이전: YOLO26s 640×640(36 MB, 2026-09-11~ · 그 전엔 9.5 MB 모델). YOLO11 아님 |
+| 모델 | YOLO**26m** 파인튜닝 ONNX, 입력 **640×384**(16:9 영상용) (`best.onnx`, 78 MB, **8클래스** — 7클래스에 `pickup`) | 2026-11-08 교체 — 라벨링 도구(`E:\local_auto_labeling`)가 11-08 데이터로 학습한 8클래스 YOLO26m(사용자 결정). 그 전: 같은 YOLO26m 640×384 7클래스(11-06~, "RF-DETR 검토" 3단계) · YOLO26s 640×640(36 MB, 2026-09-11~ · 그 전엔 9.5 MB 모델). YOLO11 아님 |
 
 원래 학교 과제로 시작해(제출 완료) 지금은 개인 취미 프로젝트다. CPU 추론 → GPU(DirectML) 전환이 끝난 상태.
 **이 문서·`docs/`·메모의 옛 서술(날짜가 붙은 기록)에는 `YOLO11_Test`·`publish_gpu_ver` 대신 새 이름이 들어가 있다** — 이름만 일괄로 바꿨고 그때 폴더가 달랐다는 건 위 표가 말해 준다.
@@ -34,13 +34,15 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
   데이터셋이 다른 7클래스 모델 등 — 2026-09-23 한 세션 안에서도 바뀌었다). 건드리지 말 것.
   2026-11-06 엔 사용자 승인으로 루트와 같은 YOLO26m 640×384(`94A26C12…`)로 바꿨다 — 그 전 YOLO26s(09-17, `87D0E1CB…`)와 그 짝은
   `publish\best.yolo26s-0917.onnx` · `best.yolo26s-0917.npu.onnx` 로 이름을 바꿔 옆에 두었다(앱은 `best.onnx`·`best.npu.onnx` 만 읽는다. `Test-NpuSwitch` 의 '다른 모델의 짝'이 이것을 쓴다).
+  2026-11-08 루트를 8클래스 YOLO26m(`AB56CED7…`)으로 바꿨을 때 배포 폴더는 7클래스(`94A26C12…`) 그대로 두었다 — 배포할지는 사용자가 정한다
   **성능을 재거나 비교하기 전엔 그 순간 어떤 모델인지 확인한다** — 앱이 떠 있으면 창 제목에 보이고(아래),
   아니면 파일 끝의 Ultralytics 메타데이터를 읽는다:
   `uv run --no-project --python 3.12 python -c "import re,sys;f=open(sys.argv[1],'rb');f.seek(-65536,2);t=f.read().decode('utf-8','ignore');[print(k,'=',v.strip()[:80]) for k,v in re.findall(r'(description|names|date|imgsz)\x12.?([^\x00-\x08\x0e-\x1f]+)',t)]" publish/best.onnx`
   (`imgsz` 가 `[384, 640]` 이면 16:9 영상용 640×384 판 — 같은 가중치의 640×640 판과 이름·날짜가 같을 수 있다)
 - 배포 폴더 모델을 바꾸면 NPU 짝도 다시 만든다: `pwsh tools\Make-NpuModel.ps1 -Model publish\best.onnx` (→ 그 옆 `best.npu.onnx`, 아래 "NPU")
 - **앱용 ONNX 를 새로 내보낼 땐 end-to-end(`[1,300,6]`)인지 본다** — Ultralytics 8.4.142(라벨링 도구가 쓰는 판)의 `export(format="onnx")` 기본값은 NMS 전 원출력 `[1,84,8400]`(메타데이터 `end2end False`)이다.
-  `nms=False`(또는 `end2end=True`)를 줄 것. 지금 루트 `best.onnx`(YOLO26m 640×384, 11-06)는 8.4.142 에서 `nms=False` 로 내보낸 end-to-end 다. 그 전 YOLO26s 는 8.4.31 기본값으로 end-to-end 였다 (2026-11-04 실측 — `experiments/RfDetrBench` README. 원출력 꼴을 앱이 어떻게 처리하는지는 확인 안 함 — 아래 3번의 전제가 깨진다).
+  `nms=False`(또는 `end2end=True`)를 줄 것. 지금 루트 `best.onnx`(8클래스 YOLO26m 640×384, 11-08 — 그 전 7클래스 판도)는 8.4.142 에서 `nms=False` 로 내보낸 end-to-end 다
+  (`experiments/RfDetrBench/step2/export_trained.py yolo <best.pt> <이름> --imgsz 384 640` — 그 README 끝 '8클래스'). 그 전 YOLO26s 는 8.4.31 기본값으로 end-to-end 였다 (2026-11-04 실측 — `experiments/RfDetrBench` README. 원출력 꼴을 앱이 어떻게 처리하는지는 확인 안 함 — 아래 3번의 전제가 깨진다).
   같은 판의 **val 도 `nms` 를 안 주면 one-to-many 출력 + NMS 로 잰다**(학습 중 검증·`best.pt` 고르기도) — 학습 로그의 mAP 는 앱이 쓰는 end-to-end 출력보다 0.007~0.010 높게 나온다(2026-11-05 실측). 앱과 같은 걸 재려면 val 에 `nms=False`.
   그 몫은 val 의 NMS 가 **multi-label**(한 박스가 여러 클래스로 남음)이라서다 — `nms=True` 로 내보낸 ONNX(박스마다 최고 클래스 하나)는 앱 경로에서 end-to-end 보다 AP 가 0.003~0.005 **낮다**(같은 날 — 아래 3번·"RF-DETR 검토")
 - publish 는 `best.onnx` 를 `PreserveNewest` 로 복사한다 → **루트 `best.onnx` 가 배포 폴더의 것보다 새로우면 덮어쓴다**.
@@ -51,10 +53,10 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
   다른 폴더에서 실행하면 모델을 못 찾고 엉뚱하게 "GPU 드라이버 확인" 오류를 냈다 (2026-09-23 수정, 실측 확인)
 - `.csproj` 의 `ExcludeSymbolsFromPublish` 타깃이 publish 출력에서 pdb(~92 MB, exe 밖에 따로 생기던 것)와 `.lib` 를 뺀다. 배포물은 `DetectView.exe` + `best.onnx` 뿐이다.
 - 실행 시 창 제목이 `DetectView — <모델> <입력 가로×세로> (<학습일> 학습) — <GPU 이름> (DirectML)` 로 바뀌면 GPU 초기화 성공이다.
-  예: `DetectView — YOLO26m 640×384 (2026-11-05 학습) — NVIDIA GeForce RTX 5060 Laptop GPU (DirectML)`. 스모크 테스트는 이걸로 확인하면 된다.
+  예: `DetectView — YOLO26m 640×384 (2026-11-08 학습) — NVIDIA GeForce RTX 5060 Laptop GPU (DirectML)`. 스모크 테스트는 이걸로 확인하면 된다.
   모델 이름은 ONNX 메타데이터 `description`("Ultralytics YOLO26m model …")에서, 입력 크기는 ONNX 입력 꼴에서, 학습일은 `date` 에서 뽑는다(`DescribeModel`).
   입력 크기는 2026-11-06 더했다 — 같은 가중치의 640×640 판과 640×384 판은 이름·학습일이 같은데 속도가 31% 다르다.
-  `date` 는 Ultralytics 가 **내보낸 때**를 쓴다(지금 모델은 11-05 학습을 마치고 같은 날 내보냄 — 배포 YOLO26s 도 학습한 날 내보냈다)
+  `date` 는 Ultralytics 가 **내보낸 때**를 쓴다(지금 모델은 11-08 학습을 마치고 같은 날 내보냄 · 그 전 7클래스 판은 11-05 — 배포 YOLO26s 도 학습한 날 내보냈다)
   YoloDotNet 의 `ModelInfo` 에는 s/x 크기가 없어서 쓰지 않는다. 메타데이터가 없는 모델이면 `ModelInfo` 로 대신한다
 
 ## 파일 구조
@@ -107,7 +109,7 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
 | `docs/` | CLAUDE.md 에서 옮긴 긴 설명·실측·지난 기록(2026-11-05) — 아래 '자세한 문서' 표. 세션마다 자동으로 읽히지 않는다 |
 | `LICENSE` · `THIRD-PARTY-NOTICES.md` | 저장소 라이선스 GNU AGPL-3.0 (2026-11-02 — 들어 있는 `best.onnx` 가 Ultralytics YOLO26 파인튜닝이라 Ultralytics 가 프로젝트 전체에 AGPL-3.0 을 요구)과 저장소 안 남의 저작물 고지(모델 AGPL-3.0 · `WindowsMlExecutionProvider.cs` 의 바탕 YoloDotNet MIT · `.claude/` 의 graft 연동 파일 MIT — 각 전문). 남의 코드·파일을 가져오면 여기에 더한다 |
 | `tools/` | `Make-NpuModel.ps1`(+ `npu_quantize.py`): YOLO 모델의 NPU 용 짝 `<이름>.npu.onnx` 만들기 (아래 "NPU") |
-| `best.npu.onnx` | 루트 `best.onnx` 의 NPU 짝 (A16W8·가중치 채널별 QDQ, 21.4 MB, git 추적 — 2026-11-06 YOLO26m 640×384 로 다시 만듦, MD5 `BD18D32C…`). 원본을 바꾸면 다시 만든다 |
+| `best.npu.onnx` | 루트 `best.onnx` 의 NPU 짝 (A16W8·가중치 채널별 QDQ, 21.4 MB, git 추적 — 2026-11-08 8클래스 YOLO26m 640×384 로 다시 만듦, MD5 `546567CB…` · 그 전 7클래스 짝 `BD18D32C…`). 원본을 바꾸면 다시 만든다 |
 | `experiments/` | 따로 빌드하는 실험 프로젝트(각자 `.csproj`). 본 `.csproj` 의 `Compile/Page/None Remove` 로 빠져 있다. `NpuBench/`: AMD NPU 실험 — 짝 확인(`npu_quant`·`npu_source_md5`) 뒤에만 NPU 에 넣는다 (아래 "NPU"). `RuntimeParity/`: 런타임 교체 전후 검출 결과 비교 (1번 항목, GPU 선택은 두 빌드 모두 `GpuAdapters.cs`, 레터박스는 `YoloLetterbox.cs` 링크 — 2026-11-05 부터 좌표가 실수라 그 전 CSV 와 견주지 말 것). `TrackerCheck/`: 추적기 검증 (아래 "추적기")·테두리 멈춤 판정 합성 장면(`selftest` — 관심 구역 `Roi.cs` 의 판정·파일 검사 ⑧, 화면 전환 감지 합성 장면 ⑨, 구역 진입·나감 이벤트 ⑩, 유고 규칙 ⑪, 화면 식별 ⑫도 여기)·화면 식별 맞춤 실측(`views`)·화면 전환이 있는 합성 영상 만들기(`mkrevisit`)·화면 전환 감지 임계값 실측(`scene`)·GPU 고성능/저전력 판정(`gpu`)·중복 박스 필터 전후 비교 (3번 항목)·YOLO 입력 축소 방식(`InputCheck.cs` — 데이터셋 시험 분할을 앱 경로로 검출하고 Skia·OpenCV 축소를 화소 비교 `testsplit`, 축소 시간·결정성 `inputbench`)·앱의 VLM 그림·요청이 실험과 같은지(`vlm` — `VlmCheck/check_app_parity.py` 가 부른다). `RfDetrBench/`: RF-DETR 를 앱 런타임(DirectML)에서 — 노드 배치·속도·결과 일치, 같은 COCO 정확도의 YOLO26 과 비교. `step2/` 는 같은 데이터로 학습(WSL)·내보내기·시험 분할 평가, YOLO 변형(NMS 내보내기·640×384 — 속도는 `yolo`)도 (아래 "RF-DETR 검토"). `VlmCheck/`: 유고 후보를 로컬 VLM(Ollama)으로 2차 확인하는 실험(파이썬 — 앱에는 없음, `docs/incident-detection.md` 끝)과 앱과 GPU 를 나눠 쓸 때의 계측(`Measure-GpuShare.ps1` — 앱 연결 설계는 `docs/vlm-annotation.md`). 산출물 `*/out/`·`*/bin/`·`*/obj/`·`*/.venv/` 는 gitignore |
 | `graft/` · `.claude/` | 코드 인덱스(graft)와 그 에이전트 연동. graft 는 CLI 로만 쓴다 — MCP 서버 등록은 2026-11-02 사용자 결정으로 전역(`~/.claude.json`)과 이 저장소(`.mcp.json` 삭제) 모두 뺐다. `graft/` 는 재생성 가능한 캐시라 커밋하지 않는다. `.claude/helpers/graft-statusline.cjs`(상태줄)는 graft 설치 경로를 `%APPDATA%\npm` 에서 계산한다(2026-11-02 — graft 가 박아 넣은 `C:\Users\<이름>\…` 경로를 저장소에서 뺌. graft 를 다시 설치해 박힌 경로로 돌아오면 다시 고칠 것). graft 훅은 전역 `~/.claude/settings.json` 에만 둔다 — 프로젝트에도 있으면 둘 다 돌아 세션마다 graft 안내문이 두 번 들어가고 도구마다 훅이 두 번 돈다(2026-11-02 프로젝트 쪽 훅과 `graft-hooks.cjs` 를 뺌. graft 를 이 저장소에 다시 설치해 돌아오면 다시 뺄 것) |
 
@@ -162,13 +164,16 @@ CLAUDE.md 가 매 세션 컨텍스트를 너무 많이 차지해서(13만 자) 2
   참고(10-31 평가만, 채택 안 함): 20260627 짝은 네이티브를 다시 빌드해 contrib 13개가 빠졌고(bioinspired·ccalib·dpm·stereo·videostab 등) 관리 쪽 AssemblyVersion 이 4.0.0.0 이다.
   `Directory.Build.props` 는 MSBuild 가 위로 올라가며 처음 찾은 하나만 읽어서 `.claude\worktrees\` 의 빌드(예전엔 `old\*.csproj` 도)도 가져간다 — 지금은 속성 하나라 무해하지만 타깃을 넣으면 그 빌드들에도 걸린다
 
-### 2. `TargetClasses` 의 `"scooter"` 는 의도된 것
+### 2. `TargetClasses` 의 `"scooter"`·`"pickup"` 은 의도된 것
 ```csharp
-["person", "car", "motorcycle", "truck", "bus", "scooter", "bicycle"]
+["person", "car", "motorcycle", "truck", "bus", "scooter", "bicycle", "pickup"]
 ```
 COCO-80에 없는 클래스처럼 보여도 **사용자가 의도한 것**이다. 정리 대상이 아니다.
-루트 모델의 클래스가 정확히 이 7개(`bicycle, bus, car, motorcycle, person, scooter, truck`)라서 그 모델로는 필터가 걸러내는 게 없다.
-모델을 바꿔 쓸 때의 안전장치다 — 실제로 배포 폴더에 COCO 80클래스 YOLO26x 를 넣어 쓴 적이 있고, 그땐 이 필터가 6개 클래스만 남긴다(COCO 엔 scooter 없음).
+루트 모델의 클래스가 정확히 이 8개(`bicycle, bus, car, motorcycle, person, scooter, truck, pickup` — 라벨링 도구의 순서, pickup 은 뒤에 붙인 8번째)라서 그 모델로는 필터가 걸러내는 게 없다.
+`pickup` 은 2026-11-08 8클래스 모델로 바꾸며 더했다(사용자: "8클래스에요") — 빼면 pickup 검출이 통째로 사라진다. 차량 묶음(`DuplicateBoxes`)·범례 순서(`BoxLayer.LegendOrder` — truck 바로 아래)·박스 색(`Box.pickup`)·
+TrackerCheck 사본 둘에도 같이 더했다. 클래스를 또 더하면 이 다섯 곳과 UI 테스트의 차량 라벨 패턴(`Test-Incident`·`Test-VlmAnnotation` 의 `$veh`)을 함께 고친다.
+모델을 바꿔 쓸 때의 안전장치다 — 실제로 배포 폴더에 COCO 80클래스 YOLO26x 를 넣어 쓴 적이 있고, 그땐 이 필터가 6개 클래스만 남긴다(COCO 엔 scooter·pickup 없음).
+지금 배포 폴더(7클래스 YOLO26m)로는 pickup 이 나오지 않을 뿐 아무것도 바뀌지 않는다.
 
 ### 3. 모델은 end-to-end NMS 내장
 출력 `[1,300,6]`, 입력 고정(`dynamic:False`) — 지금 루트 모델은 `[1,3,384,640]`(16:9 영상용 640×384, 2026-11-06. 그 전 YOLO26s 는 `[1,3,640,640]`). 추론 해상도는 **모델이 결정**하며 코드로 바꿀 수 없다 —
@@ -177,7 +182,7 @@ COCO-80에 없는 클래스처럼 보여도 **사용자가 의도한 것**이다
 단, **같은 자리 중복 박스는 실제로 나와서 그것만 뺀다** (2026-10-24 실측: test4 916 프레임 중 466 프레임에 같은 묶음 IoU>0.7 쌍, 대부분 **같은 클래스 IoU≈1.0** —
 `RunObjectDetection` 의 `iou` 인자가 이 end-to-end 모델엔 걸리지 않는 것으로 보인다. 범위만 다른 중복(짐칸·탑승자 포함/제외, IoU 0.5~0.7)과 같은 자리 car+truck 도 있다).
 예전엔 겹쳐 그려져 티가 안 났지만 라벨이 겹치고 상태바·HUD·SAHI 검출 수가 부풀었다.
-- 규칙은 `Detection.cs` 의 **`DuplicateBoxes` 하나** — 앱 표시와 추적기가 같이 쓴다. 같은 묶음(차량 6종은 한 묶음)이고 작은 박스의 80% 이상이 큰 박스 안(IoS ≥ 0.8)
+- 규칙은 `Detection.cs` 의 **`DuplicateBoxes` 하나** — 앱 표시와 추적기가 같이 쓴다. 같은 묶음(차량 7종은 한 묶음 — 11-08 pickup 더함)이고 작은 박스의 80% 이상이 큰 박스 안(IoS ≥ 0.8)
   **이고** 넓이비 ≥ 0.5 일 때만 중복, 신뢰도 높은 쪽을 라벨·좌표 그대로 남긴다. 일반 NMS 가 아니라서 나란히 일부만 겹친 두 차,
   버스 박스에 거의 다 들어가는 옆 차(넓이비 0.13~0.16)는 남는다. 이 방향(중복만 뺀다, 일반 NMS 아님)은 2026-10-25 사용자가 골랐다.
   판정은 신뢰도 순 대표와 **직접** 겹치는 박스만 흡수한다(흡수된 박스는 다른 박스를 흡수하지 않음 — 비이행). 그래서 사슬 중복 A⊃B⊃C 에서
@@ -249,7 +254,7 @@ SDK 기본 글롭이 `old/**` 의 소스와 생성 `.g.cs` 까지 끌어와 **72
 ## 도메인 지식 — 추적기 (유고 감지 1단계, 2026-10-24 · 앱에 연결 2026-11-02)
 
 자세한 설명·파라미터 근거·검증은 [docs/incident-detection.md](docs/incident-detection.md) '추적기'. 꼭 지킬 것:
-- `Tracker.cs` 는 **시각 기준**(프레임 수 아님) 탐욕적 IoU 다. 차량 6종은 한 묶음, 중복 박스는 한 물체로 묶고(`DuplicateBoxes`), 정지 판정은 마주 보는 두 변 중 덜 움직인 쪽으로 잰다.
+- `Tracker.cs` 는 **시각 기준**(프레임 수 아님) 탐욕적 IoU 다. 차량 7종(pickup 포함)은 한 묶음, 중복 박스는 한 물체로 묶고(`DuplicateBoxes`), 정지 판정은 마주 보는 두 변 중 덜 움직인 쪽으로 잰다.
   `Reset()` 은 트랙만 비우고 번호는 이어서 센다
 - 앱은 `UpdateTagged`(번호·정지를 `Det.TrackId`·`Det.Stationary` init 속성으로)를 쓰고 **프레임 크기를 넘긴다**(`Update(dets, ms, 폭, 높이)` — 테두리에 걸친 박스의 멈춤 판정)
 - 파일은 영상 시각(`posMs`)으로 돌리고 **시크한 프레임은 먼저 `Reset()`** 한다(뒤로 가는 시각만 저절로 비워진다). 카메라는 멈췄다 재개하면 비운다
@@ -307,6 +312,9 @@ SDK 기본 글롭이 `old/**` 의 소스와 생성 `.g.cs` 까지 끌어와 **72
 - 3단계(2026-11-06): 후보 RF-DETR-S FP16(새 추론 경로) · YOLO26m 640×384(지금 경로) 중 **사용자가 YOLO26m 640×384 를 골랐다** — 루트 `best.onnx`·NPU 짝을 바꾸고 SAHI 타일을 모델 입력 크기로.
   앱 경로(C# — YoloDotNet 정수 좌표라 파이썬 평가기보다 0.006 낮다) 시험 분할 AP **0.694 · 16:9 0.687**(배포 YOLO26s 0.666 · 0.631). 소스 비율로 640×640 세션을 고르는 일(README 에 적었던 '세션 둘')은 하지 않았다.
   RF-DETR-N 은 YOLO26s 급이고 16:9 에선 더 낮아(0.611 vs 0.654) 권하지 않았다 — 이점은 속도뿐
+- **2026-11-08 루트를 8클래스 YOLO26m 640×384 로 다시 바꿨다**(사용자 — 라벨링 도구가 11-08 데이터(8클래스, test 749장)로 같은 학습 설정으로 학습한 `models/best.pt`).
+  라벨링 도구의 test 비교(Ultralytics val 기본값 — 앱 경로보다 0.007~0.010 높게 나오는 방식, 위 숫자와 섞지 말 것): pickup 뺀 7클래스 mAP50-95 0.6957 → 0.7398(CCTV 0.6986 → 0.7367),
+  pickup 과 상관없는 5클래스는 거의 같고(+0.013, CCTV +0.004) 큰 차이는 truck +0.24(7클래스 모델은 pickup 을 truck 으로 잡았다)·pickup 0.606. 앱 경로 AP 는 다시 재지 않았다(새 데이터셋 백업이 필요하다)
 - 학습·평가 데이터는 WSL 백업 `/home/chisu/datasets_backup/visible_2026-11-04` 를 쓴다(원본은 라벨링 도구의 'WSL 학습' 버튼이 덮어쓴다). 오래 도는 벤치·학습은 전원을 연결한다(배터리 20분 무입력이면 GPU 작업도 멈춘다)
 
 ## 도메인 지식 — NPU (AMD Ryzen AI — 왼쪽 패널 "추론 장치"에서 GPU/NPU 선택)
@@ -385,8 +393,8 @@ pwsh tests/ui/Run-All.ps1
   `Test-VfrPlayback`(VFR webm 두 개) · `Test-ScreenHud`(HUD·캡처 방식·결함 주입) · `Test-NpuSwitch`(NPU 전환·창 응답·실패 경로)
 - `Measure-Fps.ps1 -ExeDir <폴더>` 는 테스트가 아니라 A/B 계측이다 — 실행 묶음끼리 수 FPS 흔들리니 기준선을 앞뒤로 두 번 잰다
 - 종료 코드 = 실패 건수(`Run-All` 은 0/1). 스크립트는 UTF-8 **BOM** 으로 저장한다(Windows PowerShell 5.1 이 한국어를 깨뜨리지 않게). 파일 열기 대화상자 자동화 요령은 `Common.ps1` 머리말
-- 마지막 전체 통과: 2026-11-07 저녁, 배포본 `publish`(`4c05f5f` — VLM 설명판) `Run-All` 251 항목 모두 통과. 같은 날 Debug 는 278 항목 중 277 — 남은 1건(`Test-ViewIdentity` 표본 수가
-  부하로 기준에 2개 모자람)은 그 파일만 다시 돌려 통과. 자세한 기록과 그 전 기록은 docs/testing.md
+- 마지막 전체 통과: 2026-11-08 오후, Debug(루트 모델을 8클래스 YOLO26m 으로 바꾼 뒤) `Run-All` 278 항목 모두 통과. 배포본은 2026-11-07 저녁 `4c05f5f`(VLM 설명판 — 7클래스 모델) 251 항목 모두 통과.
+  자세한 기록과 그 전 기록은 docs/testing.md
 
 ### 테스트 영상 내용 (유고 감지 구상용 기준 사례, 2026-10-23 분석)
 

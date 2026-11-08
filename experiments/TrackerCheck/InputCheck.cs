@@ -38,7 +38,7 @@ static class InputCheck
     const double EvalConfidence = 0.001;                             // mAP 는 PR 곡선 전체가 필요하다 (eval_test.py 와 같음)
     const double Iou = 0.7;                                          // 본 앱 IouThreshold (end-to-end 모델이라 YoloDotNet V26 모듈은 안 쓴다)
     static readonly string[] ImageExts = [".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"];   // eval_test.py 의 IMG_EXTS
-    static readonly HashSet<string> TargetClasses = ["person", "car", "motorcycle", "truck", "bus", "scooter", "bicycle"];   // 본 앱 TargetClasses
+    static readonly HashSet<string> TargetClasses = ["person", "car", "motorcycle", "truck", "bus", "scooter", "bicycle", "pickup"];   // 본 앱 TargetClasses
 
     // (이름, Skia 축소, 같은 방식의 OpenCV 보간). Skia 의 Nearest 는 화소 중심을 맞춰서 OpenCV 의 INTER_NEAREST 가 아니라 NEAREST_EXACT 와 같다
     static readonly (string Name, SKSamplingOptions Sampling, InterpolationFlags Cv)[] Modes =

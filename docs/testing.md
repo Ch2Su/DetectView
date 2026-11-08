@@ -103,7 +103,13 @@ pwsh tests/ui/Run-All.ps1
   옛 판 `UiLatency` 형식이 남은 PowerShell 세션에선 분명한 메시지로 멈춘다(Add-Type 형식은 못 바꿈 — 새 pwsh 에서 돌릴 것)
 - 종료 코드 = 실패 건수(`Run-All` 은 0/1). 파일 열기 대화상자 자동화 요령 등은 `Common.ps1` 머리말에 정리해 두었다.
   `Run-All` 은 테스트 파일이 try 밖에서 throw 해도(영상·빌드 없음) 그 파일만 실패로 세고 다음 파일을 돈다(2026-10-30 — 예전엔 거기서 통째로 멈췄다)
-- 마지막 전체 통과: 2026-11-07 저녁, **배포본 `publish`** — VLM 설명판 `4c05f5f` 로 다시 배포(작업 트리가 깨끗한 worktree 에서 임시 폴더로 내보내 exe 만 옮김 — 132,590,495 바이트,
+- 마지막 전체 통과: 2026-11-08 오후, **Debug** — **루트 모델을 8클래스 YOLO26m 640×384 로 바꾼 뒤**(pickup 추가 — CLAUDE.md "RF-DETR 검토", NPU 짝 `546567CB…`).
+  worktree 에 `publish` 연결을 두고 `Run-All` 한 번에 278 항목 모두 통과(6.8분): `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 · `Test-SceneChange` 21 · `Test-ZoneEvents` 21 ·
+  `Test-Incident` 16 · `Test-VlmAnnotation` 27 · `Test-ViewIdentity` 27 · `Test-VfrPlayback` 26 · `Test-ScreenHud` 39 · `Test-NpuSwitch` 28. 테스트는 차량 라벨 패턴에 PICKUP 만 더했다(`$veh`·CSV 패턴) —
+  창 제목 `YOLO26m 640×384 (2026-11-08 학습)`, 덤프트럭은 그대로 차로 유고 후보(`TRUCK`). 새 짝이라 NPU 첫 전환은 컴파일해 65.1초, 캐시 키 `546567CB…_1.8.80.0_1.27.20260711.1.7b7c0e2`,
+  ①② 창 응답 WM_NULL 최대 1 ms · UIA 최대 6~57 ms. 참고용 재생 처리 GPU 76.8 · NPU 39.0 FPS. 테스트 영상엔 pickup 이 범례에 잡히는 장면이 없어,
+  test5 를 31.5·34.3·42.5초에 멈춰 눈으로 봤다 — 범례 `TRUCK 2 · PICKUP 1` 처럼 truck 아래 줄, 박스·라벨은 자홍 `Box.pickup`(scratchpad 캡처 — 실제 CCTV 라 저장소엔 없음)
+- 그 전: 2026-11-07 저녁, **배포본 `publish`** — VLM 설명판 `4c05f5f` 로 다시 배포(작업 트리가 깨끗한 worktree 에서 임시 폴더로 내보내 exe 만 옮김 — 132,590,495 바이트,
   배포 폴더 모델·NPU 짝은 그대로 `94A26C12…` · `BD18D32C…`, Release DLL 에 가짜 VLM·결함 이름 없음). worktree 에 `publish` 연결을 두고 `Run-All -ExeDir publish` 한 번에 251 항목 모두 통과:
   `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 · `Test-SceneChange` 21 · `Test-ZoneEvents` 21 · `Test-Incident` 16 · **`Test-VlmAnnotation` 6(새 파일 — Release 라 기본 꺼짐·툴팁만)** ·
   `Test-ViewIdentity` 27 · `Test-VfrPlayback` 26 · `Test-ScreenHud` 33(DXGI 2560×1440, 결함 주입은 Release 라 빠짐) · `Test-NpuSwitch` 28.

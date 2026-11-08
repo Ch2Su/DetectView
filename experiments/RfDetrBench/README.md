@@ -519,3 +519,32 @@ uv run --no-project --python 3.12 --with onnxruntime --with pycocotools --with o
     --data '\wsl.localhost\Ubuntu\home\chisu\rfdetr_work\data\visible' --out experiments\RfDetrBench\out\eval_app_y26m `
     --app-json 'app_y26m:experiments\TrackerCheck\out\testsplit_y26m\app_y26m_prelb.json' --app-json 'app_y26m384:experiments\TrackerCheck\out\testsplit_y26m\app_y26m384_prelb.json'
 ```
+
+## 8클래스 YOLO26m 으로 (2026-11-08 — 사용자 결정)
+
+라벨링 도구(`E:\local_auto_labeling`)가 11-08 데이터(8클래스 — 09-20 pickup 추가 · 11-02 van 을 car 로 합침, 승인 5,203장 · train 3,725 / val 729 / test 749)로
+2단계 YOLO26m 과 같은 설정(640 · batch 10 · 100 epoch · optimizer auto · cos_lr · close_mosaic 10 · seed 0)으로 학습한 운영 가중치 `models/best.pt`
+(= `best_y26m_8cls.pt`, 42.0 MB, best = epoch 84 · val mAP50-95 0.6934)를 사용자가 앱 모델로 골랐다.
+
+**한 일**
+- 내보내기: 위 '3단계'와 같은 명령(`export_trained.py yolo <best.pt> y26m8-384 --imgsz 384 640` — Ultralytics 8.4.142 `nms=False`, Windows CPU 31초) → `out/step2_models/y26m8-384.onnx`
+  81.7 MB, MD5 `AB56CED7…`, 출력 `[1,300,6]` · 입력 `[1,3,384,640]` · opset 18 · 노드 418개(7클래스 판과 같다), 메타데이터 `imgsz [384, 640]` · `end2end True` · 날짜 2026-11-08 ·
+  `names` 8개 — 앞 7개는 7클래스 판과 같은 번호이고 pickup 이 7번(라벨링 도구는 클래스를 뒤에만 붙인다)
+- 루트 `best.onnx` ← 그 파일, NPU 짝 다시 만들기(`tools\Make-NpuModel.ps1` — 보정 test1~5 100장, 29초, 21.4 MB, MD5 `546567CB…`)
+- 앱: pickup 을 관심 클래스(`TargetClasses`)·차량 묶음(`DuplicateBoxes` — 중복 박스·추적기·유고 규칙이 쓴다)·범례 순서(truck 바로 아래)·박스 색(`Box.pickup` #F09CF0)에 더했다.
+  TrackerCheck 사본 둘과 이 폴더 `eval_test.py` 의 차량 묶음, UI 테스트의 차량 라벨 패턴도 같이. `yolo_video_check.py` 의 `NAMES`(7클래스 데이터 순서)는 그대로 — 7클래스 모델들(y26s 등)용이다
+- 배포 폴더(`publish`)는 7클래스 판(`94A26C12…`) 그대로 — 배포할지는 사용자가 정한다
+
+**정확도** — 다시 재지 않았다. 라벨링 도구 쪽 test 749장 비교(`E:\local_auto_labeling\docs\experiments.md` '8클래스 첫 학습' — Ultralytics val 기본값이라
+앱 경로(end-to-end)보다 0.007~0.010 높게 나온다. 이 README 의 시험 분할 숫자와는 데이터도 달라 견주지 말 것):
+
+| test (장 / 박스) | 평균 | 7클래스 YOLO26m (지금까지 앱) | **8클래스 YOLO26m** |
+|---|---|---|---|
+| 전체 (749 / 4,192) | pickup 뺀 7 | 0.6957 | **0.7398** |
+| | pickup 과 상관없는 5 | 0.6958 | **0.7084** |
+| CCTV (485 / 3,072) | pickup 뺀 7 | 0.6986 | **0.7367** |
+| | pickup 과 상관없는 5 | 0.6942 | **0.6985** |
+
+- 큰 차이는 truck(0.563 → 0.804)과 pickup(0 → 0.606)이다 — 7클래스 모델은 pickup 을 truck·car 로 잡아 truck 정밀도가 0.53~0.57 이었다(8클래스 0.83).
+  pickup 과 상관없는 클래스는 CCTV 에서 클래스마다 오르내린다(bicycle −0.005 · motorcycle −0.008 · person −0.001 · bus +0.016 · scooter +0.020)
+- 앱 경로로 다시 재려면 11-08 데이터셋을 먼저 백업해야 한다(라벨링 도구의 'WSL 학습'이 `~/datasets/visible` 을 덮어쓴다 — 위 '데이터셋'). 7클래스 모델과 견줄 땐 pickup 을 빼거나 truck·car 로 합쳐야 한다

@@ -51,7 +51,7 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
 - 프로젝트 파일(`DetectView.csproj`)을 꼭 지정합니다. 빼면 폴더의 `.slnx` 가 잡혀 `NETSDK1194` 경고가 납니다.
 - 결과는 `publish\DetectView.exe`(약 126 MB, .NET 런타임 포함)와 `best.onnx` 입니다. **모델은 exe 에 들어가지 않으니 같은 폴더에 둡니다.**
 - NPU 짝 모델은 publish 에 복사되지 않습니다. 배포 폴더 모델로 만듭니다: `pwsh tools\Make-NpuModel.ps1 -Model publish\best.onnx`
-- 실행해서 창 제목이 `DetectView — YOLO26m 640×384 (2026-11-05 학습) — NVIDIA GeForce RTX 5060 Laptop GPU (DirectML)` 처럼 바뀌면 GPU 초기화에 성공한 것입니다.
+- 실행해서 창 제목이 `DetectView — YOLO26m 640×384 (2026-11-08 학습) — NVIDIA GeForce RTX 5060 Laptop GPU (DirectML)` 처럼 바뀌면 GPU 초기화에 성공한 것입니다.
 
 ## 사용법
 
@@ -71,10 +71,10 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
 
 ## 모델
 
-- 루트의 `best.onnx` 는 Ultralytics **YOLO26m** 을 파인튜닝한 모델입니다 (78 MB, 7클래스: person · car · motorcycle · truck · bus · scooter · bicycle — 2026-11-06 YOLO26s 에서 바꿈).
+- 루트의 `best.onnx` 는 Ultralytics **YOLO26m** 을 파인튜닝한 모델입니다 (78 MB, 8클래스: person · car · motorcycle · truck · bus · scooter · bicycle · pickup — 2026-11-08 pickup 을 더한 8클래스로 바꿈. 그 전엔 같은 YOLO26m 7클래스, 2026-11-06 까지는 YOLO26s).
   입력은 16:9 영상에 맞춘 640×384 고정이고 출력은 `[1, 300, 6]` — NMS 가 모델 안에 들어 있습니다(end-to-end).
   16:9 영상·화면은 640×640 입력과 같은 배율로 들어가고(추론은 31% 빠름), 16:9 가 아닌 영상(4:3 등)은 그보다 작게 들어갑니다.
-- 같은 형식의 다른 모델로 바꿔 쓸 수 있습니다(COCO 80클래스 YOLO26x 도 써 봤습니다). 입력 크기는 모델에서 읽습니다. 창 제목의 모델 이름·입력 크기·학습일은 모델 파일에서 읽고, 화면에는 위 7개 클래스만 보입니다.
+- 같은 형식의 다른 모델로 바꿔 쓸 수 있습니다(COCO 80클래스 YOLO26x 도 써 봤습니다). 입력 크기는 모델에서 읽습니다. 창 제목의 모델 이름·입력 크기·학습일은 모델 파일에서 읽고, 화면에는 위 8개 클래스만 보입니다.
 - `best.npu.onnx` 는 `best.onnx` 의 NPU 짝(A16W8 양자화)입니다. 원본을 바꾸면 `pwsh tools\Make-NpuModel.ps1` 로 다시 만듭니다.
   앱은 짝 모델에 들어 있는 원본 MD5 로 짝이 맞는지 확인하고, 안 맞으면 NPU 를 막습니다.
   보정 데이터 기본값은 `publish\test1~5.mp4` 이고, 다른 영상을 쓰려면 `-Calib` 로 영상·이미지 폴더를 줍니다.

@@ -32,7 +32,7 @@ if ((Test-Path $roiFile) -or (Test-Path $csvFile)) { throw "테스트 영상 옆
 
 $IsDebugBuild = $ExeDir -like '*\bin\Debug\*'
 $OrigFaults = $env:DETECTVIEW_TEST_FAULTS
-$veh = '(CAR|TRUCK|BUS|MOTORCYCLE|SCOOTER|BICYCLE)'   # 차량 6종 — 로그 라벨은 그 순간의 클래스라 같은 차라도 바뀔 수 있다 (Test-Incident 머리말 4)
+$veh = '(CAR|TRUCK|BUS|MOTORCYCLE|SCOOTER|BICYCLE|PICKUP)'   # 차량 7종 — 로그 라벨은 그 순간의 클래스라 같은 차라도 바뀔 수 있다 (Test-Incident 머리말 4)
 $IncPattern = "^\d\d:\d\d\.\d ⚠ $veh #(\d+) Z1 차로 유고 후보 — 차로 정차 \(높음\)$"
 $FakeStatus = '단서: 출동 차량, 차로 위 사람, 앞에 선 차 — 시험용 가짜 VLM 답 — 그림 512×512'
 

@@ -23,9 +23,9 @@ namespace DetectView
         private const double ConfidenceThreshold = 0.3;
         private const double IouThreshold = 0.7;
 
-        // 관심 클래스 (현재 모델의 7클래스와 동일 — 모델 교체 대비 안전장치)
+        // 관심 클래스 (현재 모델의 8클래스와 동일 — 모델 교체 대비 안전장치). pickup 은 2026-11-08 8클래스 모델로 바꾸며 더했다
         private static readonly HashSet<string> TargetClasses =
-            ["person", "car", "motorcycle", "truck", "bus", "scooter", "bicycle"];
+            ["person", "car", "motorcycle", "truck", "bus", "scooter", "bicycle", "pickup"];
 
         private const string ModelFileName = "best.onnx";
 

@@ -22,7 +22,7 @@ namespace DetectView
 
     /// <summary>
     /// 유고 규칙 (유고 감지 4단계, 2026-11-03) — 순수 알고리즘. 지금 규칙은 하나다(사용자가 고름): <b>차로 구역에 멈춘 차량</b>.
-    /// 추적기를 거친 차량 박스(<see cref="DuplicateBoxes.GroupOf"/> 가 vehicle — car·truck·bus·motorcycle·scooter·bicycle)가
+    /// 추적기를 거친 차량 박스(<see cref="DuplicateBoxes.GroupOf"/> 가 vehicle — car·truck·bus·motorcycle·scooter·bicycle·pickup)가
     /// <see cref="Det.Stationary"/> 인 채 발 위치(박스 아래 가운데, 프레임 0~1 좌표)가 차로 구역 안에서 <see cref="IncidentOptions.HoldMs"/> 이어지면 유고 후보를 선언한다.
     /// <list type="bullet">
     /// <item>제외: 발이 무시 구역 안, 발이 정지선·대기 구역 안(신호대기), 같은 차로 구역에 정지한 차량이 자신 말고 <see cref="IncidentOptions.QueueOthers"/> 대 이상(줄지어 선 정체)</item>

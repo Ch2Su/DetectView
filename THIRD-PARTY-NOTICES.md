@@ -13,7 +13,7 @@ DetectView 는 [GNU AGPL-3.0](LICENSE) 으로 공개합니다. 이 저장소에 
 
 ## Ultralytics YOLO26 — AGPL-3.0
 
-`best.onnx` 는 [Ultralytics](https://github.com/ultralytics/ultralytics) YOLO26m 을 7클래스로 파인튜닝해 ONNX(입력 640×384)로 내보낸 모델이고,
+`best.onnx` 는 [Ultralytics](https://github.com/ultralytics/ultralytics) YOLO26m 을 8클래스로 파인튜닝해 ONNX(입력 640×384)로 내보낸 모델이고,
 `best.npu.onnx` 는 그것을 `tools/npu_quantize.py` 로 양자화한 것입니다. 두 파일의 메타데이터에도
 `license = AGPL-3.0 License (https://ultralytics.com/license)` 가 들어 있습니다.
 

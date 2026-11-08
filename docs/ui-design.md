@@ -40,8 +40,9 @@
   '출력'은 화면 표시만 — 기록(CSV)은 원하지 않았다). `BoxLayer` 가 박스·라벨을 다 그린 뒤 그 요소의 왼쪽 위 모서리(`LegendMargin` — 앱 안 영상 칸 8 DIP,
   HUD 오버레이는 모니터 모서리라 16)에 그린다: 머리 줄 `검출  N`(SAHI 결과면 `검출 · SAHI` — `Show(…, legendTitle)`) 아래로 클래스마다 한 줄,
   클래스 색 막대 · 클래스 색 이름(대문자) · 개수(오른쪽 맞춤). 바탕은 `Box.LegendBack`(86% — 11-02 라벨 바탕을 72% 로 낮출 때 줄이 여럿인 범례는 그대로 뒀다), 개수·머리 글자는 `Box.LegendText`·`Box.LegendSubText`,
-  폭은 최소 128 DIP(자릿수가 바뀌어도 안 흔들리게), 박스가 없으면 안 그린다. 줄 순서는 고정(`LegendOrder` = `Box.*` 순서 car·truck·bus·motorcycle·scooter·bicycle·person,
-  목록 밖 라벨은 그 뒤 이름순) — 개수순이면 재생 중 개수가 엇갈릴 때마다 줄이 자리를 바꾼다.
+  폭은 최소 128 DIP(자릿수가 바뀌어도 안 흔들리게), 박스가 없으면 안 그린다. 줄 순서는 고정(`LegendOrder` = `Box.*` 순서 car·truck·pickup·bus·motorcycle·scooter·bicycle·person,
+  목록 밖 라벨은 그 뒤 이름순 — pickup 은 2026-11-08 8클래스 모델과 함께 더했고 드물지만 truck 과 헷갈리는 것이라 truck 바로 아래. 색 `Box.pickup` #F09CF0 은
+  다른 클래스 색(car 207° · truck 29° · bus 255° · motorcycle 172° · scooter 50° · bicycle 90° · person 346°)과 색상환에서 가장 먼 자홍 300°) — 개수순이면 재생 중 개수가 엇갈릴 때마다 줄이 자리를 바꾼다.
   영상 칸 모서리라 레터박스가 있으면 그 검은 띠 위(영상을 안 가림)고, 창이 넓어 띠가 없으면 영상 왼쪽 위를 가린다(영상 칸의 왼쪽 위 모서리 눈금은 범례 뒤에 깔린다).
   박스와 같은 렌더 패스라 늘 같은 프레임이고, HUD 오버레이에선 박스와 함께 `LooksSame` 에 묶여 정지 화면에서 다시 그리지 않는다 — 새 화면 고리가 없다.
   (다른 두 안은 HUD 때 걸렸다: 왼쪽 패널은 HUD 캡처 무시 영역 밖이라 HUD 동안 멈춰야 했고, 상태바 위 줄은 무시 영역 안이지만 영상 칸이 줄고 오버레이엔 안 보였다)
