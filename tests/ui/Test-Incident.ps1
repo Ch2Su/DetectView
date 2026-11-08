@@ -72,8 +72,11 @@ try {
     $ok = WaitFor { (NameOf $status) -like '파일:*' -and (NameOf $play) -eq '일시정지' } 10000
     Check '파일 재생 시작 (구역 파일을 읽음)' $ok "상태='$(NameOf $status)'"
 
-    $s = Sample-Playback $root $range $count 0 12600 30000
-    Check '표본을 충분히 모음' ($s.Count -ge 80 -and $s[-1].Pos -ge 12500) "표본 $($s.Count)개 · 마지막 위치 $([int]$s[-1].Pos) ms"
+    # 13.6초까지 — 예전엔 12.6초에서 멈춰 '카메라가 돈 뒤'(11.7초~) 구간이 1초도 안 됐고, 표본(UIA 읽기 속도에 달렸다)이 실행마다 7~12개라
+    # 8개 기준에 부하가 큰 실행에선 하나씩 모자랐다(2026-11-08 Run-All 두 번 — 남은 표시는 0개로 맞았다). 두 번째 화면은 20.5초까지 그대로고
+    # 구역은 첫 화면(V1)의 것이라 그사이 새 유고 후보는 없다
+    $s = Sample-Playback $root $range $count 0 13600 30000
+    Check '표본을 충분히 모음' ($s.Count -ge 80 -and $s[-1].Pos -ge 13500) "표본 $($s.Count)개 · 마지막 위치 $([int]$s[-1].Pos) ms"
 
     # 1) 선언 전 — 정지는 붙지만 유고는 아직
     $early = @($s | Where-Object { $_.Pos -ge 1500 -and $_.Pos -lt 4800 })

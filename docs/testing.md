@@ -45,7 +45,7 @@ pwsh tests/ui/Run-All.ps1
   → 펼치면 목록 → 처음 1초 안에 `Z1 차로 이미 안에 있음` 으로 잡힌 트랙 중 도는 구간(10.5초)까지 나가지 않은 것이 있다(멈춘 트럭 `#14`; 같이 잡힌 지나가던 차는 곧 `나감`) → 카메라가 돈 뒤 `화면 전환 → 새 뷰 V2 (구역 없음)` 표시가 한 번(11.5초) 남고
   그 뒤 이벤트는 없다 → 헤더 개수 = 표시를 뺀 항목 수 → `CSV 저장`: 영상 옆 events.csv(헤더·줄 수 = 항목 + 1·initial 행·view_changed 한 행)와 상태바 문구 → 5초로 시크하면 멈춘 트럭이 다시 기록된다(멈췄던 이벤트가 풀림) →
   `비우기`(목록·개수 0, 저장 꺼짐) → 접으면 목록이 사라짐 → 정지하면 패널이 사라짐 → 구역 없는 영상(test1)은 4초 재생해도 0건. 로그 항목의 시각 범위·개수는 영상·검출에 따라 달라 성질만 본다. 항목 수 21
-- `Test-Incident.ps1`(2026-11-03): 유고 규칙(위 "유고 규칙"). 구역 파일(차로 Z1 — 0~10.5초 멈춘 덤프트럭의 발 위치를 품음)을 test4 옆에 써 두고(끝나면 지움) 12.6초까지 재생하며 0.03초 간격으로 위치·헤더의 유고 표시(`Txt_EventIncident`)·박스 번호의 `정지 유고` 를 기록한다
+- `Test-Incident.ps1`(2026-11-03): 유고 규칙(위 "유고 규칙"). 구역 파일(차로 Z1 — 0~10.5초 멈춘 덤프트럭의 발 위치를 품음)을 test4 옆에 써 두고(끝나면 지움) 13.6초까지(2026-11-08 전엔 12.6초 — 카메라가 돈 뒤 구간이 1초도 안 돼 표본이 7~12개로 흔들렸다) 재생하며 0.03초 간격으로 위치·헤더의 유고 표시(`Txt_EventIncident`)·박스 번호의 `정지 유고` 를 기록한다
   (두 값을 읽는 사이 프레임이 넘어갈 수 있어 표시를 번호 앞뒤로 읽어 같은 표본만 센다): 5초 전 표시·강조 없음 + 멈춘 트럭엔 `정지` → 선언 뒤(7~10.3초) 헤더 `⚠ 유고 후보 1`·박스 번호 `#14 정지 유고`(같은 번호가 정지이기도 함) →
   처음 보인 위치 5.0~7.0초(실측 5.2초) → 카메라가 돈 뒤(11.7초~) 표시·강조가 사라짐 → 로그: 유고 후보 행 한 줄(5~9초)·같은 번호의 `유고 해소 (화면 전환) · 멈춤 10.3초` 행
   (라벨은 그 순간의 클래스라 같은 차가 TRUCK → BUS 로 바뀔 수 있어 번호로 맞춘다 — 11-05 배포 모델에서 실제로 그랬다) → CSV: `incident`(Z1 · lane · 멈춤 5000ms)·`incident_end` 각 한 행 →
@@ -106,7 +106,15 @@ pwsh tests/ui/Run-All.ps1
   옛 판 `UiLatency` 형식이 남은 PowerShell 세션에선 분명한 메시지로 멈춘다(Add-Type 형식은 못 바꿈 — 새 pwsh 에서 돌릴 것)
 - 종료 코드 = 실패 건수(`Run-All` 은 0/1). 파일 열기 대화상자 자동화 요령 등은 `Common.ps1` 머리말에 정리해 두었다.
   `Run-All` 은 테스트 파일이 try 밖에서 throw 해도(영상·빌드 없음) 그 파일만 실패로 세고 다음 파일을 돈다(2026-10-30 — 예전엔 거기서 통째로 멈췄다)
-- 마지막 전체 실행: 2026-11-08 저녁, **Debug** — **추론 장치에 TensorRT 를 넣은 뒤**(`MainWindow.Trt.cs` · 장치 전환 상태 기계 일반화 · FP16 짝 `best.fp16.onnx` `D7D760DC…`).
+- 마지막 전체 통과: 2026-11-08 저녁, **배포본 `publish`** — 사용자 "배포하기"로 TensorRT 판 `b8d4ee0` 을 배포(작업 트리가 깨끗한 worktree 에서 임시 폴더로 내보내 exe 만 옮김 —
+  132,596,048 바이트, Release DLL 에 결함·가짜 VLM 이름 없음·TensorRT 코드 있음). 배포 폴더 FP16 짝은 `Make-Fp16Model.ps1 -Model publish\best.onnx`(5초)로 만들어 루트 짝과 바이트까지 같다(`D7D760DC…`).
+  `Run-All -ExeDir publish` 첫 실행은 270 항목 중 269 — 남은 1건이 아래 Debug 와 같은 `Test-Incident` 표본 수(11.7초 뒤 7개 < 8, 남은 표시 0)였다.
+  시작 때의 TensorRT 짝 확인은 '확인 끝'을 1초쯤 늦출 뿐 계속되는 CPU 부담은 없어(짝 있음·없음을 두 번씩 — 앱 CPU 5.5·6.5 vs 7.1·3.3초) 검사 구간이 1초도 안 되는 게 원인으로 보고
+  표본 구간을 13.6초까지 늘렸다(표본 18~21개). 다시 돌린 `Run-All -ExeDir publish` 한 번에 **270 항목 모두 통과**(4.5분): `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 ·
+  `Test-SceneChange` 21 · `Test-ZoneEvents` 21 · `Test-Incident` 16 · `Test-VlmAnnotation` 6(Release) · `Test-ViewIdentity` 27 · `Test-VfrPlayback` 26 · `Test-ScreenHud` 25(DXGI 1920×1080, Release) · `Test-NpuSwitch` 55.
+  TensorRT 전환 5.4초(캐시) · 다시 5.5초, ①② 창 응답 WM_NULL 최대 1 ms · UIA 최대 14~22 ms, 멈춘 프레임 두 곳의 검출이 GPU 와 같음.
+  참고용 재생 처리 GPU 74.1 · **TensorRT 152.7** · NPU 37.1 FPS, HUD 80.1 FPS
+- 그 전: 같은 날 저녁, **Debug** — **추론 장치에 TensorRT 를 넣은 뒤**(`MainWindow.Trt.cs` · 장치 전환 상태 기계 일반화 · FP16 짝 `best.fp16.onnx` `D7D760DC…`).
   worktree 에 `publish` 연결을 두고 `Run-All` 한 번에 305 항목 중 304 통과(5.2분): `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 · `Test-SceneChange` 21 · `Test-ZoneEvents` 21 ·
   `Test-Incident` 15/16 · `Test-VlmAnnotation` 27 · `Test-ViewIdentity` 27 · `Test-VfrPlayback` 26 · `Test-ScreenHud` 39 · **`Test-NpuSwitch` 55**(TensorRT 2b 와 실패 경로 셋을 더함 — 그 전 28).
   남은 1건은 `Test-Incident` 의 '카메라가 돈 뒤 유고 표시가 사라짐' — 남은 표본은 0개(맞음)인데 11.7초 뒤 표본이 7개로 기준(8)에 하나 모자랐다(그 실행의 전체 표본 101개 — 평소 118~119).
