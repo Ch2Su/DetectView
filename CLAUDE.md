@@ -144,6 +144,9 @@ CLAUDE.md 가 매 세션 컨텍스트를 너무 많이 차지해서(13만 자) 2
   YoloDotNet 본체는 ORT 를 참조하지 않고 세션을 리플렉션으로 읽는다(`ParseOnnx`). GPU 는 Windows ML 에 들어 있는 DirectML 로 돈다 (EP 카탈로그 다운로드 없음).
   원본과 다른 점 두 가지(2026-10-25): FP16 출력 버퍼를 **모든 차원의 곱**으로 잡는다(원본은 앞 두 차원만 곱해 분할 마스크 같은 4차원 출력에서 범위를 넘음 — 지금 모델은 FP32 라 해당 없음),
   생성자에서 세션을 만든 뒤 실패하면 세션을 해제하고 넘긴다
+- **TensorRT 도 이 런타임으로 쓴다** — Windows ML EP 카탈로그에 NVIDIA TensorRT for RTX EP(`NvTensorRTRTXExecutionProvider`, 이 PC 2.30.51)가 VitisAI 처럼 들어온다.
+  TensorRT 를 쓰겠다고 `Microsoft.ML.OnnxRuntime.Gpu` 류 패키지를 넣지 말 것(위 이름 겹침). 2026-11-08 실측: 같은 모델 FP32 6.6 ms · FP16 2.8 ms(DirectML 10.0 ms), 검출은 사실상 같고
+  같은 입력이면 비트까지 같다. 대가는 추론 동안 CPU 코어 하나가 돌고, 첫 엔진 만들기 약 10초 — 앱엔 아직 없다(`experiments/NpuBench` README 결과 6)
 - DirectML 장치는 DXGI 어댑터의 **PCI 벤더·장치 ID 로** 맞춘다(`SelectBestGpu` → `FindDmlDevice`). 하이브리드라 DirectML 장치가 AMD·NVIDIA 둘이다. 못 찾으면 첫 DirectML 장치로 돌고 제목에 `<벤더> GPU` 로 드러난다
 - 검증법: 출력의 `runtimes\win-x64\native\onnxruntime.dll` 이 **22.0 MB · 파일 버전 1.27**, `DirectML.dll` 17.8 MB(1.15.4). 실행 중 프로세스 모듈에 이 둘이 올라와 있어야 한다
 - TFM 은 `net10.0-windows10.0.19041.0` (Windows ML 의 WinRT API 때문에 SDK 버전 필요). **22621 이상으로 올리지 말 것** — `Vortice.DXGI` 가 그 TFM 전용 빌드로 바뀐다. Debug 출력도 `bin\Debug\net10.0-windows10.0.19041.0\` 로 바뀌었다

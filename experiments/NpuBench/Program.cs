@@ -15,6 +15,10 @@
 //   - npu_source_md5(원본 파일 MD5)가 기준 모델 MD5 와 다르면 멈춘다 — 양자화 영향에 모델 차이가 섞인다. 일부러 비교할 때만 --allow-mismatch
 // NPU 노드 배치 보고서를 받으려면 실행 전에 XLNX_ONNX_EP_REPORT_FILE 환경 변수를 셸에서 지정한다
 // (네이티브 EP 가 프로세스 시작 때의 환경을 읽으므로 코드에서 지정하면 늦을 수 있다).
+//
+// --trt (2026-11-08): 같은 Windows ML 카탈로그로 들어오는 NVIDIA TensorRT for RTX EP(NvTensorRTRTXExecutionProvider)도 잰다 —
+//   기준 모델을 CUDA 그래프 켬(EP 기본값)·끔으로, --trt-fp16 <모델> 이면 그 FP16 판도. 결과는 DirectML 과 같은 표·같은 검출 일치도로.
+//   JIT 로 만든 커널은 out/trt_cache(nv_runtime_cache_path)에 남아 두 번째 세션부터 빨라진다. --gpu-only 면 CPU·NPU 는 건너뛴다
 
 using System.Diagnostics;
 using System.Security.Cryptography;
@@ -27,15 +31,21 @@ using OpenCvSharp;
 string repo = FindRepoRoot();
 // 위치 인자(기준 모델·NPU 모델·영상당 프레임 수)는 예전 그대로다 — tools/Make-NpuModel.ps1 -Bench 가 셋 다 넘긴다. -- 옵션은 어디에 둬도 된다
 var positional = new List<string>();
-bool allowFp32Npu = false, allowMismatch = false;
-foreach (var a in args)
+bool allowFp32Npu = false, allowMismatch = false, useTrt = false, gpuOnly = false;
+string? trtFp16 = null;
+for (int ai = 0; ai < args.Length; ai++)
 {
+    string a = args[ai];
     if (a == "--allow-fp32-npu") allowFp32Npu = true;
     else if (a == "--allow-mismatch") allowMismatch = true;
+    else if (a == "--trt") useTrt = true;
+    else if (a == "--gpu-only") gpuOnly = true;
+    else if (a == "--trt-fp16" && ai + 1 < args.Length) { useTrt = true; trtFp16 = Path.GetFullPath(args[++ai]); }
     else if (a is "-h" or "--help" or "/?") { PrintUsage(); return 0; }
     else if (a.StartsWith("--")) { Console.WriteLine($"모르는 옵션: {a}\n"); PrintUsage(); return 2; }
     else positional.Add(a);
 }
+if (trtFp16 != null && !File.Exists(trtFp16)) { Console.WriteLine($"FP16 모델이 없습니다: {trtFp16}"); return 1; }
 int perVideo = 20;
 if (positional.Count > 3 || (positional.Count > 2 && (!int.TryParse(positional[2], out perVideo) || perVideo <= 0)))
 {
@@ -145,6 +155,14 @@ foreach (var d in devices)
 var dml = devices.FirstOrDefault(d => d.EpName == "DmlExecutionProvider" && d.HardwareDevice.VendorId == 0x10DE)
           ?? devices.FirstOrDefault(d => d.EpName == "DmlExecutionProvider");
 var vai = devices.FirstOrDefault(d => d.EpName == "VitisAIExecutionProvider" && d.HardwareDevice.Type == OrtHardwareDeviceType.NPU);
+// TensorRT for RTX 는 NVIDIA RTX(Ampere 이후)에서만 장치가 나온다
+var trt = devices.FirstOrDefault(d => d.EpName == "NvTensorRTRTXExecutionProvider");
+if (useTrt)
+{
+    var trtProvider = catalog.FindAllProviders().FirstOrDefault(p => p.Name == "NvTensorRTRTXExecutionProvider");
+    Console.WriteLine(trt == null ? "  ※ TensorRT RTX 장치가 없습니다 — TensorRT 는 건너뜁니다."
+                                  : $"  TensorRT RTX EP {(trtProvider == null ? "?" : EpVersion(trtProvider))} · {trt.HardwareDevice.Vendor} 0x{trt.HardwareDevice.DeviceId:X4}");
+}
 if (dml == null) { Console.WriteLine("DirectML 장치가 없어 기준(GPU) 결과를 만들 수 없습니다."); return 1; }
 if (vai == null) Console.WriteLine("  ※ VitisAI NPU 장치가 없습니다 — NPU 는 건너뜁니다.");
 
@@ -203,10 +221,32 @@ var gpu = Bench($"GPU (DirectML) · {Path.GetFileName(refModel)}", "gpu", refMod
 }, passes: 3);
 if (gpu == null) return 1;   // 기준이 없으면 비교할 수 없다
 
-Bench($"CPU · {Path.GetFileName(cpuModel)}", "cpu", cpuModel, () => new SessionOptions(), passes: 1);
+// TensorRT for RTX (--trt): 세션을 만들 때 엔진을 짓는다(JIT). 커널 캐시를 남겨 두 번째 세션(재생성)부터 빨라지는지도 본다
+if (useTrt && trt != null)
+{
+    string trtCache = Path.Combine(outDir, "trt_cache");
+    Directory.CreateDirectory(trtCache);
+    SessionOptions TrtOptions(bool cudaGraph)
+    {
+        var so = new SessionOptions();
+        so.AppendExecutionProvider(env, [trt], new Dictionary<string, string>
+        {
+            ["enable_cuda_graph"] = cudaGraph ? "1" : "0",   // EP 기본값은 켬 — 작은 모델에서 커널 실행 부담을 줄인다
+            ["nv_runtime_cache_path"] = trtCache,
+        });
+        return so;
+    }
+    Bench($"GPU (TensorRT RTX) · {Path.GetFileName(refModel)}", "trt", refModel, () => TrtOptions(true), passes: 3);
+    Bench($"GPU (TensorRT RTX, CUDA 그래프 끔) · {Path.GetFileName(refModel)}", "trt-nograph", refModel, () => TrtOptions(false), passes: 3);
+    if (trtFp16 != null)
+        Bench($"GPU (TensorRT RTX) · {Path.GetFileName(trtFp16)}", "trt16", trtFp16, () => TrtOptions(true), passes: 3);
+}
+
+if (!gpuOnly)
+    Bench($"CPU · {Path.GetFileName(cpuModel)}", "cpu", cpuModel, () => new SessionOptions(), passes: 1);
 
 // 1절 짝 확인을 통과했을 때만 (FP32 는 --allow-fp32-npu, 원본이 다른 짝은 --allow-mismatch 일 때만 여기 온다)
-if (vai != null && npuModel != null && npuSkip == null)
+if (!gpuOnly && vai != null && npuModel != null && npuSkip == null)
     Bench($"NPU (VitisAI) · {Path.GetFileName(npuModel)}", "npu", npuModel, () =>
     {
         var so = new SessionOptions();
@@ -291,6 +331,13 @@ RunResult? Bench(string name, string tag, string model, Func<SessionOptions> mak
         r.RepeatMs = sw.Elapsed.TotalMilliseconds / 100;
         proc.Refresh();
         r.RepeatCpuMs = (proc.TotalProcessorTime - cpu0).TotalMilliseconds / 100;
+
+        // 같은 입력이면 출력이 비트까지 같은가 — 앱의 HUD 는 결과가 같으면 다시 그리지 않는다(BoxLayer.LooksSame — DirectML 은 같다, 11-05).
+        // 첫 측정 패스의 0번 프레임 출력과 지금 두 번 돌린 출력을 맞대어 본다 (같은 세션 안)
+        Fill(frames[0].Img, input);
+        float[] again1 = RunOnce(session, value), again2 = RunOnce(session, value);
+        bool same = again1.AsSpan().SequenceEqual(again2) && again1.AsSpan().SequenceEqual(r.Outputs[0]);
+        Console.WriteLine($"  같은 입력 → 같은 출력(세션 안, 세 번): {(same ? "예 — 비트까지 같다" : "아니오")}");
 
         Console.WriteLine(r.TimingLine());
         results.Add(r);
@@ -471,7 +518,10 @@ static void PrintUsage() => Console.WriteLine(
     "  NPU 모델          CPU·NPU 로 돌릴 양자화 짝 (기본: 기준 옆 <이름>.npu.onnx — 없으면 NPU 를 건너뛴다)\n" +
     "  영상당 프레임 수  publish\\test1~5.mp4 에서 뽑을 장 수 (기본 20)\n" +
     "  --allow-fp32-npu  양자화 모델이 아니어도(npu_quant 없음) NPU 에 넣는다 — BF16 컴파일 실패 경로를 일부러 볼 때만\n" +
-    "  --allow-mismatch  NPU 모델의 원본(npu_source_md5)이 기준 모델과 달라도 비교한다");
+    "  --allow-mismatch  NPU 모델의 원본(npu_source_md5)이 기준 모델과 달라도 비교한다\n" +
+    "  --trt             NVIDIA TensorRT for RTX EP 로도 기준 모델을 잰다 (CUDA 그래프 켬·끔)\n" +
+    "  --trt-fp16 <모델> 그 FP16 판도 TensorRT 로 잰다 (--trt 를 함께 켠다)\n" +
+    "  --gpu-only        CPU·NPU 는 건너뛴다 (GPU 백엔드끼리만 볼 때)");
 
 static string FindRepoRoot()
 {

@@ -3,6 +3,7 @@
 본 앱(DetectView)과 따로 빌드하는 콘솔 프로젝트다. 만들 때(2026-10-24 오전)는 본 앱이 ONNX Runtime DirectML 1.23 이라
 Windows ML(자체 `onnxruntime.dll` 1.27)과 한 프로세스에 섞을 수 없어서 따로 뒀다. 지금은 본 앱도 Windows ML 런타임이다
 (CLAUDE.md "절대 건드리면 안 되는 것들" 1번). NPU 용 짝 모델은 `tools\Make-NpuModel.ps1` 로 만든다 (아래 "결과 2", "재현").
+2026-11-08 부터 `--trt` 로 같은 카탈로그의 **NVIDIA TensorRT for RTX** EP 도 잰다 (아래 "결과 6").
 
 ## 환경
 
@@ -120,6 +121,40 @@ Windows ML(자체 `onnxruntime.dll` 1.27)과 한 프로세스에 섞을 수 없�
 - 속도는 7클래스 판(결과 4)과 같다 — 구조가 같고 머리의 클래스 수만 다르다(GPU 2.3배 빠름)
 - NPU 일치도는 7클래스 짝(96.1% / 97.8%)과 비슷하고, 같은 짝의 NPU vs CPU 는 97.1% / 99.2%. 어긋난 박스는 이번에도 모두 반대쪽에서 신뢰도 0.3 바로 아래였다(놓친 47/47 · 더 잡은 18/18)
 
+## 결과 6 — NVIDIA TensorRT for RTX (2026-11-08, `--trt` — 앱 런타임 그대로)
+
+사용자 질문: TensorRT 를 실험해 볼까. **Windows ML 카탈로그에 NVIDIA TensorRT for RTX EP 가 이미 깔려 있었다**(`Microsoft.WinML.NVIDIA.TRT-RTX.EP.Framework.2` 2.30.51 —
+VitisAI 와 같은 `EnsureAndRegisterCertifiedAsync` 로 들어온다). 그래서 새 NuGet 없이 앱과 같은 ONNX Runtime(Windows ML 1.27)에서 `NvTensorRTRTXExecutionProvider` 장치(NVIDIA 0x2D19)를 골라 잰다.
+옵션은 `enable_cuda_graph`(EP 기본값 켬)와 `nv_runtime_cache_path`(JIT 로 만든 커널 캐시 — `out/trt_cache`) 둘.
+모델은 루트 8클래스 YOLO26m 640×384(FP32)와 그 FP16 판 — FP16 은 `onnxruntime.transformers` 의 `convert_float_to_float16(keep_io_types=True)` 로 만든 40.9 MB
+(입출력은 FP32 그대로. 이 FP16 판은 DirectML 이 그래프 융합에서 못 연다 — `experiments/RfDetrBench` README '1단계', 그래서 DirectML FP16 칸은 없다).
+같은 프레임 100장(test1~5 × 20)을 **네 번** 돌렸다(첫 번째는 엔진을 처음 만든 실행). 전원 연결 · 균형 조정 · 다른 GPU 작업 없이 (`--gpu-only` — CPU·NPU 는 뺐다):
+
+| 백엔드 | `session.Run` 중앙 (실행 네 번) | 네 번의 중앙 | 1회당 CPU 시간 | 세션 생성 (처음 · 캐시 뒤) | DirectML 대비 검출 (재현율 / 정밀도 · 평균 IoU) |
+|---|---|---|---|---|---|
+| DirectML FP32 — 지금 앱 | 9.94 · 10.15 · 10.08 · 9.38 ms | **10.0 ms** | 0.8~1.3 ms | 1.2 · 0.9 s | (기준 검출 1361개) |
+| TensorRT RTX FP32 (CUDA 그래프 켬) | 6.71 · 6.48 · 6.90 · 5.79 ms | **6.6 ms** | 5.6~7.0 ms | 9.6 · 1.5~2.1 s | 99.9% / 99.9% · 0.999 |
+| TensorRT RTX FP32 (CUDA 그래프 끔) | 7.52 · 8.73 · 6.60 · 6.32 ms | 7.1 ms | 5.8~7.8 ms | (캐시) 1.5~2.4 s | 99.9% / 99.9% · 0.999 |
+| **TensorRT RTX FP16** (CUDA 그래프 켬) | 2.78 · 4.01 · 2.90 · 2.50 ms | **2.8 ms** | 2.3~3.4 ms | 10.3 · 1.6~3.1 s | 99.6% / 99.9% · 0.989 |
+
+- **빠르다** — FP32 그대로도 DirectML 의 1.5배, FP16 이면 3.5배. 그래프 전체가 TensorRT 노드 하나로 돈다(CPU 로 넘어간 노드 없음 — DirectML 은 `Mod` 하나가 CPU)
+- **검출은 사실상 같다** — FP32 는 1361개 중 1359개가 짝지어지고 신뢰도 차 평균 0.001. FP16 은 박스가 조금 흔들려(평균 IoU 0.989) 임계값 바로 아래로 내려간 5개를 놓쳤다
+- **같은 입력이면 출력이 비트까지 같다**(세션 안에서 세 번 — 네 판 모두). 앱 HUD 의 '결과가 같으면 다시 그리지 않음'(`BoxLayer.LooksSame`)이 그대로 된다
+- **대가 1 — 추론하는 동안 CPU 코어 하나가 기다리며 돈다**: '같은 입력 100회'의 1회당 CPU 시간이 추론 시간과 거의 같다(DirectML 은 1 ms 안팎). EP 옵션엔 기다리는 방식을 바꾸는 것이 없다
+- **대가 2 — 처음 한 번 엔진을 만든다**: 새 모델의 첫 세션 약 10초, 그 뒤엔 커널 캐시로 1.5~3초(DirectML 1초). EP 문맥 모델(`_ctx.onnx` — 미리 컴파일)로 더 줄일 수 있다고 한다(재 보지 않음)
+- **대가 3** — FP16 은 파일이 하나 더 든다(NPU 짝처럼 41 MB, DirectML 로는 못 돈다). NVIDIA RTX(Ampere 이후) 전용 — 다른 GPU 는 DirectML 그대로
+- CUDA 그래프는 이 모델에선 켜는 편이 조금 빠르다(6.6 vs 7.1 ms — 실행마다 흔들림이 차이만큼 크다)
+- **판단**: 앱 런타임 그대로 TensorRT 를 쓸 수 있고 FP16 이면 추론이 10 → 3 ms 로 준다. 지금 앱은 속도에 쫓기지 않지만(파일 재생 처리 약 77 FPS, 영상은 30·60fps),
+  GPU 를 VLM 과 나눠 쓸 때의 여유와 HUD 박스 지연(약 1/FPS)이 준다. 넣는다면 NPU 처럼 '추론 장치'에 'GPU (TensorRT)'를 더하는 길이다 —
+  `WindowsMlExecutionProvider` 가 TensorRT 장치로 세션을 만들고, FP16 짝 모델 확인·첫 세션 준비(백그라운드)·`SwapYolo` 는 NPU 경로를 따른다(구현 안 함 — 사용자 결정)
+
+```powershell
+# FP16 판 만들기 (저장소 루트, CPU 3초 — out/ 는 gitignore)
+uv run --no-project --python 3.12 --with onnxruntime --with onnx --with sympy python -c "import onnx; from onnxruntime.transformers.onnx_model import OnnxModel as M; m = M(onnx.load('best.onnx')); m.convert_float_to_float16(keep_io_types=True, use_symbolic_shape_infer=True); m.save_model_to_file('experiments/NpuBench/out/best.fp16.onnx')"
+# DirectML · TensorRT(CUDA 그래프 켬·끔) · TensorRT FP16 (worktree 면 publish 연결을 먼저 — CLAUDE.md '빌드 · 배포')
+experiments\NpuBench\bin\Release\net10.0-windows10.0.26100.0\win-x64\NpuBench.exe --trt --trt-fp16 experiments\NpuBench\out\best.fp16.onnx --gpu-only
+```
+
 ## 알게 된 것 (함정)
 
 1. **FP32 모델을 그대로 넣으면 실패한다.** EP 가 BF16 으로 바꿔(VAIML) 분할 분석까지는 하지만, NPU 커널 빌드(aiecompiler 의 Peano)가
@@ -166,7 +201,7 @@ uv run --no-project --python 3.12 --with onnxruntime==1.23.2 --with onnx --with 
 같은 폴더·루트·배포 폴더의 `best.onnx` 가운데 원본이 있으면 `--ref` 로 줄 경로를 알려 준다. 예전엔 기준이 루트 고정이라 배포 폴더 모델로 만든
 변형도 경고 없이 다른 원본과 비교한 숫자가 나왔다(클래스 구성이 다르면 같은 번호가 다른 물체 — 이슈 #6).
 
-NpuBench 를 직접 돌릴 땐 `NpuBench.exe [기준 FP32 모델] [NPU 모델] [영상당 프레임 수] [--allow-fp32-npu] [--allow-mismatch]`
+NpuBench 를 직접 돌릴 땐 `NpuBench.exe [기준 FP32 모델] [NPU 모델] [영상당 프레임 수] [--allow-fp32-npu] [--allow-mismatch] [--trt] [--trt-fp16 <모델>] [--gpu-only]`
 (`--help` 로 설명). 기준 모델의 기본값은 루트 `best.onnx`, NPU 모델의 기본값은 **기준 옆 `<이름>.npu.onnx`**(`Make-NpuModel.ps1` 이 만드는 짝)이고,
 그게 없으면 NPU 는 건너뛰고 GPU·CPU(기준 FP32)만 잰다. 벤치 전에 — EP 준비(처음엔 수 분)보다도 먼저 — NPU 모델의 메타데이터를
 앱의 `CheckNpuModel` 과 같은 규칙으로 본다 (이슈 #6. 예전엔 NPU 모델 기본값이 기준 자체라 생략하면 FP32 가 NPU 로 갔다):
