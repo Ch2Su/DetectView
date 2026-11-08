@@ -9,6 +9,8 @@
 /experiments/**/obj/
 /experiments/*/out/
 /experiments/*/.venv/
+# 실험 파이썬이 서로를 import 할 때 생기는 바이트코드 (run_decide.py → run_vlm·report)
+__pycache__/
 # Test-NpuSwitch.ps1 가 exe 폴더를 하드 링크로 본뜨는 임시 폴더 (테스트가 끝나면 지운다)
 *.npu-test/
 # 관심 구역 파일(<영상>.roi.json)의 읽기 실패 때 복사해 둔 것·저장 중 임시 파일 (구역 파일 자체는 영상 옆에 두는 것이라 따로 막지 않는다)

@@ -48,7 +48,8 @@ VALUE_KO = {
 TITLES = {"results": "1차 — 모델 5가지 × 입력 A·B·C", "probe": "1차 뒤 확인 — 설명 먼저 + 키운 그림만",
           "round2": "2차 — 장면 30개, 설명 먼저 + 키운 그림만", "round3": "3차 — 추적기 사실을 주고 '왜 멈췄나'만",
           "round4": "4차 — 관찰만 묻고 판정은 코드 규칙",
-          "round4_quant": "양자화·크기 비교 — 4차 장면, qwen3.5 4B(4·8비트)·9B(4비트)·qwen3.6 35B-A3B MoE"}
+          "round4_quant": "4차 장면 모델 비교 — qwen3.5 4B(4·8비트)·9B·qwen3.6 35B-A3B MoE·Claude Opus 5.5·Kanana 판정 모델",
+          "round4_decide_ref": "Kanana 판정 모델 8비트 확인 — 같은 장면을 CPU BF16 으로"}
 VARIANT_KO = {"A": "화면 전체", "B": "화면 전체 + 키운 그림", "C": "B + 2초 전·뒤 화면", "D": "키운 그림만(박스의 3배)",
               "D3": "키운 그림만(박스의 3배)", "D2": "키운 그림만(박스의 2배)"}
 IMAGE_KO = {"full": "화면 전체", "crop": "키운 그림 — 박스의 3배", "crop2": "키운 그림 — 박스의 2배",
@@ -72,7 +73,7 @@ RULES4 = [("미리 정한 규칙", ("usable", "vehicle", "incident", "normal")),
           ("사후 1 · 단서 먼저", ("vehicle", "incident", "normal", "usable")),     # 결과를 보고 고른 규칙(README 결과 5)
           ("사후 2 · 선명도 안 봄", ("vehicle", "incident", "normal"))]
 ALL_CONFIGS = {c["name"]: c for pool in (run_vlm.CONFIGS, run_vlm.PROBES, run_vlm.ROUND2, run_vlm.ROUND3, run_vlm.ROUND4,
-                                          run_vlm.QUANT, run_vlm.STRATA_POOL, run_vlm.CLAUDE_POOL) for c in pool}
+                                          run_vlm.QUANT, run_vlm.STRATA_POOL, run_vlm.CLAUDE_POOL, run_vlm.DECIDE_POOL) for c in pool}
 
 
 def ko(v):
@@ -94,7 +95,7 @@ def short_name(name):
 
 def cfg_tags(cfg):
     tags = [t for k, t in (("think", "생각 모드"), ("desc_first", "설명 먼저"), ("no_label", "라벨 없이")) if cfg.get(k)]
-    api = {"openai": "Strata 엔진", "anthropic": "Claude API"}.get(cfg.get("api"))
+    api = {"openai": "Strata 엔진", "anthropic": "Claude API", "decide": "판정 모델"}.get(cfg.get("api"))
     return tags + ([api] if api else [])
 
 
@@ -454,6 +455,10 @@ def _build(res_dir):
         cells += [f'<td class="num">{statistics.median(wall):.1f} · {max(wall):.1f}초' if wall else '<td class="num">–',
                   f'<td class="num">{statistics.median(st["out_tok"]):.0f}' if st["out_tok"] else '<td class="num">–',
                   f'<td class="num">클라우드 · 합계 ${st["cost"]:.2f}' if meta.get("api") == "anthropic"
+                  # 판정 모델(run_decide.py): transformers 로 직접 올린다 — 모델 메모리(8비트면 언어 부분만)와 돌릴 때 최대 할당
+                  else f'<td class="num">{meta["load_s"]}초 · {meta["quant"]} · 모델 {meta["footprint_gib"]} GiB'
+                       + (f' · 최대 {meta["peak_alloc_gib"]} GiB GPU' if meta.get("peak_alloc_gib") else f' · CPU {meta.get("threads")}스레드')
+                  if meta.get("api") == "decide"
                   else f'<td class="num">{meta["load_s"]}초 · {meta.get("size_vram_gib")}/{meta.get("size_gib")} GiB GPU' if "size_gib" in meta
                   # Strata 는 `strata launch` 가 미리 올린다 — 돌릴 때 GPU 전체 사용량(nvidia-smi)만 안다
                   else f'<td class="num">미리 올림 · GPU {meta["gpu_mib_after_load"] / 1024:.1f} GiB 사용' if meta.get("gpu_mib_after_load")
@@ -569,7 +574,16 @@ def _build(res_dir):
             if p is not None:
                 if kind == 4:
                     blk.append(f'<p class="why">까닭: {E(a["rules"][0]["why"])}</p>')
-                blk.append(f'<blockquote>{E(p.get("description_ko", ""))}</blockquote>')
+                if rec.get("probs"):   # 판정 모델 — 설명 글이 없다. 대신 질문마다 확률(예/아니오는 P(예), 판정 질문은 후보별)
+                    pr = rec["probs"]
+                    yes = " · ".join(f'{FIELD_KO.get(k, k)} {pr[k]:.2f}' for k in FIELDS[4] if isinstance(pr.get(k), float))
+                    dv = " · ".join(f'{vko(k)} {x:.2f}' for k, x in sorted((pr.get("direct_verdict") or {}).items(), key=lambda kv: -kv[1]))
+                    ok = p.get("direct_verdict") in a["gtv"]
+                    blk.append(f'<p class="sub small">P(예): {E(yes)}</p>'
+                               f'<p class="why">판정 질문(직접): <b class="{"ok" if ok else "bad"}">{E(vko(p.get("direct_verdict")))} {"✓" if ok else "✗"}</b>'
+                               f' <span class="sub small">{E(dv)}</span></p>')
+                else:
+                    blk.append(f'<blockquote>{E(p.get("description_ko", ""))}</blockquote>')
                 if kind == 3:
                     blk.append(f'<p class="evidence"><span class="sub">근거</span> {E(p.get("cause_evidence", ""))}</p>')
                 chips = []

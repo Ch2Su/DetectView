@@ -15,6 +15,7 @@ import argparse
 import base64
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -85,6 +86,18 @@ CLAUDE_POOL = [  # Claude API(11-08 — 사용자 요청): 같은 4차 질문·�
      "api": "anthropic", "effort": "low"},
 ]
 PRICE_PER_MTOK = {"claude-opus-5-5": (4.0, 20.0), "claude-sonnet-5-5": (2.0, 10.0), "claude-haiku-5-5": (0.10, 0.50)}   # 입력·출력 달러(11-08)
+DECIDE_POOL = [  # Kanana 판정 모델(11-08 — 사용자 요청): kakaocorp/kanana-2-v-decide-3b-2611. 글을 만들지 않고 질문마다 답 후보의 확률을 낸다.
+    # Ollama 로 못 돌린다 — run_decide.py 가 모델이 주는 파이썬 코드(trust_remote_code)를 transformers 로 직접 부른다(E:\Kanana 가상 환경).
+    # BF16 7.33 GB 라 앱·바탕화면과 함께 8 GB GPU 에 들어가지 않아 언어 부분만 8비트(bitsandbytes LLM.int8 — 그림 읽는 부분은 BF16)로 올린다.
+    # 8비트로 확률이 얼마나 바뀌는지는 같은 장면을 BF16 그대로 돌려 본다(결과는 round4_decide_ref — GPU 가 비어 있을 때만 들어간다,
+    # 아니면 CPU 판으로 몇 장면만)
+    {"name": "r4-kanana-decide-3b", "model": "kanana-2-v-decide-3b-2611", "think": None, "r4": True, "variants": ["D2", "D3"],
+     "api": "decide", "quant": "int8", "device": "cuda"},
+    {"name": "r4-kanana-decide-3b-bf16", "model": "kanana-2-v-decide-3b-2611", "think": None, "r4": True, "variants": ["D2", "D3"],
+     "api": "decide", "quant": "bf16", "device": "cuda"},
+    {"name": "r4-kanana-decide-3b-bf16cpu", "model": "kanana-2-v-decide-3b-2611", "think": None, "r4": True, "variants": ["D3"],
+     "api": "decide", "quant": "bf16", "device": "cpu"},
+]
 OPTIONS ={"temperature": 0, "seed": 7, "num_ctx": 8192}   # 올릴 때도 같은 값 — 다르면 첫 호출에서 모델을 다시 올린다
 VARIANTS = {"A": ["full"], "B": ["full", "crop"], "C": ["full", "crop", "prev", "next"], "D": ["crop"], "D3": ["crop"], "D2": ["crop2"]}
 
@@ -221,6 +234,26 @@ FIELD_KO = {
 }
 
 
+# ── Kanana 판정 모델(DECIDE_POOL): 4차 항목을 SYSTEM4 와 같은 글자로 묻는다 — 예/아니오 11개(noul) + 차종 고르기(choice).
+#    더해서 3차의 판정(왜 멈췄나 — SYSTEM3 의 후보 글 그대로)을 고르기 질문 하나로 직접 묻는다(앱에 넣을 판정이 아니라 재 보기만).
+#    상태(state)는 그림을 설명하는 글 한 줄 — 4차처럼 검출 라벨·추적기 사실은 주지 않는다(판정 질문의 글에만 '멈춰 있다'가 있다)
+DECIDE_STATE = "그림은 도로 CCTV 화면의 일부를 키운 것이고 빨간 박스가 확인할 대상이다. 화면에 겹친 글자는 무시한다."
+DECIDE_YES = 0.5   # 예/아니오 질문은 P(예) ≥ 이 값이면 yes, 아니면 no — 돌리기 전에 정함('모름'은 없다)
+DECIDE_VERDICT_ASK = "추적기: 박스 안 차량은 차로 구역 안에서 몇 초째 거의 움직이지 않았다(멈춤·위치는 확인됨). 왜 멈췄는가"
+VEHICLE_KO = {"car": "승용차", "truck": "트럭", "bus": "버스", "motorcycle": "오토바이", "bicycle": "자전거", "person": "사람",
+              "emergency_vehicle": "소방차·구급차·경찰차", "tow_truck": "견인차", "work_vehicle": "작업 차량", "none": "차량 없음"}
+
+
+def decide_questions():
+    """Kanana 판정 모델에 보내는 질문들 — 항목 설명은 SYSTEM4·SYSTEM3 에서 글자 그대로 떼어 온다(따로 쓰면 어긋난다)"""
+    items = dict(re.findall(r"^- (\w+): (.+)$", SYSTEM4, flags=re.M))
+    qs = {k: ({"type": "choice", "instructions": items[k], "criteria": VEHICLE_KO} if k == "vehicle_type"
+              else {"type": "noul", "instructions": items[k]}) for k in ENUMS4}
+    verdicts = dict(re.findall(r"^- (\w+): (.+)$", SYSTEM3.split("verdict:")[1].split("cause_evidence")[0], flags=re.M))
+    qs["direct_verdict"] = {"type": "choice", "instructions": DECIDE_VERDICT_ASK, "criteria": verdicts}
+    return qs
+
+
 def cue_text(p):
     """4차 답 한 줄 — '예'라고 한 단서와, 판정을 가르는 '아니오'(선명하지 않음·박스에 차 없음)"""
     yes = [FIELD_KO[k] for k in (*INCIDENT_CUES, *NORMAL_CUES, "cones_or_triangle") if p.get(k) == "yes"]
@@ -232,6 +265,12 @@ def question(cfg, info, variant):
     """한 번 호출의 질문 — system 글·사용자 글·보낼 그림(out/cases/<id>/ 의 이름)·스키마·검사할 허용 값.
     report.py 도 이걸로 장면마다 보낸 질문 원문을 보인다(따로 만들면 실제 질문과 어긋날 수 있다)"""
     imgs = VARIANTS[variant]
+    if cfg.get("api") == "decide":   # 판정 모델: 상태 글 + 그림 + 질문 목록(질문마다 따로 한 번씩 본다) — 답 꼴은 4차와 같게 바꿔 둔다
+        lines = [f"- {k} ({q['type']}): {q['instructions']}" + (f" — 후보: {' · '.join(q['criteria'])}" if q.get("criteria") else "")
+                 for k, q in decide_questions().items()]
+        system = "\n".join([f"(판정 모델 — 질문마다 답 후보의 확률. 예/아니오는 P(예) ≥ {DECIDE_YES} 면 yes)", "질문:", *lines])
+        return {"system": system, "text": f"state: {DECIDE_STATE}", "images": imgs, "schema": make_schema4(), "enums": ENUMS4,
+                "texts": ("description_ko",)}
     if cfg.get("r4"):
         ask = "보이는 것만 JSON 으로 답하라."
         system, schema, enums, texts = SYSTEM4, make_schema4(), ENUMS4, ("description_ko",)
