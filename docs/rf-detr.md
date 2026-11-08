@@ -50,7 +50,7 @@
   NPU 짝: GPU 대비 96.1% / 97.8%, `session.Run` 20.4 ms(GPU 8.8 ms — docs/npu.md)
 - **8클래스 YOLO26m 으로 (2026-11-08 — 사용자 결정)**: 라벨링 도구가 11-08 데이터(8클래스 — pickup 추가·van→car, train 3,725 / val 729 / test 749)로
   DetectView 의 2단계 YOLO26m 과 같은 설정(640 · batch 10 · 100 epoch · seed 0)으로 학습한 `E:\local_auto_labeling\models\best.pt`(= `best_y26m_8cls.pt`)를
-  같은 명령(`export_trained.py … --imgsz 384 640`)으로 내보내 루트 `best.onnx`(MD5 `AB56CED7…`)로, NPU 짝을 다시 만들었다(`546567CB…`). 앱엔 pickup 을 관심 클래스·차량 묶음·범례·박스 색에 더했다.
+  같은 명령(`export_trained.py … --imgsz 384 640`)으로 내보내 루트 `best.onnx`(MD5 `AB56CED7…`)로, NPU 짝을 다시 만들었다(`546567CB…`). 같은 날 사용자 승인으로 배포 폴더도(옛 7클래스는 `best.yolo26m-1105.*` 로 보관). 앱엔 pickup 을 관심 클래스·차량 묶음·범례·박스 색에 더했다.
   라벨링 도구 쪽 test 비교(`E:\local_auto_labeling\docs\experiments.md` '8클래스 첫 학습' — Ultralytics val 기본값이라 앱 경로보다 0.007~0.010 높게 나온다, 위 숫자와 섞지 말 것):
   pickup 뺀 7클래스 0.6957 → **0.7398**(CCTV 0.6986 → 0.7367), pickup 과 상관없는 5클래스 0.6958 → 0.7084(CCTV +0.004) — 큰 차이는 truck 0.563 → 0.804(옛 모델은 pickup 을 truck 으로 잡아 truck 정밀도가 낮았다)와 pickup 0.606.
   앱 경로 AP 는 다시 재지 않았다 — 11-08 데이터셋(라벨링 도구의 'WSL 학습'이 덮어쓰는 `~/datasets/visible`)을 먼저 백업해야 하고, 옛 7클래스 모델과는 pickup 처리를 맞춰야 견줄 수 있다

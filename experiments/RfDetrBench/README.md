@@ -533,7 +533,7 @@ uv run --no-project --python 3.12 --with onnxruntime --with pycocotools --with o
 - 루트 `best.onnx` ← 그 파일, NPU 짝 다시 만들기(`tools\Make-NpuModel.ps1` — 보정 test1~5 100장, 29초, 21.4 MB, MD5 `546567CB…`)
 - 앱: pickup 을 관심 클래스(`TargetClasses`)·차량 묶음(`DuplicateBoxes` — 중복 박스·추적기·유고 규칙이 쓴다)·범례 순서(truck 바로 아래)·박스 색(`Box.pickup` #F09CF0)에 더했다.
   TrackerCheck 사본 둘과 이 폴더 `eval_test.py` 의 차량 묶음, UI 테스트의 차량 라벨 패턴도 같이. `yolo_video_check.py` 의 `NAMES`(7클래스 데이터 순서)는 그대로 — 7클래스 모델들(y26s 등)용이다
-- 배포 폴더(`publish`)는 7클래스 판(`94A26C12…`) 그대로 — 배포할지는 사용자가 정한다
+- 같은 날 사용자 승인으로 배포 폴더(`publish`)도 이 모델·짝으로 바꾸고 exe 를 다시 배포했다(`79a041a`) — 7클래스 판(`94A26C12…`)과 짝은 `best.yolo26m-1105.onnx` · `.npu.onnx` 로 보관
 
 **정확도** — 다시 재지 않았다. 라벨링 도구 쪽 test 749장 비교(`E:\local_auto_labeling\docs\experiments.md` '8클래스 첫 학습' — Ultralytics val 기본값이라
 앱 경로(end-to-end)보다 0.007~0.010 높게 나온다. 이 README 의 시험 분할 숫자와는 데이터도 달라 견주지 말 것):
