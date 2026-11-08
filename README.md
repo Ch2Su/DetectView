@@ -1,7 +1,7 @@
 # DetectView
 
 YOLO ONNX 모델로 **동영상 파일 · 웹캠 · 바탕화면**을 실시간 객체 검출하는 Windows 데스크톱 앱입니다.
-WPF(.NET 10)로 만들었고, 추론은 Windows ML 의 ONNX Runtime 으로 **GPU(DirectML)** 에서 돌립니다. AMD Ryzen AI **NPU** 로 바꿔 돌릴 수도 있습니다.
+WPF(.NET 10)로 만들었고, 추론은 Windows ML 의 ONNX Runtime 으로 **GPU(DirectML)** 에서 돌립니다. NVIDIA RTX 에선 **TensorRT** 로, AMD Ryzen AI **NPU** 로도 바꿔 돌릴 수 있습니다.
 
 ## 주요 기능
 
@@ -20,7 +20,9 @@ WPF(.NET 10)로 만들었고, 추론은 Windows ML 의 ONNX Runtime 으로 **GPU
 - **구역 진입·나감 로그** — 그려 둔 구역에 물체가 들어오고 나갈 때마다 영상 아래 이벤트 로그에 한 줄(`00:11.2 CAR #40 Z1 차로 진입`)이 쌓이고, [CSV 저장]으로 영상 옆 `<영상>.events.csv` 에 남길 수 있습니다. 화면이 전환되면 구역이 맞는지 알 수 없어 이벤트를 멈추고, 시크하면 다시 시작합니다.
 - **관심 구역** — 동영상을 멈춘 채 영상 위를 클릭해 구역(다각형)을 그리고, 점을 끌어 고치고, 차로·갓길·정지선·대기·무시 유형을 붙입니다. 구역은 영상 옆 `<영상 파일>.roi.json` 에 바로 저장되고 다시 열면 돌아옵니다. (아직 편집·표시만 합니다 — 구역을 쓰는 유고 감지는 앞으로 붙일 예정입니다.)
 - **정밀 분석(SAHI)** — 멈춘 프레임 한 장을 모델 입력 크기(지금 640×384)의 타일로 나눠 다시 검출하고, 전체 프레임 검출과 합칩니다. 멀리 있는 작은 물체를 찾을 때 씁니다.
-- **추론 장치 선택** — 기본은 GPU(DirectML)이고, AMD Ryzen AI NPU(VitisAI 실행 공급자)로 바꿀 수 있습니다. NPU 는 양자화한 짝 모델 `best.npu.onnx` 가 있어야 하고, 처음 한 번 약 1분 동안 컴파일합니다.
+- **추론 장치 선택** — 기본은 GPU(DirectML)이고, NVIDIA RTX GPU 면 TensorRT(Windows ML 의 TensorRT for RTX 실행 공급자)로, AMD Ryzen AI NPU(VitisAI 실행 공급자)로도 바꿀 수 있습니다.
+  TensorRT 는 FP16 짝 모델 `best.fp16.onnx` 로 돌아 DirectML 보다 약 3배 빠르고(처음 한 번 엔진을 만드느라 약 10초, 추론하는 동안 CPU 코어 하나를 더 씁니다),
+  NPU 는 양자화한 짝 모델 `best.npu.onnx` 가 있어야 하고 처음 한 번 약 1분 동안 컴파일합니다.
 
 ## 요구 사항
 
@@ -29,8 +31,9 @@ WPF(.NET 10)로 만들었고, 추론은 Windows ML 의 ONNX Runtime 으로 **GPU
 | OS | Windows 11 x64 (개발·테스트 환경. Windows 10 은 확인하지 않았습니다) |
 | GPU | DirectX 12 를 지원하는 GPU (DirectML) |
 | 빌드 | [.NET 10 SDK](https://dotnet.microsoft.com/download) |
+| TensorRT (선택) | NVIDIA RTX 30 시리즈 이후 GPU. TensorRT for RTX 실행 공급자는 Windows ML 이 필요할 때 내려받습니다 |
 | NPU (선택) | AMD Ryzen AI NPU (XDNA 2). VitisAI 실행 공급자는 Windows ML 이 필요할 때 내려받습니다 |
-| NPU 짝 모델 만들기 (선택) | [uv](https://docs.astral.sh/uv/) — Python 을 따로 설치하지 않고 `tools/npu_quantize.py` 를 돌립니다 |
+| 짝 모델 만들기 (선택) | [uv](https://docs.astral.sh/uv/) — Python 을 따로 설치하지 않고 `tools/npu_quantize.py`(NPU)·`tools/fp16_convert.py`(TensorRT)를 돌립니다 |
 
 개발 PC 는 NVIDIA GeForce RTX 5060 Laptop GPU 와 AMD 내장 GPU 가 함께 있는 하이브리드 노트북(Ryzen AI 5 340)입니다.
 
@@ -50,7 +53,7 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
 
 - 프로젝트 파일(`DetectView.csproj`)을 꼭 지정합니다. 빼면 폴더의 `.slnx` 가 잡혀 `NETSDK1194` 경고가 납니다.
 - 결과는 `publish\DetectView.exe`(약 126 MB, .NET 런타임 포함)와 `best.onnx` 입니다. **모델은 exe 에 들어가지 않으니 같은 폴더에 둡니다.**
-- NPU 짝 모델은 publish 에 복사되지 않습니다. 배포 폴더 모델로 만듭니다: `pwsh tools\Make-NpuModel.ps1 -Model publish\best.onnx`
+- 짝 모델(NPU·TensorRT)은 publish 에 복사되지 않습니다. 배포 폴더 모델로 만듭니다: `pwsh tools\Make-NpuModel.ps1 -Model publish\best.onnx` · `pwsh tools\Make-Fp16Model.ps1 -Model publish\best.onnx`
 - 실행해서 창 제목이 `DetectView — YOLO26m 640×384 (2026-11-08 학습) — NVIDIA GeForce RTX 5060 Laptop GPU (DirectML)` 처럼 바뀌면 GPU 초기화에 성공한 것입니다.
 
 ## 사용법
@@ -59,7 +62,7 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
   - 소스: [파일 열기] · 카메라를 고르고 [카메라 시작] · 모니터를 고르고 [화면 HUD]
   - 분석: [정밀 분석(SAHI)] — 지금 보이는 한 장을 분석합니다. 재생 중이면 멈춥니다
   - 구역: 동영상을 일시정지한 뒤 [추가] → 영상 위를 클릭해 점을 찍고, 첫 점을 누르거나 Enter 로 닫습니다(Esc: 그만두기, 오른쪽 클릭: 한 점 취소). 구역을 눌러 고른 뒤 점을 끌면 옮겨지고, 변 가운데 ○ 를 끌면 점이 늘고, 점을 고르고 Delete 를 누르면 점이 지워집니다. 구역을 고르면 유형을 바꾸거나 [지우기] 할 수 있습니다
-  - 추론 장치: GPU / NPU
+  - 추론 장치: GPU / TensorRT / NPU
   - 맨 아래 [정지]
 - **재생 줄** — 재생·일시정지, 위치 슬라이더(끌거나 눌러서 시크), 시간
 - **상태바** — 상태 · 해상도 · FPS · 검출 수. 화면 HUD 중에 FPS 자리에 `대기 (화면 변화 없음)` 이 뜨면 화면이 그대로라 추론을 쉬는 중입니다.
@@ -76,7 +79,8 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
   16:9 영상·화면은 640×640 입력과 같은 배율로 들어가고(추론은 31% 빠름), 16:9 가 아닌 영상(4:3 등)은 그보다 작게 들어갑니다.
 - 같은 형식의 다른 모델로 바꿔 쓸 수 있습니다(COCO 80클래스 YOLO26x 도 써 봤습니다). 입력 크기는 모델에서 읽습니다. 창 제목의 모델 이름·입력 크기·학습일은 모델 파일에서 읽고, 화면에는 위 8개 클래스만 보입니다.
 - `best.npu.onnx` 는 `best.onnx` 의 NPU 짝(A16W8 양자화)입니다. 원본을 바꾸면 `pwsh tools\Make-NpuModel.ps1` 로 다시 만듭니다.
-  앱은 짝 모델에 들어 있는 원본 MD5 로 짝이 맞는지 확인하고, 안 맞으면 NPU 를 막습니다.
+  `best.fp16.onnx` 는 TensorRT 짝(FP16 — 입출력은 FP32)입니다. 원본을 바꾸면 `pwsh tools\Make-Fp16Model.ps1` 로 다시 만듭니다.
+  앱은 짝 모델에 들어 있는 원본 MD5 로 짝이 맞는지 확인하고, 안 맞으면 그 장치를 막습니다.
   보정 데이터 기본값은 `publish\test1~5.mp4` 이고, 다른 영상을 쓰려면 `-Calib` 로 영상·이미지 폴더를 줍니다.
 
 ## 성능 (참고)

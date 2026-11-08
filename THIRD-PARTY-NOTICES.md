@@ -4,7 +4,7 @@ DetectView 는 [GNU AGPL-3.0](LICENSE) 으로 공개합니다. 이 저장소에 
 
 | 들어 있는 것 | 원 저작물 | 라이선스 |
 |---|---|---|
-| `best.onnx` · `best.npu.onnx` | Ultralytics YOLO26m 을 파인튜닝한 모델과 그 NPU 양자화본 | AGPL-3.0 |
+| `best.onnx` · `best.npu.onnx` · `best.fp16.onnx` | Ultralytics YOLO26m 을 파인튜닝한 모델과 그 NPU 양자화본·FP16 변환본 | AGPL-3.0 |
 | `WindowsMlExecutionProvider.cs` | YoloDotNet 의 DirectML 실행 공급자 | MIT |
 | `.claude/helpers/graft-statusline.cjs` · `.claude/skills/graft/SKILL.md` | graft(코드 인덱스 도구)가 만든 Claude Code 연동 파일 | MIT |
 
@@ -14,7 +14,7 @@ DetectView 는 [GNU AGPL-3.0](LICENSE) 으로 공개합니다. 이 저장소에 
 ## Ultralytics YOLO26 — AGPL-3.0
 
 `best.onnx` 는 [Ultralytics](https://github.com/ultralytics/ultralytics) YOLO26m 을 8클래스로 파인튜닝해 ONNX(입력 640×384)로 내보낸 모델이고,
-`best.npu.onnx` 는 그것을 `tools/npu_quantize.py` 로 양자화한 것입니다. 두 파일의 메타데이터에도
+`best.npu.onnx` 는 그것을 `tools/npu_quantize.py` 로 양자화한 것, `best.fp16.onnx` 는 `tools/fp16_convert.py` 로 FP16 으로 바꾼 것입니다. 세 파일의 메타데이터에도
 `license = AGPL-3.0 License (https://ultralytics.com/license)` 가 들어 있습니다.
 
 Ultralytics 는 YOLO 로 학습한 모델과 그 모델을 쓰는 프로젝트에 AGPL-3.0 을 요구합니다([Ultralytics Licensing](https://www.ultralytics.com/license)).

@@ -88,8 +88,11 @@ pwsh tests/ui/Run-All.ps1
   2026-10-24(모니터 0 = 외부 2560×1440)엔 Debug·scratchpad 가 DXGI, '절전'이 걸린 `publish` 가 GDI 였다.
   같은 날 저녁 사용자가 배포본 설정을 'Windows에서 결정'(`GpuPreference=0`)으로 바꾼 뒤엔 배포본도 외부 모니터에서 DXGI(HUD 108 FPS)
 - `Test-NpuSwitch.ps1`: ① 최소 폭(900)에서 조작 요소(11-01 부터 왼쪽 패널)가 모두 창 안에 ② "추론 장치" 콤보에서 NPU 선택 → 상태바 진행 표시 → 제목 NPU →
-  파일 재생(배속·검출) → 재생 중 GPU 로 → 다시 NPU(캐시) — 재생이 끊기지 않는지 ③ 실패 경로 3가지(짝 없음·다른 모델의 짝·FP32 를 짝 이름으로)에서
-  NPU 항목이 막히고 툴팁에 사유, GPU 유지. ③ 은 exe 폴더를 **하드 링크로 본뜬 옆 폴더(`<exe 폴더>.npu-test`, gitignore)** 에서 파일을 바꾼다 —
+  파일 재생(배속·검출) → 재생 중 GPU 로 → 다시 NPU(캐시) — 재생이 끊기지 않는지
+  ②b **TensorRT**(2026-11-08 — FP16 짝 `best.fp16.onnx`): 지금 장치(NPU 를 거쳤으면 NPU)에서 곧바로 TensorRT → 진행 표시·창 응답(①② 250 ms 선) → 엔진 캐시 키(FP16 짝 MD5·EP·런타임) →
+  재생(배속·검출) → 멈춘 프레임 두 곳(3.0·6.5초)의 검출 수를 GPU 와 견줌(±1 — 두 곳을 보는 건 엔진이 옛 입력을 다시 쓰는 잘못을 가리려고) → SAHI(작업 스레드의 추론) →
+  키 폴더에 엔진 캐시 파일 → 재생 중 다시 TensorRT(캐시 — '엔진 만드는 중'이 없어야). NVIDIA RTX 가 아니거나 짝이 없으면 [INFO] 로 건너뛴다
+  ③ 실패 경로 6가지 — NPU·TensorRT 각각 짝 없음·다른 모델의 짝·FP32 를 짝 이름으로 — 에서 그 항목이 막히고 툴팁에 사유, GPU 유지. ③ 은 exe 폴더를 **하드 링크로 본뜬 옆 폴더(`<exe 폴더>.npu-test`, gitignore)** 에서 파일을 바꾼다 —
   원래 폴더(배포 폴더 포함)는 건드리지 않고 끝나면 지운다. "다른 모델의 짝"은 MD5 가 다른 모델(루트·배포 폴더 `best.onnx`, 그다음 배포 폴더의 다른 `*.onnx` — 짝 `*.npu.onnx` 는 빼고)이 있어야 해서 없으면 [INFO].
   배포 폴더의 다른 모델을 후보에 넣은 건 2026-11-06 — 루트와 배포 폴더가 같은 YOLO26m 640×384 가 되어 옛 YOLO26s 를 `best.yolo26s-0917.onnx` 로 보관했는데, 후보가 둘뿐이면 이 경우가 늘 건너뛰어졌다.
   **NPU(VitisAI 실행 공급자)가 없는 PC 거나 짝 모델 파일이 없으면 ② 를 [INFO] 로 건너뛴다**(①·③ 은 NPU 없이도 돈다).
@@ -103,7 +106,14 @@ pwsh tests/ui/Run-All.ps1
   옛 판 `UiLatency` 형식이 남은 PowerShell 세션에선 분명한 메시지로 멈춘다(Add-Type 형식은 못 바꿈 — 새 pwsh 에서 돌릴 것)
 - 종료 코드 = 실패 건수(`Run-All` 은 0/1). 파일 열기 대화상자 자동화 요령 등은 `Common.ps1` 머리말에 정리해 두었다.
   `Run-All` 은 테스트 파일이 try 밖에서 throw 해도(영상·빌드 없음) 그 파일만 실패로 세고 다음 파일을 돈다(2026-10-30 — 예전엔 거기서 통째로 멈췄다)
-- 마지막 전체 통과: 2026-11-08 오후, **배포본 `publish`** — 사용자 "배포하기"로 8클래스 모델판 `79a041a` 를 배포(작업 트리가 깨끗한 worktree 에서 임시 폴더로 내보내 exe 만 옮김 —
+- 마지막 전체 실행: 2026-11-08 저녁, **Debug** — **추론 장치에 TensorRT 를 넣은 뒤**(`MainWindow.Trt.cs` · 장치 전환 상태 기계 일반화 · FP16 짝 `best.fp16.onnx` `D7D760DC…`).
+  worktree 에 `publish` 연결을 두고 `Run-All` 한 번에 305 항목 중 304 통과(5.2분): `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 · `Test-SceneChange` 21 · `Test-ZoneEvents` 21 ·
+  `Test-Incident` 15/16 · `Test-VlmAnnotation` 27 · `Test-ViewIdentity` 27 · `Test-VfrPlayback` 26 · `Test-ScreenHud` 39 · **`Test-NpuSwitch` 55**(TensorRT 2b 와 실패 경로 셋을 더함 — 그 전 28).
+  남은 1건은 `Test-Incident` 의 '카메라가 돈 뒤 유고 표시가 사라짐' — 남은 표본은 0개(맞음)인데 11.7초 뒤 표본이 7개로 기준(8)에 하나 모자랐다(그 실행의 전체 표본 101개 — 평소 118~119).
+  그 파일만 두 번 다시 돌리니 표본 10개로 16 항목 모두 통과 (이 테스트는 GPU 로만 돈다 — 11-07 `Test-ViewIdentity` 와 같은 표본 수 흔들림).
+  TensorRT: NPU 에서 곧바로 6.2초(앞서 따로 돌린 실행이 엔진 캐시를 남김 — 캐시 없는 첫 전환은 그 실행에서 16.9초), ①② 창 응답 WM_NULL 최대 1 ms · UIA 최대 23~32 ms,
+  멈춘 프레임 3.0·6.5초의 검출이 GPU 와 클래스까지 같음(11 · 13개), SAHI 19개, 다시 고르면 6.2초(캐시). 참고용 재생 처리 GPU 65.5 · **TensorRT 137.6** · NPU 36.2 FPS
+- 그 전 전체 통과: 2026-11-08 오후, **배포본 `publish`** — 사용자 "배포하기"로 8클래스 모델판 `79a041a` 를 배포(작업 트리가 깨끗한 worktree 에서 임시 폴더로 내보내 exe 만 옮김 —
   132,590,524 바이트, Release DLL 에 결함·가짜 VLM 이름 없음 — 남은 건 읽히지 않는 환경 변수 이름 상수 `DETECTVIEW_TEST_FAULTS` 뿐으로 11-07 판과 같은 소스). 배포 폴더 모델도 8클래스(`AB56CED7…`)로 바꾸고
   짝을 `Make-NpuModel.ps1 -Model publish\best.onnx` 로 만들어(39초) 루트 짝과 바이트까지 같다(`546567CB…`). 옛 7클래스 YOLO26m(`94A26C12…`)과 짝(`BD18D32C…`)은 `best.yolo26m-1105.onnx` · `.npu.onnx` 로 보관.
   `Run-All -ExeDir publish` 한 번에 243 항목 모두 통과(5.2분): `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 · `Test-SceneChange` 21 · `Test-ZoneEvents` 21 · `Test-Incident` 16 ·

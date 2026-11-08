@@ -40,7 +40,8 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
   아니면 파일 끝의 Ultralytics 메타데이터를 읽는다:
   `uv run --no-project --python 3.12 python -c "import re,sys;f=open(sys.argv[1],'rb');f.seek(-65536,2);t=f.read().decode('utf-8','ignore');[print(k,'=',v.strip()[:80]) for k,v in re.findall(r'(description|names|date|imgsz)\x12.?([^\x00-\x08\x0e-\x1f]+)',t)]" publish/best.onnx`
   (`imgsz` 가 `[384, 640]` 이면 16:9 영상용 640×384 판 — 같은 가중치의 640×640 판과 이름·날짜가 같을 수 있다)
-- 배포 폴더 모델을 바꾸면 NPU 짝도 다시 만든다: `pwsh tools\Make-NpuModel.ps1 -Model publish\best.onnx` (→ 그 옆 `best.npu.onnx`, 아래 "NPU")
+- 배포 폴더 모델을 바꾸면 짝 둘도 다시 만든다: NPU `pwsh tools\Make-NpuModel.ps1 -Model publish\best.onnx` (→ 그 옆 `best.npu.onnx`) ·
+  TensorRT `pwsh tools\Make-Fp16Model.ps1 -Model publish\best.onnx` (→ 그 옆 `best.fp16.onnx`, 2026-11-08 — 아래 "추론 장치")
 - **앱용 ONNX 를 새로 내보낼 땐 end-to-end(`[1,300,6]`)인지 본다** — Ultralytics 8.4.142(라벨링 도구가 쓰는 판)의 `export(format="onnx")` 기본값은 NMS 전 원출력 `[1,84,8400]`(메타데이터 `end2end False`)이다.
   `nms=False`(또는 `end2end=True`)를 줄 것. 지금 루트 `best.onnx`(8클래스 YOLO26m 640×384, 11-08 — 그 전 7클래스 판도)는 8.4.142 에서 `nms=False` 로 내보낸 end-to-end 다
   (`experiments/RfDetrBench/step2/export_trained.py yolo <best.pt> <이름> --imgsz 384 640` — 그 README 끝 '8클래스'). 그 전 YOLO26s 는 8.4.31 기본값으로 end-to-end 였다 (2026-11-04 실측 — `experiments/RfDetrBench` README. 원출력 꼴을 앱이 어떻게 처리하는지는 확인 안 함 — 아래 3번의 전제가 깨진다).
@@ -73,7 +74,8 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
 | `MainWindow.Screen.cs` | 화면 HUD: 모니터 선택, 캡처 루프(`ScreenLoop` — 첫 캡처 결과 보고·캡처 복구·모니터 배치 감시·추적기), 오버레이 갱신, 상태바 무시 영역, FPS 칸 문제 표시, UIA 진단 값 |
 | `MainWindow.Inference.cs` | 모델 로드, GPU 선택(`SelectBestGpu`·`CreateGpuYolo` — 판정은 `GpuAdapters`), `ProcessFrame`, `DetectTile`/`DetectBgra`(검출이 모두 여기로 — 레터박스는 `YoloLetterbox`, `_yoloLock` 안에서). YoloDotNet 의 축소 방식 `InputSampling`(쌍선형 — GPU·NPU 세션 모두 `YoloOptionsFor`, 레터박스 경로엔 듣지 않는 대비) |
 | `YoloLetterbox.cs` | YOLO 입력 레터박스를 OpenCV 쌍선형(`INTER_LINEAR`)으로 직접 만들어 YoloDotNet 에 넘기고(배율 1), 박스를 +0.5 해 그린 자리 그대로의 여백·배율로 되돌린다(2026-11-05 — 아래 '화면 HUD' 성능 절의 '입력 축소'). 크기는 모델 입력(`InputSize` — 정사각형이 아닐 수 있다. SAHI 타일·창 제목도 이걸 읽는다). WPF 없음 — TrackerCheck·RuntimeParity 가 소스로 링크 |
-| `MainWindow.Npu.cs` | 추론 장치 GPU ↔ NPU: 왼쪽 패널 "추론 장치" 선택, 짝 모델 확인 → VitisAI EP 준비 → 백그라운드 컴파일 → `_yolo` 교체 (아래 "NPU") |
+| `MainWindow.Npu.cs` | 추론 장치 GPU · TensorRT · NPU 전환(장치 공통 상태 기계 — `_onDevice`·`_wantDevice`·`_prepDevice`)과 NPU: 왼쪽 패널 "추론 장치" 선택, 짝 모델 확인 → VitisAI EP 준비 → 백그라운드 컴파일 → `_yolo` 교체 (아래 "추론 장치") |
+| `MainWindow.Trt.cs` | 추론 장치 TensorRT (2026-11-08): FP16 짝 확인(`CheckTrtModel`) → Windows ML 카탈로그의 TensorRT for RTX EP 준비 → 백그라운드 엔진 만들기(커널 캐시) — 전환은 `MainWindow.Npu.cs` 의 상태 기계 |
 | `MainWindow.Roi.cs` | 왼쪽 패널 '구역' 절(목록·추가/지우기·유형)과 `RoiLayer` 를 잇고 구역 파일에 바로 저장. 편집 가능 여부는 `UpdateRoiUi` 한 곳 (파일 + 멈춤 + SAHI 아님) |
 | `WindowsMlExecutionProvider.cs` | YoloDotNet 실행 공급자 — Windows ML 의 ONNX Runtime 으로 DirectML(나중에 NPU) 세션을 돌린다. `FindDmlDevice` 로 PCI ID 매칭 |
 | `MainWindow.Sahi.cs` | SAHI 버튼·실행·결과 그리기 |
@@ -109,8 +111,9 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
 | `README.md` | GitHub 첫 화면 (2026-11-02 작성 — 기능·빌드·사용법·테스트·라이선스). 화면이 크게 바뀌면 같이 고칠 것. 스크린샷(test4 3초 장면, 실제 도로 CCTV 프레임)은 같은 날 넣었다가 영상 사용 권리를 확인하지 못해 뺐다(`docs/screenshot.png` 삭제 — 이 PC 의 옛 기록 `old-history` 의 `10e65db` 에만 남음). 다시 넣으려면 권리가 분명한 영상으로 |
 | `docs/` | CLAUDE.md 에서 옮긴 긴 설명·실측·지난 기록(2026-11-05) — 아래 '자세한 문서' 표. 세션마다 자동으로 읽히지 않는다 |
 | `LICENSE` · `THIRD-PARTY-NOTICES.md` | 저장소 라이선스 GNU AGPL-3.0 (2026-11-02 — 들어 있는 `best.onnx` 가 Ultralytics YOLO26 파인튜닝이라 Ultralytics 가 프로젝트 전체에 AGPL-3.0 을 요구)과 저장소 안 남의 저작물 고지(모델 AGPL-3.0 · `WindowsMlExecutionProvider.cs` 의 바탕 YoloDotNet MIT · `.claude/` 의 graft 연동 파일 MIT — 각 전문). 남의 코드·파일을 가져오면 여기에 더한다 |
-| `tools/` | `Make-NpuModel.ps1`(+ `npu_quantize.py`): YOLO 모델의 NPU 용 짝 `<이름>.npu.onnx` 만들기 (아래 "NPU") |
+| `tools/` | `Make-NpuModel.ps1`(+ `npu_quantize.py`): YOLO 모델의 NPU 용 짝 `<이름>.npu.onnx` 만들기 · `Make-Fp16Model.ps1`(+ `fp16_convert.py`, 2026-11-08): TensorRT 용 FP16 짝 `<이름>.fp16.onnx` 만들기 (아래 "추론 장치") |
 | `best.npu.onnx` | 루트 `best.onnx` 의 NPU 짝 (A16W8·가중치 채널별 QDQ, 21.4 MB, git 추적 — 2026-11-08 8클래스 YOLO26m 640×384 로 다시 만듦, MD5 `546567CB…` · 그 전 7클래스 짝 `BD18D32C…`). 원본을 바꾸면 다시 만든다 |
+| `best.fp16.onnx` | 루트 `best.onnx` 의 TensorRT 짝 (FP16 — 입출력은 FP32, 40.9 MB, git 추적 — 2026-11-08, MD5 `D7D760DC…`). DirectML 로는 못 연다. 원본을 바꾸면 다시 만든다 |
 | `experiments/` | 따로 빌드하는 실험 프로젝트(각자 `.csproj`). 본 `.csproj` 의 `Compile/Page/None Remove` 로 빠져 있다. `NpuBench/`: AMD NPU 실험 — 짝 확인(`npu_quant`·`npu_source_md5`) 뒤에만 NPU 에 넣는다 (아래 "NPU"). `RuntimeParity/`: 런타임 교체 전후 검출 결과 비교 (1번 항목, GPU 선택은 두 빌드 모두 `GpuAdapters.cs`, 레터박스는 `YoloLetterbox.cs` 링크 — 2026-11-05 부터 좌표가 실수라 그 전 CSV 와 견주지 말 것). `TrackerCheck/`: 추적기 검증 (아래 "추적기")·테두리 멈춤 판정 합성 장면(`selftest` — 관심 구역 `Roi.cs` 의 판정·파일 검사 ⑧, 화면 전환 감지 합성 장면 ⑨, 구역 진입·나감 이벤트 ⑩, 유고 규칙 ⑪, 화면 식별 ⑫도 여기)·화면 식별 맞춤 실측(`views`)·화면 전환이 있는 합성 영상 만들기(`mkrevisit`)·화면 전환 감지 임계값 실측(`scene`)·GPU 고성능/저전력 판정(`gpu`)·중복 박스 필터 전후 비교 (3번 항목)·YOLO 입력 축소 방식(`InputCheck.cs` — 데이터셋 시험 분할을 앱 경로로 검출하고 Skia·OpenCV 축소를 화소 비교 `testsplit`, 축소 시간·결정성 `inputbench`)·앱의 VLM 그림·요청이 실험과 같은지(`vlm` — `VlmCheck/check_app_parity.py` 가 부른다). `RfDetrBench/`: RF-DETR 를 앱 런타임(DirectML)에서 — 노드 배치·속도·결과 일치, 같은 COCO 정확도의 YOLO26 과 비교. `step2/` 는 같은 데이터로 학습(WSL)·내보내기·시험 분할 평가, YOLO 변형(NMS 내보내기·640×384 — 속도는 `yolo`)도 (아래 "RF-DETR 검토"). `VlmCheck/`: 유고 후보를 로컬 VLM(Ollama)으로 2차 확인하는 실험(파이썬 — 앱에는 없음, `docs/incident-detection.md` 끝)과 앱과 GPU 를 나눠 쓸 때의 계측(`Measure-GpuShare.ps1` — 앱 연결 설계는 `docs/vlm-annotation.md`). 산출물 `*/out/`·`*/bin/`·`*/obj/`·`*/.venv/` 는 gitignore |
 | `graft/` · `.claude/` | 코드 인덱스(graft)와 그 에이전트 연동. graft 는 CLI 로만 쓴다 — MCP 서버 등록은 2026-11-02 사용자 결정으로 전역(`~/.claude.json`)과 이 저장소(`.mcp.json` 삭제) 모두 뺐다. `graft/` 는 재생성 가능한 캐시라 커밋하지 않는다. `.claude/helpers/graft-statusline.cjs`(상태줄)는 graft 설치 경로를 `%APPDATA%\npm` 에서 계산한다(2026-11-02 — graft 가 박아 넣은 `C:\Users\<이름>\…` 경로를 저장소에서 뺌. graft 를 다시 설치해 박힌 경로로 돌아오면 다시 고칠 것). graft 훅은 전역 `~/.claude/settings.json` 에만 둔다 — 프로젝트에도 있으면 둘 다 돌아 세션마다 graft 안내문이 두 번 들어가고 도구마다 훅이 두 번 돈다(2026-11-02 프로젝트 쪽 훅과 `graft-hooks.cjs` 를 뺌. graft 를 이 저장소에 다시 설치해 돌아오면 다시 뺄 것) |
 
@@ -124,7 +127,7 @@ CLAUDE.md 가 매 세션 컨텍스트를 너무 많이 차지해서(13만 자) 2
 | `docs/playback.md` | 파일 재생 · 시크 — VFR 판정 · 시크 전략 · 재생 시계 · 멈춘 채 시크·한 장 보기 · EOF |
 | `docs/screen-hud.md` | 화면 HUD — 오버레이 · DXGI/GDI 캡처 · 하이브리드 GPU · 캡처 복구 · 상태바 칸 · 새 화면 고리 · 지연 처리 · 성능 실측 · 입력 축소 |
 | `docs/incident-detection.md` | 유고 감지 — 추적기 · 관심 구역 · 화면 전환 감지 · 구역 진입·나감 이벤트 · 유고 규칙 · 화면 식별 |
-| `docs/npu.md` | NPU — 장치 전환 · 짝 모델 · 컴파일 캐시 키 · 실측 |
+| `docs/npu.md` | 추론 장치 — NPU · TensorRT: 장치 전환 · 짝 모델 · 캐시 키 · 실측 |
 | `docs/ui-design.md` | 화면 디자인 — 배치 · `App.xaml` · 박스 그리기 · 클래스별 개수 범례 |
 | `docs/rf-detr.md` | RF-DETR 검토 — 단계별 결과(실험 자체는 `experiments/RfDetrBench/README.md`) |
 | `docs/vlm-annotation.md` | VLM 설명 — 유고 후보에 로컬 VLM 단서·설명을 붙인다(2026-11-07 구현 — 화면 '두 줄 행'): 흐름·크롭·단서 표시·실패·GPU 공유 실측·실험과의 대조·진짜 Ollama 확인 |
@@ -146,7 +149,8 @@ CLAUDE.md 가 매 세션 컨텍스트를 너무 많이 차지해서(13만 자) 2
   생성자에서 세션을 만든 뒤 실패하면 세션을 해제하고 넘긴다
 - **TensorRT 도 이 런타임으로 쓴다** — Windows ML EP 카탈로그에 NVIDIA TensorRT for RTX EP(`NvTensorRTRTXExecutionProvider`, 이 PC 2.30.51)가 VitisAI 처럼 들어온다.
   TensorRT 를 쓰겠다고 `Microsoft.ML.OnnxRuntime.Gpu` 류 패키지를 넣지 말 것(위 이름 겹침). 2026-11-08 실측: 같은 모델 FP32 6.6 ms · FP16 2.8 ms(DirectML 10.0 ms), 검출은 사실상 같고
-  같은 입력이면 비트까지 같다. 대가는 추론 동안 CPU 코어 하나가 돌고, 첫 엔진 만들기 약 10초 — 앱엔 아직 없다(`experiments/NpuBench` README 결과 6)
+  같은 입력이면 비트까지 같다. 대가는 추론 동안 CPU 코어 하나가 돌고, 첫 엔진 만들기 약 10초(`experiments/NpuBench` README 결과 6).
+  같은 날 앱의 '추론 장치'에 TensorRT 로 넣었다 — 아래 "추론 장치"
 - DirectML 장치는 DXGI 어댑터의 **PCI 벤더·장치 ID 로** 맞춘다(`SelectBestGpu` → `FindDmlDevice`). 하이브리드라 DirectML 장치가 AMD·NVIDIA 둘이다. 못 찾으면 첫 DirectML 장치로 돌고 제목에 `<벤더> GPU` 로 드러난다
 - 검증법: 출력의 `runtimes\win-x64\native\onnxruntime.dll` 이 **22.0 MB · 파일 버전 1.27**, `DirectML.dll` 17.8 MB(1.15.4). 실행 중 프로세스 모듈에 이 둘이 올라와 있어야 한다
 - TFM 은 `net10.0-windows10.0.19041.0` (Windows ML 의 WinRT API 때문에 SDK 버전 필요). **22621 이상으로 올리지 말 것** — `Vortice.DXGI` 가 그 TFM 전용 빌드로 바뀐다. Debug 출력도 `bin\Debug\net10.0-windows10.0.19041.0\` 로 바뀌었다
@@ -321,22 +325,27 @@ SDK 기본 글롭이 `old/**` 의 소스와 생성 `.g.cs` 까지 끌어와 **72
   pickup 과 상관없는 5클래스는 거의 같고(+0.013, CCTV +0.004) 큰 차이는 truck +0.24(7클래스 모델은 pickup 을 truck 으로 잡았다)·pickup 0.606. 앱 경로 AP 는 다시 재지 않았다(새 데이터셋 백업이 필요하다)
 - 학습·평가 데이터는 WSL 백업 `/home/chisu/datasets_backup/visible_2026-11-04` 를 쓴다(원본은 라벨링 도구의 'WSL 학습' 버튼이 덮어쓴다). 오래 도는 벤치·학습은 전원을 연결한다(배터리 20분 무입력이면 GPU 작업도 멈춘다)
 
-## 도메인 지식 — NPU (AMD Ryzen AI — 왼쪽 패널 "추론 장치"에서 GPU/NPU 선택)
+## 도메인 지식 — 추론 장치: NPU · TensorRT (왼쪽 패널 "추론 장치"에서 GPU / TensorRT / NPU 선택)
 
 자세한 설명·실측은 [docs/npu.md](docs/npu.md) — 이 영역을 고치기 전에 읽는다. 꼭 지킬 것:
-- 시작은 항상 GPU 다. NPU 는 짝 모델 `<이름>.npu.onnx`(`tools\Make-NpuModel.ps1` — A16W8·가중치 채널별 QDQ)가 있고 메타데이터 `npu_quant` 가 있으며 `npu_source_md5` 가 지금 `best.onnx` 의 MD5 와 같을 때만 쓴다.
-  **FP32 를 NPU 에 넣지 말 것**(EP 의 BF16 변환이 실패하고 1.5시간 뒤 프로세스가 끝난다). 짝은 publish 에 복사되지 않는다 — 배포 폴더 모델을 바꾸면 그 짝도 도구로 다시 만든다
-- 확인 · EP 준비 · 컴파일은 모두 스레드 풀에서(UI 스레드에서 EP 카탈로그를 조회하면 창이 수 초 멈췄다), 진행은 상태바 `Txt_Device`. 컴파일은 한 번에 하나 — 진행 중 다시 고르면 기다린다
-- VitisAI `cache_key` = NPU 모델 MD5 `_` EP 패키지 버전 `_` ONNX Runtime 파일 버전 — 기본 키는 다른 모델에도 옛 컴파일 결과를 재사용한다(틀린 결과·크래시 실측).
-  캐시는 `%LOCALAPPDATA%\DetectView\npu_cache`(Claude 도구로 띄우면 패키지 폴더로 돌려질 수 있다)
-- `_yolo` 교체는 `SwapYolo`(락 안에서 바꾸고 옛 것은 백그라운드 해제). 속도는 GPU 가 2.3~2.5배 빠르다(지금 YOLO26m 640×384 `session.Run` 8.8 vs 20.4 ms — 11-06) — NPU 의 이점은 GPU 를 비워 두는 것과 전력
+- 시작은 항상 GPU(DirectML) 다. 가속 장치는 **짝 모델**이 있고 지금 `best.onnx` 의 짝일 때만 쓴다 — NPU 는 `<이름>.npu.onnx`(`tools\Make-NpuModel.ps1` — A16W8·가중치 채널별 QDQ, 메타데이터 `npu_quant`·`npu_source_md5`),
+  TensorRT 는 `<이름>.fp16.onnx`(`tools\Make-Fp16Model.ps1` — FP16, 입출력 FP32, 메타데이터 `fp16_source_md5`). 짝은 publish 에 복사되지 않는다 — 배포 폴더 모델을 바꾸면 그 짝들도 도구로 다시 만든다.
+  **FP32 를 NPU 에 넣지 말 것**(EP 의 BF16 변환이 실패하고 1.5시간 뒤 프로세스가 끝난다). **FP16 짝은 DirectML 로 못 연다**(그래프 융합 실패 — `best.onnx` 자리에 두면 앱이 안 뜬다)
+- 장치 전환은 `MainWindow.Npu.cs` 의 상태 기계 하나(`_onDevice`·`_wantDevice`·`_prepDevice` — 2026-11-08 장치가 셋이 되며 `_onNpu`·`_wantNpu`·`_npuBusy` 를 일반화). 확인 · EP 준비 · 컴파일·엔진 만들기는
+  모두 스레드 풀에서(UI 스레드에서 EP 카탈로그를 조회하면 창이 수 초 멈췄다), 진행은 상태바 `Txt_Device`. **준비는 한 번에 하나** — 진행 중 같은 장치를 다시 고르면 기다리고,
+  다른 가속 장치를 고르면 '… 준비 대기'를 띄웠다가 앞 준비가 끝난 뒤 시작한다. EP 는 장치마다 `EnsureReadyAsync`(카탈로그 전체 `EnsureAndRegisterCertifiedAsync` 는 8분 걸렸다)
+- 캐시 키 = 짝 모델 MD5 `_` EP 패키지 버전 `_` ONNX Runtime 파일 버전 (`CacheKeyFor`) — VitisAI 기본 키는 다른 모델에도 옛 컴파일 결과를 재사용했다(틀린 결과·크래시 실측).
+  NPU 는 `%LOCALAPPDATA%\DetectView\npu_cache`(VitisAI `cache_key`), TensorRT 는 `…\trt_cache\<키>`(`nv_runtime_cache_path` — JIT 커널, 엔진마다 파일 하나 6~7 MB). Claude 도구로 띄우면 패키지 폴더로 돌려질 수 있다
+- TensorRT(NVIDIA TensorRT for RTX — Windows ML 카탈로그의 `NvTensorRTRTXExecutionProvider`, 새 NuGet 없음): FP16 짝으로 `session.Run` 약 2.8 ms(DirectML FP32 10.0 · 검출 99.6% / 99.9% 같음 · 같은 입력이면 비트까지 같다).
+  대가는 추론 동안 그 스레드가 GPU 를 기다리며 돈다(1회당 CPU ≈ 추론 시간) · 첫 엔진 만들기 약 10초(캐시 뒤 수 초) · NVIDIA RTX(Ampere 이후)에서만 EP 가 나온다. CUDA 그래프 켬(EP 기본값)
+- `_yolo` 교체는 `SwapYolo`(락 안에서 바꾸고 옛 것은 백그라운드 해제). NPU 는 GPU 보다 2.3~2.5배 느리다(YOLO26m 640×384 `session.Run` 8.8 vs 20.4 ms — 11-06) — NPU 의 이점은 GPU 를 비워 두는 것과 전력
 
 ## 화면 디자인 (2026-11-01 개편 — 시안 B '관제 콘솔' · 색 조합 B2 '스틸 블루')
 
 자세한 설명은 [docs/ui-design.md](docs/ui-design.md). 꼭 지킬 것:
 - 모양은 **`App.xaml` 한 곳**(색·글꼴·스타일·박스 `Box.*`) — 코드는 색을 직접 쓰지 않고 키로 찾는다. **키 이름을 바꾸면 코드도 같이**
 - 박스·라벨·클래스별 개수 범례는 모두 `BoxLayer`(앱 안 영상 `FrameBoxes`와 HUD 오버레이 공용). 범례 글자는 검출 수 칸의 UIA `ItemStatus`, 추적 번호는 `ItemType` 으로 나간다
-- 테스트가 기대는 것(바꾸면 테스트도): x:Name 들, 버튼 `Content` 문자열(아이콘은 `Ui.Glyph`), 문자열 툴팁(UIA HelpText), 콤보 항목 `GPU`/`NPU`, 슬라이더 템플릿의 `PART_Track`, 오버레이 창 제목 `DetectView Overlay`
+- 테스트가 기대는 것(바꾸면 테스트도): x:Name 들, 버튼 `Content` 문자열(아이콘은 `Ui.Glyph`), 문자열 툴팁(UIA HelpText), 콤보 항목 `GPU`/`TensorRT`/`NPU`, 슬라이더 템플릿의 `PART_Track`, 오버레이 창 제목 `DetectView Overlay`
 - 자주 바뀌는 표시는 `StatusBarPanel`(HUD 캡처 무시 영역) 안에만 두고, 그 밖엔 계속 도는 애니메이션을 두지 않는다
 
 ## 동시성 규칙
@@ -394,11 +403,11 @@ pwsh tests/ui/Run-All.ps1
   툴팁도 문자열로(UIA HelpText). 상태 문구·버튼 글자·툴팁 문구·창 제목 형식도 검사 대상이다 — **이름·문구를 바꾸면 테스트도 같이 고칠 것**
 - 파일: `Test-FilePlayback`(재생·시크·SAHI·EOF·범례·번호) · `Test-Tracking`(test4 덤프트럭의 번호·정지, 시크 뒤 새 번호) · `Test-Roi`(실제 마우스로 구역 편집·파일) ·
   `Test-SceneChange`(전환 배지·검은 끊김) · `Test-ZoneEvents`(이벤트 로그·CSV) · `Test-Incident`(유고 후보·해소) · `Test-VlmAnnotation`(가짜 VLM 으로 VLM 줄·CSV·끄기·실패) · `Test-ViewIdentity`(합성 재방문 영상의 뷰 식별) ·
-  `Test-VfrPlayback`(VFR webm 두 개) · `Test-ScreenHud`(HUD·캡처 방식·결함 주입) · `Test-NpuSwitch`(NPU 전환·창 응답·실패 경로)
+  `Test-VfrPlayback`(VFR webm 두 개) · `Test-ScreenHud`(HUD·캡처 방식·결함 주입) · `Test-NpuSwitch`(NPU·TensorRT 전환·창 응답·TensorRT 와 GPU 검출 비교·실패 경로)
 - `Measure-Fps.ps1 -ExeDir <폴더>` 는 테스트가 아니라 A/B 계측이다 — 실행 묶음끼리 수 FPS 흔들리니 기준선을 앞뒤로 두 번 잰다
 - 종료 코드 = 실패 건수(`Run-All` 은 0/1). 스크립트는 UTF-8 **BOM** 으로 저장한다(Windows PowerShell 5.1 이 한국어를 깨뜨리지 않게). 파일 열기 대화상자 자동화 요령은 `Common.ps1` 머리말
-- 마지막 전체 통과: 2026-11-08 오후, 배포본 `publish`(`79a041a` — 8클래스 모델판) `Run-All` 243 항목 모두 통과. 같은 날 Debug 는 278 항목 모두 통과.
-  자세한 기록과 그 전 기록은 docs/testing.md
+- 마지막 전체 실행: 2026-11-08 저녁, Debug(추론 장치에 TensorRT 를 넣은 뒤) `Run-All` 305 항목 중 304 — 남은 1건(`Test-Incident` 표본 수가 부하로 기준에 1개 모자람, 표시는 맞음)은
+  그 파일만 두 번 다시 돌려 통과. 배포본은 같은 날 `79a041a`(8클래스 모델판 — TensorRT 전) 243 항목 모두 통과. 자세한 기록과 그 전 기록은 docs/testing.md
 
 ### 테스트 영상 내용 (유고 감지 구상용 기준 사례, 2026-10-23 분석)
 
@@ -480,4 +489,4 @@ LLM 개념 맵(`graft build --deep`)은 API 키가 필요해서 돌리지 않았
   (이 문서의 해당 서술 옆에 그 번호가 남아 있다 — **그 이슈들은 옛 비공개 저장소와 함께 지워졌다**. 공개 저장소의 이슈는 #1 부터 다시 매겨지니
   옛 번호는 '옛 이슈 #7' 처럼 구분해 가리킨다). 고칠 땐 커밋 메시지에 `Fixes #N` 을 넣는다(`main` 에 push 되면 공개 저장소의 그 이슈가 닫힌다). 이 문서의 서술도 같이 고친다.
   여러 이슈를 한꺼번에 고칠 땐 이슈 묶음마다 worktree 를 따로 두고 고친 뒤 검토를 거쳐 `main` 에 cherry-pick 했다 — UI 테스트는 합친 뒤 한 번에 돌린다
-- 추적 대상은 소스, `best.onnx`·`best.npu.onnx`, UI 테스트(`tests/ui/`, 합성 테스트 영상 `media/vfr60_nodur.webm` 포함), 도구(`tools/`), 실험 프로젝트 소스(`experiments/*/`), `README.md`(GitHub 첫 화면), `LICENSE`·`THIRD-PARTY-NOTICES.md` 다. `bin/`·`obj/`·`old/`·`publish/`·`graft/` 는 `.gitignore` 로 제외 — **`old/` 를 커밋하면 안 된다** (아래 graft 항목 참고)
+- 추적 대상은 소스, `best.onnx`·`best.npu.onnx`·`best.fp16.onnx`, UI 테스트(`tests/ui/`, 합성 테스트 영상 `media/vfr60_nodur.webm` 포함), 도구(`tools/`), 실험 프로젝트 소스(`experiments/*/`), `README.md`(GitHub 첫 화면), `LICENSE`·`THIRD-PARTY-NOTICES.md` 다. `bin/`·`obj/`·`old/`·`publish/`·`graft/` 는 `.gitignore` 로 제외 — **`old/` 를 커밋하면 안 된다** (아래 graft 항목 참고)

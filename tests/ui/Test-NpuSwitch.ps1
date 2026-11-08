@@ -1,11 +1,15 @@
-﻿# 추론 장치(GPU ↔ NPU) 전환 UI 테스트
+﻿# 추론 장치(GPU ↔ TensorRT ↔ NPU) 전환 UI 테스트 — 파일 이름은 NPU 만 있던 때 그대로
 #   1) 최소 폭(900)에서 조작 요소가 모두 창 안에 보이는지 (2026-11-01 개편부터 왼쪽 패널 — 예전 가로 툴바는 줄바꿈)
 #   2) 툴바 "추론"에서 NPU 선택 → 상태바 진행 표시 → 제목이 NPU 로 → 파일 재생(속도·검출)
 #      → 재생 중 GPU 로 되돌리기 → 다시 NPU(캐시) — 재생은 끊기지 않아야 한다.
 #      NPU 를 준비하는 동안(① 짝 모델 확인 · ② EP 준비) 창이 멈추지 않는지도 본다 — UI 스레드 응답 시간 (이슈 #4)
-#   3) 실패 경로: 짝 모델 없음 · 다른 모델의 짝 · FP32 를 짝 이름으로 — NPU 항목이 막히고 사유가 툴팁에, GPU 에 머문다.
+#   2b) TensorRT (2026-11-08 — NVIDIA TensorRT for RTX, FP16 짝 best.fp16.onnx): 지금 장치(NPU 를 거쳤으면 NPU)에서 곧바로 TensorRT →
+#      창 응답·엔진 캐시 키 → 재생(속도·검출) → 멈춘 프레임 두 곳의 검출 수를 GPU 와 견줌 → SAHI(다른 스레드의 추론) →
+#      재생 중 다시 TensorRT(캐시 — '엔진 만드는 중'이 없어야 한다)
+#   3) 실패 경로: 짝 모델 없음 · 다른 모델의 짝 · FP32 를 짝 이름으로 — NPU·TensorRT 각각. 항목이 막히고 사유가 툴팁에, GPU 에 머문다.
 #      exe 폴더를 하드 링크로 본뜬 옆 폴더(<exe 폴더>.npu-test)에서 파일을 바꾼다 — 원래 폴더(배포 폴더 포함)는 건드리지 않는다
-#   NPU(AMD Ryzen AI · VitisAI)가 없는 PC 거나 짝 모델이 없으면 2) 는 [INFO] 로 건너뛴다 (1)·3) 은 NPU 없이도 돈다)
+#   NPU(AMD Ryzen AI · VitisAI)가 없는 PC 거나 짝 모델이 없으면 2) 는, NVIDIA RTX 가 아니거나 FP16 짝이 없으면 2b) 는 [INFO] 로 건너뛴다
+#   (1)·3) 은 둘 없이도 돈다)
 #
 #   pwsh tests\ui\Test-NpuSwitch.ps1                              # bin\Debug 빌드
 #   pwsh tests\ui\Test-NpuSwitch.ps1 -ExeDir publish      # 배포본 (짝은 tools\Make-NpuModel.ps1 -Model publish\best.onnx)
@@ -213,10 +217,10 @@ function Test-UiResponsive($L) {
     $L.MarkWmNullMaxMs -lt $MaxWmNullMs -and $L.MarkUiaMaxMs -lt $MaxUiaMs
 }
 
-# 추론 콤보 툴팁(UIA HelpText)이 채워지면 NPU 가능 여부 확인이 끝난 것이다 (그 전엔 툴팁이 없다)
-function Wait-NpuCheck($Root) {
+# 추론 콤보 툴팁(UIA HelpText)이 채워지면 TensorRT·NPU 가능 여부 확인이 끝난 것이다 (그 전엔 툴팁이 없다 — 둘은 한 번에 채워진다)
+function Wait-DeviceCheck($Root) {
     $combo = ById $Root 'InferenceSelector'
-    $null = WaitFor { $h = $combo.Current.HelpText; $h -and $h -notmatch 'NPU 확인 중' } 20000
+    $null = WaitFor { $h = $combo.Current.HelpText; $h -and $h -notmatch 'NPU 확인 중|TensorRT 확인 중' } 20000
     return $combo.Current.HelpText
 }
 
@@ -244,8 +248,8 @@ function Get-DeviceStatus($Root) {
 }
 
 # 제목이 $Pattern 과 맞고 진행 표시가 사라질 때까지. 그동안 본 진행 문구를 모아 돌려준다.
-# $Latency 를 주면 ①② 의 문구('NPU 확인 중' · '… 내려받는 중')가 아닌 것을 처음 볼 때 Mark() — 그 앞이 ①②.
-# ③ 문구('준비 중'·'컴파일 중')만 기다리면 캐시로 ③ 이 폴링 간격(250 ms)보다 짧을 때 그 문구를 못 보고, 바꿔 끼우기·옛 세션 놓기까지
+# $Latency 를 주면 ①② 의 문구('NPU 확인 중' · 'TensorRT 확인 중' · '… 내려받는 중')가 아닌 것을 처음 볼 때 Mark() — 그 앞이 ①②.
+# ③ 문구('준비 중'·'컴파일 중'·'엔진 만드는 중')만 기다리면 캐시로 ③ 이 폴링 간격(250 ms)보다 짧을 때 그 문구를 못 보고, 바꿔 끼우기·옛 세션 놓기까지
 # 끝까지 ①② 로 잡혔다 → 빈 문구(끝남)·실패 문구에서도 끊는다
 function Wait-Device($Proc, $Root, [string]$Pattern, [int]$TimeoutSec, $Latency = $null) {
     $seen = [System.Collections.Generic.List[string]]::new()
@@ -253,7 +257,7 @@ function Wait-Device($Proc, $Root, [string]$Pattern, [int]$TimeoutSec, $Latency 
     while ($sw.Elapsed.TotalSeconds -lt $TimeoutSec) {
         $d = Get-DeviceStatus $Root
         if ($d) { $s = $d -replace '\s*\d+초$', ''; if (-not $seen.Contains($s)) { $seen.Add($s) } }
-        if ($Latency -and $d -notlike 'NPU 확인 중*' -and $d -notlike '*내려받는 중*') { $Latency.Mark() }
+        if ($Latency -and $d -notlike '*확인 중*' -and $d -notlike '*내려받는 중*') { $Latency.Mark() }
         $Proc.Refresh()
         if ($Proc.MainWindowTitle -match $Pattern -and -not $d) {
             return @{ Ok = $true; Seconds = $sw.Elapsed.TotalSeconds; Seen = $seen }
@@ -309,7 +313,7 @@ try {
     $null = [DetectViewTest.Window]::MoveWindow($proc.MainWindowHandle, 60, 60, 1200, 820, $true)
     Start-Sleep -Milliseconds 500
 
-    $help = Wait-NpuCheck $root
+    $help = Wait-DeviceCheck $root
     $lat.Stop()
     Note 'NPU 확인 동안 창 응답 (시작 때, 참고)' (Format-UiLatency $lat)
     $lat = $null
@@ -422,40 +426,160 @@ try {
             Check '취소된 컴파일의 캐시로 다시 NPU' ($r.Ok -and $r.Seconds -lt 30) ("{0:F1}초" -f $r.Seconds)
         }
     }
+
+    # ---------- 2b) TensorRT (NVIDIA TensorRT for RTX — FP16 짝 best.fp16.onnx) ----------
+    # 건너뛰는 건 NVIDIA RTX(TensorRT 실행 공급자)가 없는 PC 와 짝 파일이 없는 폴더뿐 — 짝이 낡았거나 확인이 예외로 끝나면 실패 (NPU 와 같은 규칙)
+    $help = (ById $root 'InferenceSelector').Current.HelpText
+    $trtReady = $false
+    if ($help -match 'TensorRT 를 쓸 수 없음: (.+)') {
+        $why = $Matches[1]
+        if ($why -match 'TensorRT 실행 공급자가 없음|\.fp16\.onnx 없음') {
+            Note 'TensorRT 전환 건너뜀' "$why — NVIDIA RTX 가 아니거나 FP16 짝이 없음 (짝은 tools\Make-Fp16Model.ps1)"
+        }
+        else { Check 'TensorRT 사용 가능' $false $why }
+    }
+    elseif ($help -match 'TensorRT: ') { $trtReady = $true }
+    else { Check 'TensorRT 가능 여부 확인' $false "툴팁에 TensorRT 줄이 없음 — '$help'" }
+
+    if ($trtReady) {
+        $from = Get-SelectedDevice $root
+        Check "TensorRT 선택 ($from 에서)" (Select-Device $root 'TensorRT') ''
+        # 캐시가 없으면 첫 엔진 만들기가 10초쯤 걸린다
+        $lat = Start-UiLatency $proc $status
+        $r = Wait-Device $proc $root '\(TensorRT · FP16\)$' 120 $lat
+        $lat.Stop()
+        $proc.Refresh()
+        Check 'TensorRT 로 전환' $r.Ok ("{0:F1}초 · 제목='{1}'" -f $r.Seconds, $proc.MainWindowTitle)
+        Check 'TensorRT 준비 진행 표시' ($r.Seen.Count -gt 0 -and ($r.Seen | Where-Object { $_ -like 'TensorRT*' })) "본 문구: $($r.Seen -join ' → ')"
+        Check 'TensorRT 준비 동안 창 응답 (①②)' (Test-UiResponsive $lat) (Format-UiLatency $lat -Mark)
+        Note 'TensorRT 전환 내내 창 응답 (③ 엔진 포함)' (Format-UiLatency $lat)
+        $lat = $null
+        Check '선택 칸 = TensorRT' ((Get-SelectedDevice $root) -eq 'TensorRT') "'$(Get-SelectedDevice $root)'"
+
+        # 엔진 커널 캐시 키 = FP16 짝 MD5 _ EP 버전 _ ONNX Runtime 버전 — TensorRT 툴팁 끝 '엔진 캐시 키: …'(NPU 의 '컴파일 캐시 키:' 와 같은 꼴)
+        $tip = (ById $root 'InferenceSelector').Current.HelpText
+        $trtKey = if ($tip -match '엔진 캐시 키: (\S+)') { $Matches[1] } else { '' }
+        $parts = @($trtKey -split '_')
+        $fp16Md5 = Get-Md5 (Join-Path $ExeDir 'best.fp16.onnx')
+        Check 'TensorRT 캐시 키 (FP16 짝 MD5 · EP · 런타임)' ($parts.Count -eq 3 -and $parts[0] -eq $fp16Md5 -and $parts -notcontains 'unknown' -and
+                                                        $parts[1] -match '^(\d+(\.\d+)+|lib\d{14}-\S+)$' -and $parts[2] -match '^\d+\.\d+' -and $tip -notmatch '버전을 몰라') "키='$trtKey'"
+
+        Open-VideoFile $root $Video
+        $ok = WaitFor { (NameOf $status) -like '파일:*' -and (NameOf $play) -eq '일시정지' } 10000
+        Check 'TensorRT 로 재생 시작' $ok "상태='$(NameOf $status)'"
+        $range = (ById $root 'VideoSlider').GetCurrentPattern([System.Windows.Automation.RangeValuePattern]::Pattern)
+        Start-Sleep -Seconds 2
+        $rate = Measure-PlaybackRate $range 2000
+        Check 'TensorRT 재생 속도' ($rate -gt 0.9 -and $rate -lt 1.1) ('{0:N2} 배속' -f $rate)
+        $det = ById $root 'Txt_DetectionCount'
+        $ok = WaitFor { (NameOf $det) -match '검출 ([1-9]\d*)' } 10000
+        Check 'TensorRT 검출' $ok "'$(NameOf $det)'"
+        Note 'TensorRT 재생 처리 FPS (참고용)' (NameOf (ById $root 'Txt_InferenceFps'))
+
+        # 멈춘 프레임 두 곳의 검출 수 — TensorRT(FP16)와 GPU(DirectML FP32). FP16 은 DirectML 과 99.6% 같다(NpuBench 결과 6) → 한 개 차까지 봐준다.
+        # 두 곳을 보는 건 엔진이 옛 입력을 다시 쓰는 잘못(CUDA 그래프가 바뀐 입력 주소를 못 따라가는 경우 등)이면 두 프레임 결과가 같아져 드러나게
+        Click $play
+        $null = WaitFor { (NameOf $play) -eq '재생' } 5000
+        $frameMs = 3000, 6500
+        function Get-StepCount([int]$Ms) {
+            $range.SetValue($Ms)
+            Start-Sleep -Milliseconds 1500   # 멈춘 채 시크 → 그 프레임 한 장을 검출해 보인다
+            $cc = @{}
+            $null = WaitFor { Test-ClassCountsMatch $det $cc } 5000
+            [pscustomobject]@{ N = (Get-DetectionCount $det); Legend = "$($cc.Counts.Text)" }
+        }
+        $trtCounts = @($frameMs | ForEach-Object { Get-StepCount $_ })
+        # SAHI — 재생 루프가 아니라 SAHI 작업(Task.Run) 스레드에서 같은 세션을 부른다
+        Click (ById $root 'Btn_Sahi')
+        $null = WaitFor { (NameOf $status) -match '정밀 분석 완료' } 30000
+        $sahiOk = (NameOf $status) -match '정밀 분석 완료: (\d+)개' -and [int]$Matches[1] -gt 0
+        Check 'TensorRT 로 SAHI' $sahiOk "상태='$(NameOf $status)'"
+
+        Check 'GPU 선택 (멈춘 채)' (Select-Device $root 'GPU') ''
+        $r = Wait-Device $proc $root '\(DirectML\)$' 30
+        Check 'TensorRT → GPU' $r.Ok ("{0:F1}초 · 본 문구: {1}" -f $r.Seconds, ($r.Seen -join ' → '))
+        $gpuCounts = @($frameMs | ForEach-Object { Get-StepCount $_ })
+        $same = $true
+        for ($i = 0; $i -lt $frameMs.Count; $i++) { if ($trtCounts[$i].N -lt 0 -or [Math]::Abs($trtCounts[$i].N - $gpuCounts[$i].N) -gt 1) { $same = $false } }
+        Check '멈춘 프레임 두 곳의 검출 수 TensorRT ≈ GPU (±1)' $same (($frameMs | ForEach-Object -Begin { $i = 0 } -Process {
+            '{0:F1}초 TensorRT {1} ({2}) · GPU {3} ({4})' -f ($_ / 1000), $trtCounts[$i].N, $trtCounts[$i].Legend, $gpuCounts[$i].N, $gpuCounts[$i].Legend; $i++ }) -join ' | ')
+
+        # 첫 세션이 남긴 엔진 커널 캐시 — 키 폴더에 파일이 있어야 다음 선택이 빠르다 (Claude 도구에서 띄운 앱은 %LOCALAPPDATA% 가 패키지 쪽으로 돌려진다 — NPU 와 같게 두 곳)
+        Start-Sleep -Seconds 2   # GPU 로 바꾸며 놓은 TensorRT 세션이 백그라운드에서 해제될 시간
+        $trtRoots = @(Join-Path $env:LOCALAPPDATA 'DetectView\trt_cache') +
+                    @(Get-ChildItem (Join-Path $env:LOCALAPPDATA 'Packages') -Directory -Filter 'Claude_*' -ErrorAction SilentlyContinue |
+                      ForEach-Object { Join-Path $_.FullName 'LocalCache\Local\DetectView\trt_cache' })
+        $trtDir = if ($trtKey) {
+            $trtRoots | ForEach-Object { Join-Path $_ $trtKey } |
+                Where-Object { @(Get-ChildItem -LiteralPath $_ -Recurse -File -ErrorAction SilentlyContinue).Count -gt 0 } | Select-Object -First 1
+        }
+        Check 'TensorRT 엔진 캐시 (키 폴더에 파일)' ([bool]$trtDir) $(if ($trtDir) { "폴더: $trtDir" } else { "파일이 든 키 폴더 없음 ($($trtRoots -join ' · '))" })
+
+        # 재생 중 다시 TensorRT — 이번엔 캐시로 ('엔진 만드는 중'을 거치지 않아야 한다), 재생은 끊기지 않아야 한다
+        Click $play
+        $null = WaitFor { (NameOf $play) -eq '일시정지' } 5000
+        Check 'TensorRT 다시 선택 (재생 중)' (Select-Device $root 'TensorRT') ''
+        $lat = Start-UiLatency $proc $status
+        $r = Wait-Device $proc $root '\(TensorRT · FP16\)$' 60 $lat
+        $lat.Stop()
+        Check '다시 TensorRT (캐시)' ($r.Ok -and -not ($r.Seen | Where-Object { $_ -like '*엔진 만드는 중*' })) ("{0:F1}초 · 본 문구: {1}" -f $r.Seconds, ($r.Seen -join ' → '))
+        Check '재생 중 TensorRT 준비 동안 창 응답 (①②)' (Test-UiResponsive $lat) (Format-UiLatency $lat -Mark)
+        $lat = $null
+        Start-Sleep -Seconds 1
+        $rate = Measure-PlaybackRate $range 2000
+        Check 'TensorRT 로 바꾼 뒤 재생 계속' ((NameOf $play) -eq '일시정지' -and $rate -gt 0.5) ('버튼={0} · {1:N2} 배속' -f (NameOf $play), $rate)
+
+        Click (ById $root 'Btn_Stop')
+        $ok = WaitFor { (NameOf $status) -eq '정지됨' } 5000
+        Check '정지 (TensorRT)' $ok "상태='$(NameOf $status)'"
+    }
     Stop-DetectView $proc; $proc.WaitForExit(10000) | Out-Null; $proc = $null
 
     # ---------- 3) 실패 경로 (본뜬 폴더에서) ----------
     $mirror = New-ExeMirror $ExeDir
     $twin = Join-Path $mirror 'best.npu.onnx'
+    $fp16 = Join-Path $mirror 'best.fp16.onnx'
     $model = Join-Path $mirror 'best.onnx'
     $hasTwin = Test-Path (Join-Path $ExeDir 'best.npu.onnx')
+    $hasFp16 = Test-Path (Join-Path $ExeDir 'best.fp16.onnx')
 
     # 짝과 다른 모델 하나 (저장소 루트·배포 폴더 모델 중 MD5 가 다른 것). 없으면 그 경우만 건너뛴다.
     # 배포 폴더에 이름을 바꿔 보관한 옛 모델(2026-11-06 부터 best.yolo26s-0917.onnx — 짝 *.npu.onnx 는 빼고)도 후보다:
     # 루트와 배포 폴더가 같은 모델이면 그것밖에 없다 (그날 둘 다 YOLO26m 640×384 가 됐다)
+    # 짝(*.npu.onnx · *.fp16.onnx)은 뺀다 — FP16 짝을 best.onnx 자리에 두면 DirectML 이 열지 못해 앱이 뜨지 않는다
     $candidates = @((Join-Path $RepoRoot 'best.onnx'), (Join-Path $RepoRoot 'publish\best.onnx')) +
                   @(Get-ChildItem (Join-Path $RepoRoot 'publish') -Filter '*.onnx' -File -ErrorAction SilentlyContinue |
-                    Where-Object { $_.Name -notlike '*.npu.onnx' } | Sort-Object Name | ForEach-Object FullName)
+                    Where-Object { $_.Name -notlike '*.npu.onnx' -and $_.Name -notlike '*.fp16.onnx' } | Sort-Object Name | ForEach-Object FullName)
     $other = $candidates |
              Where-Object { (Test-Path $_) -and (Get-Md5 $_) -ne (Get-Md5 (Join-Path $ExeDir 'best.onnx')) } | Select-Object -First 1
 
+    # 본뜬 폴더의 파일은 원래 폴더와 하드 링크다 — 바꿀 땐 늘 지운 뒤 새로 놓는다(덮어쓰면 원래 파일까지 바뀐다). 경우들은 앞 경우가 바꾼 상태에서 이어진다
     $cases = @(
-        @{ Name = '짝 모델 없음'; Expect = 'best\.npu\.onnx 없음'; Prepare = { Remove-Item $twin -Force -ErrorAction SilentlyContinue } }
-        @{ Name = '다른 모델의 짝'; Expect = '짝이 안 맞음'; Skip = if (-not $hasTwin) { '원래 폴더에 짝이 없음' } elseif (-not $other) { 'MD5 가 다른 모델이 없음' };
+        @{ Name = '짝 모델 없음'; Device = 'NPU'; Expect = 'best\.npu\.onnx 없음'; Prepare = { Remove-Item $twin -Force -ErrorAction SilentlyContinue } }
+        @{ Name = '다른 모델의 짝'; Device = 'NPU'; Expect = '짝이 안 맞음'; Skip = if (-not $hasTwin) { '원래 폴더에 짝이 없음' } elseif (-not $other) { 'MD5 가 다른 모델이 없음' };
            Prepare = { Copy-Item (Join-Path $ExeDir 'best.npu.onnx') $twin -Force; Remove-Item $model -Force; Copy-Item $other $model } }
-        @{ Name = 'FP32 를 짝 이름으로'; Expect = '양자화 모델이 아님';
+        @{ Name = 'FP32 를 짝 이름으로'; Device = 'NPU'; Expect = '양자화 모델이 아님';
            Prepare = { Remove-Item $model -Force; Copy-Item (Join-Path $ExeDir 'best.onnx') $model; Remove-Item $twin -Force -ErrorAction SilentlyContinue; Copy-Item $model $twin } }
+        # TensorRT 의 FP16 짝 (2026-11-08) — 사유는 'TensorRT 를 쓸 수 없음: …' 줄에서 본다(NPU 줄과 섞이지 않게)
+        @{ Name = 'TensorRT 짝 없음'; Device = 'TensorRT'; Expect = 'TensorRT 를 쓸 수 없음: best\.fp16\.onnx 없음';
+           Prepare = { Remove-Item $fp16 -Force -ErrorAction SilentlyContinue } }
+        @{ Name = 'TensorRT 다른 모델의 짝'; Device = 'TensorRT'; Expect = 'TensorRT 를 쓸 수 없음: .*best\.fp16\.onnx 와 짝이 안 맞음';
+           Skip = if (-not $hasFp16) { '원래 폴더에 FP16 짝이 없음' } elseif (-not $other) { 'MD5 가 다른 모델이 없음' };
+           Prepare = { Copy-Item (Join-Path $ExeDir 'best.fp16.onnx') $fp16 -Force; Remove-Item $model -Force; Copy-Item $other $model } }
+        @{ Name = 'FP32 를 TensorRT 짝 이름으로'; Device = 'TensorRT'; Expect = 'TensorRT 를 쓸 수 없음: best\.fp16\.onnx 가 FP16 짝 모델이 아님';
+           Prepare = { Remove-Item $model -Force; Copy-Item (Join-Path $ExeDir 'best.onnx') $model; Remove-Item $fp16 -Force -ErrorAction SilentlyContinue; Copy-Item $model $fp16 } }
     )
     foreach ($c in $cases) {
         if ($c.Skip) { Note "실패 경로: $($c.Name)" "건너뜀 — $($c.Skip)"; continue }
         & $c.Prepare
         $proc = Start-DetectView $mirror
         $root = $AE::FromHandle($proc.MainWindowHandle)
-        $help = Wait-NpuCheck $root
-        $enabled = Select-Device $root 'NPU'   # 막혀 있으면 고르지 못한다
+        $help = Wait-DeviceCheck $root
+        $enabled = Select-Device $root $c.Device   # 막혀 있으면 고르지 못한다
         $proc.Refresh()
+        $line = @($help -split "`n" | Where-Object { $_ -like "$($c.Device): *" -or $_ -like "$($c.Device) 를 쓸 수 없음*" -or $_ -like "*$($c.Device) 를 쓸 수 없음*" }) | Select-Object -Last 1
         Check "실패 경로: $($c.Name)" ((-not $enabled) -and $help -match $c.Expect -and $proc.MainWindowTitle -match '\(DirectML\)$') `
-            "NPU 항목 열림=$enabled · 툴팁 끝='$(($help -split "`n")[-1])'"
+            "$($c.Device) 항목 열림=$enabled · 툴팁 줄='$(if ($line) { $line } else { ($help -split "`n")[-1] })'"
         Stop-DetectView $proc; $proc.WaitForExit(10000) | Out-Null; $proc = $null
     }
 }

@@ -130,7 +130,8 @@
                                       ToolTipService.ShowOnDisabled="True"
                                       SelectionChanged="ZoneKindSelector_SelectionChanged"/>
 
-                            <!-- 추론 장치. NPU 를 쓸 수 없으면 항목을 막고 사유를 툴팁에 둔다 (막힌 항목도 툴팁이 뜨게 ShowOnDisabled).
+                            <!-- 추론 장치. TensorRT·NPU 를 쓸 수 없으면 항목을 막고 사유를 툴팁에 둔다 (막힌 항목도 툴팁이 뜨게 ShowOnDisabled).
+                                 TensorRT(2026-11-08)는 같은 NVIDIA GPU 를 다른 런타임으로 쓰는 것이라 GPU 바로 아래에 둔다.
                                  준비 진행은 상태바 오른쪽 Txt_Device 에 — 상태바는 HUD 캡처의 무시 영역이라 매초 바뀌어도 새 화면으로 치지 않는다 -->
                             <TextBlock Text="추론 장치" Style="{StaticResource SectionLabel}" Margin="0,22,0,8"/>
                             <ComboBox x:Name="InferenceSelector"
@@ -138,6 +139,9 @@
                                       ToolTipService.ShowDuration="60000"
                                       SelectionChanged="InferenceSelector_SelectionChanged">
                                 <ComboBoxItem x:Name="Item_Gpu" Content="GPU" IsSelected="True"/>
+                                <ComboBoxItem x:Name="Item_Trt" Content="TensorRT" IsEnabled="False"
+                                              ToolTipService.ShowOnDisabled="True"
+                                              ToolTipService.ShowDuration="60000"/>
                                 <ComboBoxItem x:Name="Item_Npu" Content="NPU" IsEnabled="False"
                                               ToolTipService.ShowOnDisabled="True"
                                               ToolTipService.ShowDuration="60000"/>

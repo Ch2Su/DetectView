@@ -146,7 +146,8 @@ VitisAI 와 같은 `EnsureAndRegisterCertifiedAsync` 로 들어온다). 그래�
 - CUDA 그래프는 이 모델에선 켜는 편이 조금 빠르다(6.6 vs 7.1 ms — 실행마다 흔들림이 차이만큼 크다)
 - **판단**: 앱 런타임 그대로 TensorRT 를 쓸 수 있고 FP16 이면 추론이 10 → 3 ms 로 준다. 지금 앱은 속도에 쫓기지 않지만(파일 재생 처리 약 77 FPS, 영상은 30·60fps),
   GPU 를 VLM 과 나눠 쓸 때의 여유와 HUD 박스 지연(약 1/FPS)이 준다. 넣는다면 NPU 처럼 '추론 장치'에 'GPU (TensorRT)'를 더하는 길이다 —
-  `WindowsMlExecutionProvider` 가 TensorRT 장치로 세션을 만들고, FP16 짝 모델 확인·첫 세션 준비(백그라운드)·`SwapYolo` 는 NPU 경로를 따른다(구현 안 함 — 사용자 결정)
+  `WindowsMlExecutionProvider` 가 TensorRT 장치로 세션을 만들고, FP16 짝 모델 확인·첫 세션 준비(백그라운드)·`SwapYolo` 는 NPU 경로를 따른다
+  → **같은 날 사용자 요청으로 그렇게 앱에 넣었다**(`MainWindow.Trt.cs` · FP16 짝 도구 `tools\Make-Fp16Model.ps1` — docs/npu.md 'TensorRT')
 
 ```powershell
 # FP16 판 만들기 (저장소 루트, CPU 3초 — out/ 는 gitignore)

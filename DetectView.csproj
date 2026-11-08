@@ -48,6 +48,12 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>Never</CopyToPublishDirectory>
     </None>
+    <!-- TensorRT 용 FP16 짝 모델 (tools\Make-Fp16Model.ps1 — 2026-11-08). NPU 짝과 같은 까닭으로 publish 에는 복사하지 않는다
+         (배포 폴더의 짝은 -Model publish\best.onnx 로 만든다) -->
+    <None Include="best.fp16.onnx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+    </None>
   </ItemGroup>
 
   <ItemGroup>

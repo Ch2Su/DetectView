@@ -1,4 +1,6 @@
-# NPU
+# 추론 장치 — NPU · TensorRT
+
+> 2026-11-08 TensorRT 를 더하며 제목을 바꿨다(그 전엔 'NPU'). TensorRT 는 맨 끝 절 — 장치 전환의 상태 기계는 둘이 같이 쓴다.
 
 > CLAUDE.md 에서 옮긴 절이다(2026-11-05 — CLAUDE.md 가 매 세션 컨텍스트를 너무 많이 차지해서 내용은 글자 그대로 옮기고, CLAUDE.md 에는 같은 제목으로 요약·꼭 지킬 규칙만 남겼다).
 > 본문의 '위'·'아래'·'○○ 절'이 가리키는 곳은 이 문서나 CLAUDE.md, 또는 다른 `docs/` 문서다 — CLAUDE.md 의 '자세한 문서' 표에서 찾는다. 새로 알게 된 실측·경과는 여기에 더한다.
@@ -76,3 +78,36 @@
 - **VitisAI `cache_key` 는 모델 파일 해시로 직접 줄 것.** 기본 키는 가중치·스케일이 달라도 같아서 옛 컴파일 결과를 재사용한다(틀린 결과·크래시 실측). 앱·NpuBench 는 여기에 EP·ORT 버전도 붙인다(위)
 - Windows ML 은 자체 `onnxruntime.dll`(1.27)을 가져와 옛 DirectML 1.23 조합과 한 프로세스에 못 섞는다 → 본 앱 런타임을 Windows ML 로 바꿨다("절대 건드리면 안 되는 것들" 1번).
   NPU 도 같은 `WindowsMlExecutionProvider` 에 VitisAI 장치를 넘겨 돌린다 (레터박스는 GPU 와 같은 `YoloLetterbox` — 2026-11-05, 정규화·`[1,300,6]` 해석은 YoloDotNet 그대로)
+
+## TensorRT — NVIDIA TensorRT for RTX (2026-11-08 — 왼쪽 패널 "추론 장치"의 'TensorRT')
+
+사용자 요청으로 실험(`experiments/NpuBench` README 결과 6) 뒤 같은 날 앱에 넣었다. **Windows ML EP 카탈로그에 NPU 의 VitisAI 처럼 들어오는**
+`NvTensorRTRTXExecutionProvider`(이 PC `Microsoft.WinML.NVIDIA.TRT-RTX.EP.Framework.2` 2.30.51 — NVIDIA RTX 30 이후에서만 장치가 나온다)라 새 NuGet 이 없다.
+같은 NVIDIA GPU 를 DirectML 대신 TensorRT 로 쓴다.
+
+- **장치 전환은 NPU 와 같은 상태 기계**(`MainWindow.Npu.cs`): 장치가 셋이 되며 `_onNpu`·`_wantNpu`·`_npuBusy` 를 `_onDevice`(지금)·`_wantDevice`(고른 것)·`_prepDevice`(준비 중인 가속 장치)로 일반화했다.
+  **준비는 한 번에 하나** — 같은 장치를 다시 고르면 진행 중인 것을 기다리고, 다른 가속 장치를 고르면 상태바에 `<장치> 준비 대기 — <앞 장치> 준비가 끝나면 시작` 을 띄웠다가
+  앞 준비가 끝난 뒤(결과는 버린다) 그쪽을 시작한다(창이 닫혔으면 시작하지 않는다 — 끝없이 되풀이되지 않게). 실패하면 지금 장치에 머문다(`_wantDevice = _onDevice`).
+  NPU 의 단계 문구·툴팁·사유 글자는 그대로 두었다(Test-NpuSwitch 가 기댄다). 콤보 툴팁은 `지금: …` 다음 `GPU: …` · `TensorRT: …` · `NPU: …` 순 — NPU 를 끝 줄에 둔다
+- TensorRT 쪽 코드는 `MainWindow.Trt.cs`: ① **FP16 짝 확인**(`CheckTrtModel` — `best.fp16.onnx` 있음 · 메타데이터 `fp16_source_md5` 있음(없으면 'FP16 짝 모델이 아님') ·
+  그 값 = 지금 `best.onnx` MD5. 메타데이터는 CPU·최적화 끔 세션으로만 읽는다 — FP16 그래프도 CPU 로 열린다)
+  ② 카탈로그에서 그 EP 만 `EnsureReadyAsync` → `TryRegister` → GPU 장치(NPU 와 같은 `EnsureProviderReadyAsync` — `Task.Yield` 까지)
+  ③ 세션 생성 = **엔진 만들기**: EP 옵션 `enable_cuda_graph=1`(EP 기본값 — 이 모델에선 켜는 편이 조금 빨랐다) · `nv_runtime_cache_path` = `%LOCALAPPDATA%\DetectView\trt_cache\<키>`
+  (JIT 로 만든 커널 — 엔진마다 파일 하나, 6~7 MB). 키 = FP16 짝 MD5 `_` EP 패키지 버전 `_` ONNX Runtime 파일 버전(`CacheKeyFor` — NPU 컴파일 캐시와 같은 함수).
+  EP 가 캐시를 엔진(그래프 해시)마다 나누긴 하지만 옛 결과를 다른 모델·판에 쓴 VitisAI 의 일이 있어 폴더로도 가른다. 쓴 키는 TensorRT 툴팁 끝 `엔진 캐시 키: …`
+  ④ `SwapYolo`. 창 제목 `… — <GPU 이름> (TensorRT · FP16)` (GPU 이름은 EP 장치의 PCI ID 로 DXGI 어댑터에서 찾는다 — EP 장치 정보엔 제조사뿐)
+- 단계 문구: `TensorRT 확인 중` → (내려받을 때 `TensorRT 실행 공급자 내려받는 중 N%`) → `TensorRT 엔진 만드는 중 (첫 실행 약 10초)` / 캐시가 있으면 `TensorRT 준비 중`.
+  쓸 수 없으면 항목이 막히고 사유가 툴팁에: `best.fp16.onnx 없음` · `FP16 짝 모델이 아님` · `best.onnx 가 바뀌어 best.fp16.onnx 와 짝이 안 맞음` · `TensorRT 실행 공급자가 없음 (NVIDIA RTX 30 이후 GPU 에서만)`
+- **왜 FP16 짝인가**: TensorRT for RTX 는 모델에 적힌 정밀도대로 돈다(FP32 를 알아서 낮추지 않는다). 같은 8클래스 YOLO26m 640×384 의 `session.Run`(NpuBench, 100장 × 네 번의 중앙):
+  DirectML FP32 **10.0 ms** · TensorRT FP32 6.6 ms · **TensorRT FP16 2.8 ms**, FP16 의 검출은 DirectML 대비 재현율 99.6% · 정밀도 99.9%(평균 IoU 0.989), 같은 입력이면 출력이 비트까지 같다(세션 안).
+  짝은 `pwsh tools\Make-Fp16Model.ps1 [-Model <경로>] [-Bench]`(uv 로 `tools/fp16_convert.py` — `onnxruntime.transformers` 의 `convert_float_to_float16(keep_io_types=True)`,
+  onnxruntime 1.31.1 고정, 4초, 결정적 — 같은 원본이면 바이트까지 같은 파일). 메타데이터는 원본 것을 그대로 두고 `fp16_source_md5`·`fp16_converter` 를 더한다.
+  **FP16 짝은 DirectML 로 못 연다**(그래프 융합 `80070057` — RfDetrBench README '1단계') — `best.onnx` 자리에 두면 앱이 뜨지 않는다(Test-NpuSwitch 의 '다른 모델' 후보에서도 뺀다).
+  루트 짝은 git 으로 추적한다(40.9 MB, MD5 `D7D760DC…`). publish 에는 복사되지 않는다 — 배포 폴더의 짝은 `-Model publish\best.onnx` 로 만든다
+- **대가**: `session.Run` 동안 그 스레드가 GPU 를 기다리며 돈다(1회당 CPU 시간 ≈ 추론 시간 — DirectML 은 1 ms 안팎. EP 옵션엔 기다리는 방식을 바꾸는 것이 없다) ·
+  첫 엔진 만들기(앱에서 고른 뒤 전환까지 16.9초, 캐시 뒤 6.7초 — 대부분 ①② 확인 단계로 NPU 의 캐시 뒤 5~6초와 같다) · NVIDIA RTX 전용
+- **확인 (2026-11-08, Debug, `Test-NpuSwitch` 2b)**: NPU 에서 곧바로 TensorRT 16.9초(엔진 처음), ①② 창 응답 WM_NULL 최대 3 ms · UIA 최대 40 ms. test1.mp4 재생 0.99배속,
+  참고용 재생 처리 GPU 74.6 · **TensorRT 113.4** · NPU 36.9 FPS. 멈춘 프레임 두 곳(3.0·6.5초)의 검출이 GPU 와 클래스까지 같았다(11 · 13개 — 두 곳을 보는 건 엔진이 옛 입력을 다시 쓰는 잘못을 가리려고).
+  SAHI(작업 스레드에서 같은 세션 — 19개)도 된다. 재생 중 다시 고르면 캐시로 6.7초(`TensorRT 확인 중 → TensorRT 준비 중`), 재생은 끊기지 않는다
+- 넣지 않은 것: EP 문맥 모델(`_ctx.onnx` — 미리 컴파일해 엔진 만들기를 더 줄인다고 한다, 재 보지 않음), FP32 원본을 TensorRT 로 도는 길(짝이 없을 때 1.5배라도 — 짝 하나로 단순하게),
+  시작부터 TensorRT 로 띄우는 명령줄(`--npu` 같은 것)
