@@ -98,6 +98,11 @@ DECIDE_POOL = [  # Kanana 판정 모델(11-08 — 사용자 요청): kakaocorp/k
     {"name": "r4-kanana-decide-3b-bf16cpu", "model": "kanana-2-v-decide-3b-2611", "think": None, "r4": True, "variants": ["D3"],
      "api": "decide", "quant": "bf16", "device": "cpu"},
 ]
+MIRAGE_POOL = [  # Mirage(11-09 — 사용자 요청): Cactus Compute 의 22 MB 비전 모델(51.3M · 2비트, Apache-2.0, CPU). run_mirage.py 가 그림마다 두 번 부른다 —
+    # describe(장면·물체 이름·상자·관계)와 form(항목 이름 + 고를 답 — 질문 글은 엔진이 무시한다). 사용자가 E:\Cactus 에 설치(외부 코드라 자동 모드가 막았다)
+    {"name": "r4-mirage-form", "model": "mirage (cactus 4.1.0)", "think": None, "r4": True, "variants": ["D2", "D3"], "api": "mirage", "mode": "form"},
+    {"name": "r4-mirage-describe", "model": "mirage (cactus 4.1.0)", "think": None, "r4": True, "variants": ["D2", "D3"], "api": "mirage", "mode": "describe"},
+]
 OPTIONS ={"temperature": 0, "seed": 7, "num_ctx": 8192}   # 올릴 때도 같은 값 — 다르면 첫 호출에서 모델을 다시 올린다
 VARIANTS = {"A": ["full"], "B": ["full", "crop"], "C": ["full", "crop", "prev", "next"], "D": ["crop"], "D3": ["crop"], "D2": ["crop2"]}
 
@@ -244,6 +249,11 @@ VEHICLE_KO = {"car": "승용차", "truck": "트럭", "bus": "버스", "motorcycl
               "emergency_vehicle": "소방차·구급차·경찰차", "tow_truck": "견인차", "work_vehicle": "작업 차량", "none": "차량 없음"}
 
 
+# Mirage form — 4차 항목 이름 그대로, 고를 답은 '모름'을 뺀 값(엔진이 '답하지 않음'을 따로 넣는다 → unknown). 판정은 3차 후보 이름으로 하나 더
+MIRAGE_FORM = {**{k: [x for x in v if x != "unknown"] for k, v in ENUMS4.items()},
+               "why_stopped": ["accident_or_breakdown", "normal_stop", "not_vehicle", "unusable_image"]}
+
+
 def decide_questions():
     """Kanana 판정 모델에 보내는 질문들 — 항목 설명은 SYSTEM4·SYSTEM3 에서 글자 그대로 떼어 온다(따로 쓰면 어긋난다)"""
     items = dict(re.findall(r"^- (\w+): (.+)$", SYSTEM4, flags=re.M))
@@ -265,6 +275,13 @@ def question(cfg, info, variant):
     """한 번 호출의 질문 — system 글·사용자 글·보낼 그림(out/cases/<id>/ 의 이름)·스키마·검사할 허용 값.
     report.py 도 이걸로 장면마다 보낸 질문 원문을 보인다(따로 만들면 실제 질문과 어긋날 수 있다)"""
     imgs = VARIANTS[variant]
+    if cfg.get("api") == "mirage":   # Mirage: 질문 글이 없다 — form 은 항목 이름 + 고를 답, describe 는 묻지 않고 기록을 받아 미리 정한 낱말 표로 단서를 뽑는다
+        if cfg.get("mode") == "form":
+            lines = [f"- {k}: {' / '.join(v)} (답하지 않음 '-' 은 unknown)" for k, v in MIRAGE_FORM.items()]
+            system = "\n".join(["(Mirage form — 항목 이름이 곧 질문이다. 질문 글(description)은 엔진이 쓰지 않는다)", *lines])
+        else:
+            system = "(Mirage describe — 장면·물체 이름·속성·관계를 받아 run_mirage.cues_from_describe 의 낱말 표로 4차 항목을 채운다)"
+        return {"system": system, "text": "(질문 글 없음 — 그림만)", "images": imgs, "schema": make_schema4(), "enums": ENUMS4, "texts": ("description_ko",)}
     if cfg.get("api") == "decide":   # 판정 모델: 상태 글 + 그림 + 질문 목록(질문마다 따로 한 번씩 본다) — 답 꼴은 4차와 같게 바꿔 둔다
         lines = [f"- {k} ({q['type']}): {q['instructions']}" + (f" — 후보: {' · '.join(q['criteria'])}" if q.get("criteria") else "")
                  for k, q in decide_questions().items()]

@@ -326,6 +326,51 @@ E:\Kanana\.venv\Scripts\python.exe -I -X utf8 experiments/VlmCheck/run_decide.py
 E:\Kanana\.venv\Scripts\python.exe -I -X utf8 experiments/VlmCheck/run_decide.py r4-kanana-decide-3b-bf16 --results round4_decide_ref
 ```
 
+## 결과 12 — Mirage(Cactus Compute, 22 MB) (`run_mirage.py`, 2026-11-09)
+
+사용자 질문: "Mirage: VLM + OCR + Detection + Segment + Decide in 22 MB" 를 써 보면 어떤가 → 받아서 재 봄. 51.3M 매개변수 · 2비트(`mirage.cact` 21.6 MB) · Apache-2.0,
+**CPU 로 돈다**(엔진 `libcactus.dll` 4.1.0 — 파이썬 패키지 `cactus-compute`). 설치는 외부 코드라 자동 모드가 막아 사용자가 했다(가상 환경·엔진·가중치 모두 `E:\Cactus` — `run_mirage.py` 머리말).
+글을 만드는 VLM 이 아니다 — `describe`(장면 · 물체 이름·상자·점수·윤곽 · 관계 · 추론 글. 말은 영어 등 7개 — 한국어 없음)와 `extract`(form — 항목마다 고를 답의 확률) 두 가지를 낸다.
+- **mirage-form**: 4차 항목 이름 그대로 + 고를 답(모름은 빼고 — 엔진이 '답하지 않음 `-`'을 따로 낸다 → unknown). 항목 설명(description)은 엔진이 읽지 않는다(11-09 확인) —
+  **항목 이름이 곧 질문**이다. 판정도 하나 더 물었다(`why_stopped` — 3차 후보 이름)
+- **mirage-describe**: describe 결과에 **돌리기 전에 정한 낱말 표**(`CUE_WORDS` — 표를 정할 때 본 장면은 출력 꼴을 보려던 P1·N1·S1)를 대 4차 항목을 채운다.
+  박스 안 차량 = 그림 가운데를 덮는 차량 물체, 사람은 어디 있든 센다(차로 위인지 못 가름), 추론 글은 일반 지식이 섞여 보지 않는다(보고서 설명 칸에만)
+- 둘 다 판정은 4차 규칙(`run_vlm.decide`), 그림은 같은 크롭(D3 3배 · D2 2배). 같은 그림을 다시 부르면 결과가 같다(결정적)
+- 엔진 버그: 점수가 nan 이면 JSON 에 `-nan(ind)` 를 그대로 써서 파이썬 래퍼(`json.loads`)가 깨진다(S1 D3 · N4 D3·D2) — 원문 버퍼에서 그 값만 null 로 바꿔 읽는다
+
+| 판 | 한 번(중앙) | 자원 | 미리 정한 규칙 D3 / D2 | 앱 칩 출동 차량 · 차로 위 사람(D3) | 박스 안 차량 '아니오'(D3) |
+|---|---|---|---|---|---|
+| qwen3.5:4b — 지금 앱 | 2.7초 | GPU 3.1 GiB | 13 / 6 | 20/20 · 4/5 | 1 |
+| claude-opus-5-5 (결과 10) | 3.2초 | 40번 $0.55 | 20 / 17 | 20/20 · 4/5 | 2 |
+| kanana-decide 8비트 (결과 11) | 4.8초 | GPU 4.4 GiB+ | 17 / 10 | 20/20 · 4/5 | 4 |
+| **mirage form** | 4.2초 | CPU 약 2.8코어 · 가중치 21.6 MB | **2 / 2** | 14/20 · 0/5 | **20** |
+| **mirage describe + 낱말 표** | 2.2초 | 〃 | **10 / 5** | 16/20 · 4/5 | 9 |
+
+(정답에서 박스 안에 차가 없는 장면은 가짜 검출 S1·S2 둘이다. 출동 차량이 있는 장면은 P1·P2·P4·P9·P11·S2 여섯, 차로 위 사람은 P1·P2·P4·P9·P11 다섯)
+
+- **form 은 그림을 보지 않은 것처럼 답한다** — 40번 모두 박스 안 차량 '아니오'(P(예) 0.01~0.06), 차종 '출동 차량' 37번, 경광등 '예' 35번, 차로 위 사람 '아니오' 40번,
+  판정(`why_stopped`)은 40번 모두 답하지 않음(P(`-`) 1.00). 그래서 규칙 판정은 모두 '차량 아님'이고(맞은 2개는 진짜 가짜 검출 S1·S2),
+  출동 차량 칩 14/20 은 늘 '아니오'라 맞은 몫이다(출동 장면 여섯 중 0)
+- 사후 확인(결과를 본 뒤 만든 질문 — `--probe-nl`, 3배 크롭): 항목 이름을 영어 문장으로 바꿔도('is there a vehicle inside the red box' 등 — `FORM_NL`) 그림을 따라가지 않는다.
+  박스 안 차량 '예'는 6장면인데 차가 안 보이는 T1·T3·S1 이 들어 있고(나머지 P8·R3·T2), 차종·판정은 20번 모두 답하지 않음, P5·P6 은 예/아니오 단서 열 개 모두 '예'
+- **describe 는 약한 물체 검출기다** — 3배 크롭에서 박스 가운데 차를 16장면 중 11장면에서 찾았고(P6·P8·T2·N4·R3 놓침), 이름이 열려 있어 'fire truck'·'firefighter'(P1)를 말하지만
+  출동 차량은 여섯 장면 중 P1·P2(소방차) 둘만 봤다. 맞은 10개 가운데 단서로 맞힌 것은 P1·P2(소방차·사람)·P4·P11(사람) 넷 — P5·P9 는 단서가 없어 규칙 후보 그대로,
+  P7 은 다른 세 모델이 못 본 사람으로, N1 은 장면을 'parking lot' 으로 읽어서(4B·Claude 는 신호를 봄) 맞았고 S1·S2 는 박스에 차가 없다.
+  정상 정차 단서(신호·앞에 선 차)는 거의 안 나와 정상 6장면 중 N1 만 맞고, 화면 불량(T1·T3)은 '실내'·빨간 사각형으로 읽어 '차량 아님'
+- 2배 크롭(D2)은 더 나쁘다 — 장면을 'product photography'·'box' 로 읽는 식(P1)이라 규칙 5/20
+- 크롭에 그린 빨간 박스를 물체로 읽는다('red border' · 'red square') — 표시가 방해일 수 있다(박스 없는 크롭은 재 보지 않았다)
+- 시간: 이 노트북 CPU(Ryzen AI 5 340, 6코어 — AC 전원)에서 describe 1.0~2.5초 · form 2.0~4.4초. 같은 그림도 실행 때마다 두 배까지 달랐다(CPU 상태로 보인다 — 확인 안 함).
+  코어 약 2.8개를 쓰고, 올리기 0.3초 + 데우기 5.6초. 업체 블로그의 77~107 ms 는 다른 기기의 숫자다
+- **판단: 앱에 쓸 수 없다** — form 은 질문을 알아듣지 못하고, describe 는 앱의 YOLO 보다 나은 정보를 주지 못한다(차·사람은 YOLO 도 찾는다 — 덤은 소방차 같은 이름 정도).
+  GPU 를 안 쓰고 22 MB 라는 건 장점이지만 4B 가 이미 한 번 3초 안팎에 단서가 훨씬 정확하다
+
+```powershell
+# 준비는 run_mirage.py 머리말 (E:\Cactus — 사용자가 설치). 저장소 루트에서
+$env:XDG_CACHE_HOME='E:\Cactus\cache'; $env:CACTUS_TELEMETRY='0'; $env:DO_NOT_TRACK='1'; $env:HF_HUB_OFFLINE='1'
+E:\Cactus\.venv\Scripts\python.exe -I -X utf8 experiments/VlmCheck/run_mirage.py --results round4_quant
+E:\Cactus\.venv\Scripts\python.exe -I -X utf8 experiments/VlmCheck/run_mirage.py --probe-nl
+```
+
 ## 판단 (4차까지)
 
 - 로컬 VLM 에 판정을 묻지 말고 **관찰만 묻고 코드가 규칙으로 합치면** 투명하고 쓸 만한 단서가 나온다 — 출동 차량·경광등·차로 위 사람(사고 처리 현장), 신호·앞 줄·주차(정상 정차).

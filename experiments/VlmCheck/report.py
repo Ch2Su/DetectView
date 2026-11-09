@@ -48,7 +48,7 @@ VALUE_KO = {
 TITLES = {"results": "1차 — 모델 5가지 × 입력 A·B·C", "probe": "1차 뒤 확인 — 설명 먼저 + 키운 그림만",
           "round2": "2차 — 장면 30개, 설명 먼저 + 키운 그림만", "round3": "3차 — 추적기 사실을 주고 '왜 멈췄나'만",
           "round4": "4차 — 관찰만 묻고 판정은 코드 규칙",
-          "round4_quant": "4차 장면 모델 비교 — qwen3.5 4B(4·8비트)·9B·qwen3.6 35B-A3B MoE·Claude Opus 5.5·Kanana 판정 모델",
+          "round4_quant": "4차 장면 모델 비교 — qwen3.5 4B(4·8비트)·9B·qwen3.6 35B-A3B MoE·Claude Opus 5.5·Kanana 판정 모델·Mirage(22 MB)",
           "round4_decide_ref": "Kanana 판정 모델 8비트 확인 — 같은 장면을 CPU BF16 으로"}
 VARIANT_KO = {"A": "화면 전체", "B": "화면 전체 + 키운 그림", "C": "B + 2초 전·뒤 화면", "D": "키운 그림만(박스의 3배)",
               "D3": "키운 그림만(박스의 3배)", "D2": "키운 그림만(박스의 2배)"}
@@ -73,7 +73,8 @@ RULES4 = [("미리 정한 규칙", ("usable", "vehicle", "incident", "normal")),
           ("사후 1 · 단서 먼저", ("vehicle", "incident", "normal", "usable")),     # 결과를 보고 고른 규칙(README 결과 5)
           ("사후 2 · 선명도 안 봄", ("vehicle", "incident", "normal"))]
 ALL_CONFIGS = {c["name"]: c for pool in (run_vlm.CONFIGS, run_vlm.PROBES, run_vlm.ROUND2, run_vlm.ROUND3, run_vlm.ROUND4,
-                                          run_vlm.QUANT, run_vlm.STRATA_POOL, run_vlm.CLAUDE_POOL, run_vlm.DECIDE_POOL) for c in pool}
+                                          run_vlm.QUANT, run_vlm.STRATA_POOL, run_vlm.CLAUDE_POOL, run_vlm.DECIDE_POOL,
+                                          run_vlm.MIRAGE_POOL) for c in pool}
 
 
 def ko(v):
@@ -95,7 +96,7 @@ def short_name(name):
 
 def cfg_tags(cfg):
     tags = [t for k, t in (("think", "생각 모드"), ("desc_first", "설명 먼저"), ("no_label", "라벨 없이")) if cfg.get(k)]
-    api = {"openai": "Strata 엔진", "anthropic": "Claude API", "decide": "판정 모델"}.get(cfg.get("api"))
+    api = {"openai": "Strata 엔진", "anthropic": "Claude API", "decide": "판정 모델", "mirage": "Mirage · CPU"}.get(cfg.get("api"))
     return tags + ([api] if api else [])
 
 
@@ -459,6 +460,8 @@ def _build(res_dir):
                   else f'<td class="num">{meta["load_s"]}초 · {meta["quant"]} · 모델 {meta["footprint_gib"]} GiB'
                        + (f' · 최대 {meta["peak_alloc_gib"]} GiB GPU' if meta.get("peak_alloc_gib") else f' · CPU {meta.get("threads")}스레드')
                   if meta.get("api") == "decide"
+                  # Mirage(run_mirage.py): 22 MB 가중치를 CPU 로 — GPU 를 쓰지 않는다
+                  else f'<td class="num">{meta["load_s"]}초 · 가중치 {meta["weights_mb"]} MB · CPU' if meta.get("api") == "mirage"
                   else f'<td class="num">{meta["load_s"]}초 · {meta.get("size_vram_gib")}/{meta.get("size_gib")} GiB GPU' if "size_gib" in meta
                   # Strata 는 `strata launch` 가 미리 올린다 — 돌릴 때 GPU 전체 사용량(nvidia-smi)만 안다
                   else f'<td class="num">미리 올림 · GPU {meta["gpu_mib_after_load"] / 1024:.1f} GiB 사용' if meta.get("gpu_mib_after_load")
@@ -584,6 +587,9 @@ def _build(res_dir):
                                f' <span class="sub small">{E(dv)}</span></p>')
                 else:
                     blk.append(f'<blockquote>{E(p.get("description_ko", ""))}</blockquote>')
+                if rec.get("evidence"):   # Mirage describe — 미리 정한 낱말 표가 무엇을 보고 '예'로 했는지
+                    found = " · ".join(f'{FIELD_KO.get(k, k)} ← {", ".join(v)}' for k, v in rec["evidence"].items() if v)
+                    blk.append(f'<p class="sub small">낱말 표가 찾은 것: {E(found or "없음")}</p>')
                 if kind == 3:
                     blk.append(f'<p class="evidence"><span class="sub">근거</span> {E(p.get("cause_evidence", ""))}</p>')
                 chips = []
