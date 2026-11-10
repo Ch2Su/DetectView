@@ -152,32 +152,38 @@ def hits(pattern, strings):
     return sorted({m.group(0).lower() for s in strings for m in pattern.finditer(s)})
 
 
+def words(v):
+    """낱말 표에 댈 글 — 밑줄로 이은 값(fire_truck·parking_lot)도 걸리게 띄어 쓴다"""
+    return str(v).replace("_", " ")
+
+
 def name(x):
-    """물체·구역 이름 — 밑줄로 이은 이름(fire_truck)도 낱말 표에 걸리게 띄어 쓴다. 이름이 없거나 null 이면 빈 글"""
-    return str(x.get("name") or "").replace("_", " ")
+    """물체·구역 이름 — 없거나 null 이면 빈 글"""
+    return words(x.get("name") or "")
 
 
-def box_center(info, variant):
-    """크롭 안에서 빨간 박스 가운데(0~1000) — make_cases.crop_around 와 같은 셈. 크롭은 프레임 밖으로 나가는 쪽만 잘려서
-    가장자리 장면에서는 박스가 그림 가운데(500, 500)에 있지 않다"""
-    factor, min_side = (2.0, 160) if variant == "D2" else (3.0, 256)   # crop2.jpg / crop.jpg
-    (w, h), b = info["frame"], info["box"]
-    cx, cy = (b[0] + b[2]) / 2, (b[1] + b[3]) / 2
-    side = max(min_side, factor * max(b[2] - b[0], b[3] - b[1]))
-    x1, y1 = int(max(0, cx - side / 2)), int(max(0, cy - side / 2))
-    x2, y2 = int(min(w, cx + side / 2)), int(min(h, cy + side / 2))
-    return 1000 * (cx - x1) / (x2 - x1), 1000 * (cy - y1) / (y2 - y1)
+def box_center(info, image):
+    """그림(image — 'crop'·'crop2') 안에서 빨간 박스 가운데(0~1000). 그림을 만든 셈(run_vlm.crop_rect·CROPS — make_cases 가 같이 쓴다)으로
+    되찾는다: 크롭은 프레임 밖으로 나가는 쪽만 잘려서 가장자리 장면에서는 박스가 그림 가운데(500, 500)에 있지 않다.
+    case.json 에 프레임·박스가 없거나 박스 가운데가 프레임 밖이면(잘린 사각형이 비면) 그림 가운데로 본다"""
+    frame, b = info.get("frame"), info.get("box")
+    if image not in run_vlm.CROPS or not frame or not b:
+        return 500.0, 500.0
+    x1, y1, x2, y2 = run_vlm.crop_rect(frame, b, *run_vlm.CROPS[image])
+    if x2 <= x1 or y2 <= y1:
+        return 500.0, 500.0
+    return 1000 * ((b[0] + b[2]) / 2 - x1) / (x2 - x1), 1000 * ((b[1] + b[3]) / 2 - y1) / (y2 - y1)
 
 
-def cues_from_describe(d, center=(500, 500)):
+def cues_from_describe(d, center):
     """describe 기록 → 4차 답(parsed)과 항목마다 무엇이 걸렸는지(evidence). 점수가 nan(null)인 물체는 뺀다.
-    center 는 그림 안 빨간 박스의 가운데(box_center)"""
+    center 는 그림 안 빨간 박스의 가운데 — 꼭 box_center 로 구해 넘긴다(그림 가운데가 아닐 수 있다)"""
     objs = [o for o in d.get("objects") or [] if isinstance(o, dict) and isinstance(o.get("score"), (int, float))]
     regs = [r for r in d.get("regions") or [] if isinstance(r, dict)]
     names = [name(x) for x in objs + regs]
-    attrs = [str(v) for x in objs + regs for v in (x.get("description") or {}).values()]
-    scene = [str(v) for v in (d.get("scene") or {}).values()]
-    events = [e if isinstance(e, str) else json.dumps(e, ensure_ascii=False) for e in d.get("events") or []]
+    attrs = [words(v) for x in objs + regs for v in (x.get("description") or {}).values()]
+    scene = [words(v) for v in (d.get("scene") or {}).values()]
+    events = [words(e if isinstance(e, str) else json.dumps(e, ensure_ascii=False)) for e in d.get("events") or []]
     veh = [o for o in objs if CUE_WORDS["vehicle"].search(name(o))]
     veh_ids = {o.get("id") for o in veh}
     name_of = {o.get("id"): name(o) for o in objs}
@@ -189,7 +195,7 @@ def cues_from_describe(d, center=(500, 500)):
         "people_on_road": hits(CUE_WORDS["person"], names),
         "visible_damage": hits(CUE_WORDS["damage"], names + attrs + events),
         "door_or_trunk_open": hits(CUE_WORDS["open"], [name(o) for o in openable]
-                                   + [str(v) for o in openable for v in (o.get("description") or {}).values()]),
+                                   + [words(v) for o in openable for v in (o.get("description") or {}).values()]),
         "cones_or_triangle": hits(CUE_WORDS["cone"], names),
         # 앞에 선 차: 차량끼리의 앞뒤 관계(behind·in front of …) 또는 장면·구역·사건 글의 정체·줄
         "vehicles_stopped_ahead": [f'{name_of[r["subject"]]} {r["predicate"]} {name_of[r["object"]]}' for r in d.get("relations") or []
@@ -202,7 +208,7 @@ def cues_from_describe(d, center=(500, 500)):
     p = {k: "yes" if v else "no" for k, v in ev.items()}
     ev["image_usable"] = hits(CUE_WORDS["unusable"], scene + attrs + events)
     p["image_usable"] = "no" if ev["image_usable"] else "yes"
-    # 박스 안 차량: 그림 가운데(빨간 박스의 가운데 — 크롭은 박스를 가운데 두고 자른다)를 덮는 차량 중 점수가 가장 높은 것
+    # 박스 안 차량: 빨간 박스의 가운데(center — 가장자리 장면에서는 그림 가운데가 아니다)를 덮는 차량 중 점수가 가장 높은 것
     # (상자 좌표가 nan(null)이거나 없는 물체는 여기서만 뺀다 — 이름 단서에는 그대로 센다)
     cx, cy = center
     boxed = [o for o in veh if isinstance(o.get("bbox"), list) and len(o["bbox"]) == 4
@@ -306,7 +312,14 @@ def main():
     # 앞 실행의 메타 — 이번에 새로 부른 그림이 없는 설정은 그대로 둔다(다시 돌려 보고서만 만들 때 올린 시간·결정성 기록이
     # 이번 값으로 덮이지 않게)
     meta_paths = {mode: out_dir / f"{cfg['name']}.meta.json" for mode, cfg in cfgs.items()}
-    prev = {mode: json.loads(p.read_text(encoding="utf-8")) for mode, p in meta_paths.items() if p.exists()}
+    prev = {}
+    for mode, p in meta_paths.items():
+        try:
+            prev[mode] = json.loads(p.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            pass
+        except (json.JSONDecodeError, OSError) as e:   # 쓰다 멈춘 파일 등 — 없는 것으로 보고 새로 쓴다
+            print(f"앞 실행의 메타를 못 읽어 새로 쓴다: {p.name} ({type(e).__name__})", flush=True)
 
     def write_meta(modes):
         for mode in modes:
@@ -339,7 +352,7 @@ def main():
                             parsed, probs, full = from_form(res)
                             extra = {"probs": probs, "form_probs": full}
                         else:
-                            parsed, ev = cues_from_describe(res, box_center(info, v))
+                            parsed, ev = cues_from_describe(res, box_center(info, q["images"][0]))
                             parsed["description_ko"] = summary(res)
                             extra = {"evidence": ev}
                         rec.update(wall_s=wall, cpu_s=cpu, done_reason=mode, total_s=wall, load_s=0, thinking_chars=0, nan_fixed=fixed,
@@ -363,15 +376,17 @@ def main():
     finally:
         for f in files.values():
             f.close()
-    same = {}
+    same, same_err = {}, {}
     for mode, (img, opts, content) in first.items():
         try:
             res, _ = call(m, img, **opts)
             same[mode] = json.dumps(strip_masks(res), ensure_ascii=False) == content
-        except Exception as e:   # 확인이 실패해도 메타·보고서는 남긴다 — 사유를 값 자리에
-            same[mode] = f"{type(e).__name__}: {e}"[:200]
+        except Exception as e:   # 확인이 실패해도 메타·보고서는 남긴다 — 값은 None(모름), 사유는 따로(글을 넣으면 참으로 읽힌다)
+            same[mode], same_err[mode] = None, f"{type(e).__name__}: {e}"[:200]
     if same:
         meta["deterministic"] = same
+        if same_err:
+            meta["deterministic_error"] = same_err
         print(f"같은 그림을 다시 부른 결과가 같은가: {same}", flush=True)
     write_meta(first)
     try:   # 장면별 보고서 — 실패해도 결과(jsonl)는 이미 남았다

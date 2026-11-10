@@ -22,6 +22,8 @@ import cv2
 import numpy as np
 import onnxruntime as ort
 
+from run_vlm import CROPS, crop_rect   # 크롭 사각형 셈·배율은 run_vlm 한 곳(run_mirage 가 같은 값으로 박스 위치를 되찾는다)
+
 HERE = Path(__file__).resolve().parent
 RED, GREEN = (0, 0, 255), (0, 200, 0)
 
@@ -88,12 +90,9 @@ def draw(img, box, color=RED, thick=None):
     return out
 
 
-def crop_around(img, box, factor=3.0, min_side=256, long_side=512):
+def crop_around(img, box, factor=CROPS["crop"][0], min_side=CROPS["crop"][1], long_side=512):
     h, w = img.shape[:2]
-    cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
-    side = max(min_side, factor * max(box[2] - box[0], box[3] - box[1]))
-    x1, y1 = int(max(0, cx - side / 2)), int(max(0, cy - side / 2))
-    x2, y2 = int(min(w, cx + side / 2)), int(min(h, cy + side / 2))
+    x1, y1, x2, y2 = crop_rect((w, h), box, factor, min_side)
     c = draw(img, box, thick=2)[y1:y2, x1:x2]
     s = long_side / max(c.shape[:2])
     return cv2.resize(c, (int(round(c.shape[1] * s)), int(round(c.shape[0] * s))),
@@ -161,7 +160,7 @@ def main():
         cv2.imwrite(str(d / "full.jpg"), draw(frame, cand["box"]), [cv2.IMWRITE_JPEG_QUALITY, 90])
         cv2.imwrite(str(d / "crop.jpg"), crop_around(frame, cand["box"]), [cv2.IMWRITE_JPEG_QUALITY, 90])
         # 3차: 조금 좁게(박스의 2배, 한 변 최소 160px) — 옆의 사고 현장에 덜 끌리는지
-        cv2.imwrite(str(d / "crop2.jpg"), crop_around(frame, cand["box"], factor=2.0, min_side=160), [cv2.IMWRITE_JPEG_QUALITY, 90])
+        cv2.imwrite(str(d / "crop2.jpg"), crop_around(frame, cand["box"], *CROPS["crop2"]), [cv2.IMWRITE_JPEG_QUALITY, 90])
         for tag, dt in (("prev", -2.0), ("next", 2.0)):
             f2, _, _ = read_frame(path, min(max(0.0, c["t"] + dt), dur - 0.1))
             cv2.imwrite(str(d / f"{tag}.jpg"), draw(f2, cand["box"]), [cv2.IMWRITE_JPEG_QUALITY, 90])

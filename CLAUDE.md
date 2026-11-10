@@ -28,7 +28,7 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
 ```
 
 - 프로젝트 파일(`DetectView.csproj`)을 꼭 지정한다. 생략하면 폴더의 `.slnx` 가 잡혀 `NETSDK1194`(솔루션 + `--output`) 경고가 난다
-- 결과: `DetectView.exe` 한 파일 약 132.6 MB(판별 배포 이력은 docs/build-deploy.md). 테스트 영상(`test1~4.mp4`)은 같은 폴더에 있어도 덮어쓰지 않는다
+- 결과: `DetectView.exe` 한 파일 126.4 MB(132,596,048 바이트 — 11-08 TensorRT 판. 판별 배포 이력은 docs/build-deploy.md). 테스트 영상(`test1~4.mp4`)은 같은 폴더에 있어도 덮어쓰지 않는다
 - publish 뒤에는 배포본으로 UI 테스트를 돌린다: `pwsh tests\ui\Run-All.ps1 -ExeDir publish`
 - **`publish\best.onnx` 는 루트의 것과 다를 수 있고, 사용자가 수시로 바꾼다. 건드리지 말 것** (바꾼 경과와 옆에 보관한 옛 모델 이름은 docs/build-deploy.md — 11-08 부터는 루트와 같은 8클래스 YOLO26m 이다).
   **성능을 재거나 비교하기 전엔 그 순간 어떤 모델인지 확인한다** — 앱이 떠 있으면 창 제목에 보이고, 아니면 파일 끝의 Ultralytics 메타데이터를 읽는다(한 줄 명령은 docs/build-deploy.md)
@@ -51,6 +51,11 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
 
 파일별 역할 표는 [docs/files.md](docs/files.md) 에 있다(실험 프로젝트는 `experiments/CLAUDE.md` — 그 폴더의 파일을 다룰 때 읽힌다).
 `MainWindow` 는 partial class 로 기능별 분할돼 있다(`MainWindow.<기능>.cs` — 솔루션 탐색기에서는 `MainWindow.xaml` 아래에 묶여 보임). 코드 위치는 graft 로 찾는다.
+표에만 적혀 있던 규칙 셋은 여기에도 둔다(나머지 설명은 그 표):
+- 남의 코드·파일을 가져오면 `THIRD-PARTY-NOTICES.md` 에 더한다(저장소 라이선스는 GNU AGPL-3.0 — `LICENSE`)
+- `README.md`(GitHub 첫 화면)는 화면이 크게 바뀌면 같이 고친다. 스크린샷은 영상 사용 권리를 확인하지 못해 뺐다 — 다시 넣으려면 권리가 분명한 영상으로
+- graft 훅은 전역 `~/.claude/settings.json` 에만 둔다(프로젝트에도 있으면 훅이 두 번 돈다). graft 를 이 저장소에 다시 설치해 프로젝트 훅·`graft-hooks.cjs` 나
+  `.claude/helpers/graft-statusline.cjs` 에 박힌 `C:\Users\<이름>\…` 경로가 돌아오면 다시 뺀다
 
 ## 자세한 문서 (`docs/` — 세션마다 자동으로 읽히지 않는다)
 

@@ -372,6 +372,20 @@ def check(parsed, enums=ENUMS, texts=("description_ko",)):
     return bad
 
 
+# 키운 그림(out/cases/<id>/<이름>.jpg) — 이름 → (박스의 몇 배, 최소 변 px). make_cases.py 가 이 값으로 그림을 만들고
+# run_mirage.py 가 같은 값으로 그림 안 박스 위치를 되찾는다(따로 적으면 어긋난다)
+CROPS = {"crop": (3.0, 256), "crop2": (2.0, 160)}
+
+
+def crop_rect(frame_wh, box, factor, min_side):
+    """박스 주변을 자를 사각형 (x1, y1, x2, y2) — 박스 가운데에 변이 max(min_side, factor × 긴 변)인 정사각형을 두고
+    프레임 밖으로 나가는 쪽만 자른다(옮기지 않는다 — 가장자리에서는 박스가 그림 가운데에 있지 않다)"""
+    w, h = frame_wh
+    cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+    side = max(min_side, factor * max(box[2] - box[0], box[3] - box[1]))
+    return (int(max(0, cx - side / 2)), int(max(0, cy - side / 2)), int(min(w, cx + side / 2)), int(min(h, cy + side / 2)))
+
+
 def done_pairs(res_path):
     """결과 jsonl 에서 이미 성공한 (장면, 입력) — 다시 돌리면 건너뛴다. run_decide·run_mirage 도 이걸 쓴다(꼴이 바뀌면 한 곳)"""
     done = set()

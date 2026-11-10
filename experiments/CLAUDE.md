@@ -1,5 +1,6 @@
 # experiments/ — 실험 프로젝트
 
 2026-11-10 루트 CLAUDE.md 의 파일 구조 표에서 글자 그대로 옮겼다(이 폴더의 파일을 다룰 때만 읽힌다).
+본문의 '아래 "○○"'·'○번 항목'이 가리키는 곳은 루트 CLAUDE.md 의 그 절이다('1번·3번 항목' = '절대 건드리면 안 되는 것들').
 
 따로 빌드하는 실험 프로젝트(각자 `.csproj`). 본 `.csproj` 의 `Compile/Page/None Remove` 로 빠져 있다. `NpuBench/`: AMD NPU 실험 — 짝 확인(`npu_quant`·`npu_source_md5`) 뒤에만 NPU 에 넣는다 (아래 "NPU"). `RuntimeParity/`: 런타임 교체 전후 검출 결과 비교 (1번 항목, GPU 선택은 두 빌드 모두 `GpuAdapters.cs`, 레터박스는 `YoloLetterbox.cs` 링크 — 2026-11-05 부터 좌표가 실수라 그 전 CSV 와 견주지 말 것). `TrackerCheck/`: 추적기 검증 (아래 "추적기")·테두리 멈춤 판정 합성 장면(`selftest` — 관심 구역 `Roi.cs` 의 판정·파일 검사 ⑧, 화면 전환 감지 합성 장면 ⑨, 구역 진입·나감 이벤트 ⑩, 유고 규칙 ⑪, 화면 식별 ⑫도 여기)·화면 식별 맞춤 실측(`views`)·화면 전환이 있는 합성 영상 만들기(`mkrevisit`)·화면 전환 감지 임계값 실측(`scene`)·GPU 고성능/저전력 판정(`gpu`)·중복 박스 필터 전후 비교 (3번 항목)·YOLO 입력 축소 방식(`InputCheck.cs` — 데이터셋 시험 분할을 앱 경로로 검출하고 Skia·OpenCV 축소를 화소 비교 `testsplit`, 축소 시간·결정성 `inputbench`)·앱의 VLM 그림·요청이 실험과 같은지(`vlm` — `VlmCheck/check_app_parity.py` 가 부른다). `RfDetrBench/`: RF-DETR 를 앱 런타임(DirectML)에서 — 노드 배치·속도·결과 일치, 같은 COCO 정확도의 YOLO26 과 비교. `step2/` 는 같은 데이터로 학습(WSL)·내보내기·시험 분할 평가, YOLO 변형(NMS 내보내기·640×384 — 속도는 `yolo`)도 (아래 "RF-DETR 검토"). `VlmCheck/`: 유고 후보를 로컬 VLM(Ollama)으로 2차 확인하는 실험(파이썬 — 앱에는 없음, `docs/incident-detection.md` 끝)과 앱과 GPU 를 나눠 쓸 때의 계측(`Measure-GpuShare.ps1` — 앱 연결 설계는 `docs/vlm-annotation.md`). 산출물 `*/out/`·`*/bin/`·`*/obj/`·`*/.venv/` 는 gitignore
