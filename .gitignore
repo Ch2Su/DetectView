@@ -18,6 +18,8 @@ __pycache__/
 *.roi.json.tmp
 # 이벤트 로그의 [CSV 저장] 산출물(<영상>.events.csv) — 영상 옆에 생기는 파생 파일
 *.events.csv
+# Cactus 가중치 — `cactus download` 가 돌린 폴더에 내려놓는다(남의 모델 21.6 MB — experiments/VlmCheck/run_mirage.py). 커밋하지 않는다
+*.cact
 
 # ── 이전 버전 보관본 ───────────────────────────────────────────
 # .csproj 에서도 컴파일 제외 대상이고, graft 인덱스에서도 빼야 한다

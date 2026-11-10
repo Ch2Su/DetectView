@@ -36,8 +36,24 @@ sys.path.insert(0, str(HERE))   # -I 로 돌려도 run_vlm·report 를 읽게 (�
 import run_vlm  # noqa: E402
 
 # 엔진 버그(4.1.0): 점수가 nan 이면 JSON 에 -nan(ind) 를 그대로 써서 json.loads 가 깨진다(S1 — 글자 물체 하나).
-# 원문 버퍼에서 nan·inf 값만 null 로 바꿔 읽고 바꾼 개수를 기록에 남긴다
-NAN = re.compile(r"(?<=[:\[,])\s*-?(?:nan|inf)(?:\([a-z]+\))?(?=\s*[,\]}])", re.I)
+# 원문 버퍼에서 nan·inf 값만 null 로 바꿔 읽고 바꾼 개수를 기록에 남긴다. 문자열을 먼저 통째로 잡아 건너뛴다 —
+# 읽은 글자·추론 글 안의 ', nan,' 같은 조각은 값이 아니다
+NAN = re.compile(r'"(?:[^"\\]|\\.)*"|(?<=[:\[,])\s*-?(?:nan|inf)(?:\([a-z]+\))?(?=\s*[,\]}])', re.I)
+
+
+def fix_nan(raw):
+    """(nan·inf 값을 null 로 바꾼 글, 바꾼 개수)"""
+    n = 0
+
+    def rep(m):
+        nonlocal n
+        if m.group(0).startswith('"'):
+            return m.group(0)
+        n += 1
+        return "null"
+    return NAN.sub(rep, raw), n
+
+
 
 FORM = {k: {"enum": v} for k, v in run_vlm.MIRAGE_FORM.items()}
 
@@ -47,6 +63,8 @@ def W(words):
 
 
 # describe → 4차 항목 낱말 표 (돌리기 전에 정함 — 11-09). 물체·구역의 이름과 속성 값, 장면 값, 사건 글만 본다.
+# 11-10 코드 검토 뒤 고친 것(README 결과 12 의 숫자는 고치기 전 코드로 낸 것): 밑줄 이름 띄어 읽기 · 박스 가운데를 크롭 셈으로 ·
+# 문·트렁크 열림은 차량·문 물체에서만. 낱말 자체는 그대로다
 # 추론 글(reasoning)은 '화살표 표지는 차·보행자를 안내한다' 같은 일반 지식이 섞여 보지 않는다(설명 칸에만 보인다).
 # 차로 위인지·박스 안 차인지는 describe 로 가를 수 없다 — 사람은 어디 있든 센다
 CUE_WORDS = {
@@ -65,6 +83,7 @@ CUE_WORDS = {
     "parking": W("parking|car park"),
     "unusable": W("black screen|blank|blurry|blurred|out of focus|too dark|no image"),
 }
+OPENABLE = W("door|doors|trunk|hood|bonnet|tailgate|hatch")
 VEHICLE_TYPE = [  # 박스 가운데 차량의 이름 → 4차 차종 (위에서부터 처음 맞는 것, 나머지 car·suv·sedan·taxi·van·jeep·vehicle 은 승용차)
     (W("tow truck|wrecker"), "tow_truck"),
     (CUE_WORDS["emergency"], "emergency_vehicle"),
@@ -100,7 +119,7 @@ def call(m, image, **opts):
     try:
         return m.describe(image, **opts), 0
     except json.JSONDecodeError:
-        fixed, n = NAN.subn("null", m._buffer.value.decode("utf-8"))
+        fixed, n = fix_nan(m._buffer.value.decode("utf-8"))
         return json.loads(fixed), n
 
 
@@ -133,23 +152,44 @@ def hits(pattern, strings):
     return sorted({m.group(0).lower() for s in strings for m in pattern.finditer(s)})
 
 
-def cues_from_describe(d):
-    """describe 기록 → 4차 답(parsed)과 항목마다 무엇이 걸렸는지(evidence). 점수가 nan(null)인 물체는 뺀다"""
-    objs = [o for o in d.get("objects") or [] if isinstance(o.get("score"), (int, float))]
+def name(x):
+    """물체·구역 이름 — 밑줄로 이은 이름(fire_truck)도 낱말 표에 걸리게 띄어 쓴다. 이름이 없거나 null 이면 빈 글"""
+    return str(x.get("name") or "").replace("_", " ")
+
+
+def box_center(info, variant):
+    """크롭 안에서 빨간 박스 가운데(0~1000) — make_cases.crop_around 와 같은 셈. 크롭은 프레임 밖으로 나가는 쪽만 잘려서
+    가장자리 장면에서는 박스가 그림 가운데(500, 500)에 있지 않다"""
+    factor, min_side = (2.0, 160) if variant == "D2" else (3.0, 256)   # crop2.jpg / crop.jpg
+    (w, h), b = info["frame"], info["box"]
+    cx, cy = (b[0] + b[2]) / 2, (b[1] + b[3]) / 2
+    side = max(min_side, factor * max(b[2] - b[0], b[3] - b[1]))
+    x1, y1 = int(max(0, cx - side / 2)), int(max(0, cy - side / 2))
+    x2, y2 = int(min(w, cx + side / 2)), int(min(h, cy + side / 2))
+    return 1000 * (cx - x1) / (x2 - x1), 1000 * (cy - y1) / (y2 - y1)
+
+
+def cues_from_describe(d, center=(500, 500)):
+    """describe 기록 → 4차 답(parsed)과 항목마다 무엇이 걸렸는지(evidence). 점수가 nan(null)인 물체는 뺀다.
+    center 는 그림 안 빨간 박스의 가운데(box_center)"""
+    objs = [o for o in d.get("objects") or [] if isinstance(o, dict) and isinstance(o.get("score"), (int, float))]
     regs = [r for r in d.get("regions") or [] if isinstance(r, dict)]
-    names = [o.get("name", "") for o in objs] + [r.get("name", "") for r in regs]
+    names = [name(x) for x in objs + regs]
     attrs = [str(v) for x in objs + regs for v in (x.get("description") or {}).values()]
     scene = [str(v) for v in (d.get("scene") or {}).values()]
     events = [e if isinstance(e, str) else json.dumps(e, ensure_ascii=False) for e in d.get("events") or []]
-    veh = [o for o in objs if CUE_WORDS["vehicle"].search(o.get("name", ""))]
+    veh = [o for o in objs if CUE_WORDS["vehicle"].search(name(o))]
     veh_ids = {o.get("id") for o in veh}
-    name_of = {o.get("id"): o.get("name") for o in objs}
+    name_of = {o.get("id"): name(o) for o in objs}
+    # 문·트렁크 열림은 차량과 문·트렁크·보닛 물체에서만 본다 — 도로 구역의 'open road' 같은 값이 사고 단서가 되지 않게
+    openable = [o for o in objs if o in veh or OPENABLE.search(name(o))]
     ev = {
         "emergency_vehicle_near": hits(CUE_WORDS["emergency"], names),
         "flashing_lights": hits(CUE_WORDS["lights"], names + attrs),
         "people_on_road": hits(CUE_WORDS["person"], names),
         "visible_damage": hits(CUE_WORDS["damage"], names + attrs + events),
-        "door_or_trunk_open": hits(CUE_WORDS["open"], names + attrs),
+        "door_or_trunk_open": hits(CUE_WORDS["open"], [name(o) for o in openable]
+                                   + [str(v) for o in openable for v in (o.get("description") or {}).values()]),
         "cones_or_triangle": hits(CUE_WORDS["cone"], names),
         # 앞에 선 차: 차량끼리의 앞뒤 관계(behind·in front of …) 또는 장면·구역·사건 글의 정체·줄
         "vehicles_stopped_ahead": [f'{name_of[r["subject"]]} {r["predicate"]} {name_of[r["object"]]}' for r in d.get("relations") or []
@@ -163,11 +203,15 @@ def cues_from_describe(d):
     ev["image_usable"] = hits(CUE_WORDS["unusable"], scene + attrs + events)
     p["image_usable"] = "no" if ev["image_usable"] else "yes"
     # 박스 안 차량: 그림 가운데(빨간 박스의 가운데 — 크롭은 박스를 가운데 두고 자른다)를 덮는 차량 중 점수가 가장 높은 것
-    center = [o for o in veh if o["bbox"][0] <= 500 <= o["bbox"][2] and o["bbox"][1] <= 500 <= o["bbox"][3]]
-    top = max(center, key=lambda o: o["score"], default=None)
+    # (상자 좌표가 nan(null)이거나 없는 물체는 여기서만 뺀다 — 이름 단서에는 그대로 센다)
+    cx, cy = center
+    boxed = [o for o in veh if isinstance(o.get("bbox"), list) and len(o["bbox"]) == 4
+             and all(isinstance(v, (int, float)) for v in o["bbox"])]
+    over = [o for o in boxed if o["bbox"][0] <= cx <= o["bbox"][2] and o["bbox"][1] <= cy <= o["bbox"][3]]
+    top = max(over, key=lambda o: o["score"], default=None)
     p["vehicle_in_box"] = "yes" if top else "no"
-    p["vehicle_type"] = vehicle_type(top["name"]) if top else "none"
-    ev["vehicle_in_box"] = [f'{top["name"]} {top["score"]:.2f} {top["bbox"]}'] if top else []
+    p["vehicle_type"] = vehicle_type(name(top)) if top else "none"
+    ev["vehicle_in_box"] = [f'{name(top)} {top["score"]:.2f} {top["bbox"]}'] if top else []
     return p, ev
 
 
@@ -230,13 +274,7 @@ def main():
     out_dir = HERE / "out" / a.results
     out_dir.mkdir(parents=True, exist_ok=True)
     paths = {mode: out_dir / f"{c['name']}.jsonl" for mode, c in cfgs.items()}
-    done = {mode: set() for mode in cfgs}
-    for mode, path in paths.items():
-        if path.exists():
-            for line in path.read_text(encoding="utf-8").splitlines():
-                r = json.loads(line)
-                if r.get("error") is None:
-                    done[mode].add((r["case"], r["variant"]))
+    done = {mode: run_vlm.done_pairs(path) for mode, path in paths.items()}
 
     from PIL import Image
     from cactus.agent.mirage import Mirage
@@ -260,16 +298,21 @@ def main():
         scenes = []
         for c in cases:
             d = HERE / "out" / "cases" / c["id"]
-            if c["id"] in round3 and json.loads((d / "case.json").read_text(encoding="utf-8")).get("stopped_s", 0) >= 3:
+            if run_vlm.stopped_scene(c["id"], json.loads((d / "case.json").read_text(encoding="utf-8")), round3):
                 scenes.append((c["id"], d, round3[c["id"]]))
         probe_nl(m, scenes)
         return
 
-    def write_meta():
-        for mode, cfg in cfgs.items():
-            (out_dir / f"{cfg['name']}.meta.json").write_text(json.dumps({"config": cfg, **meta}, ensure_ascii=False, indent=1),
-                                                             encoding="utf-8")
-    write_meta()   # 도중에 멈춰도 보고서가 메타를 읽게 먼저 한 번
+    # 앞 실행의 메타 — 이번에 새로 부른 그림이 없는 설정은 그대로 둔다(다시 돌려 보고서만 만들 때 올린 시간·결정성 기록이
+    # 이번 값으로 덮이지 않게)
+    meta_paths = {mode: out_dir / f"{cfg['name']}.meta.json" for mode, cfg in cfgs.items()}
+    prev = {mode: json.loads(p.read_text(encoding="utf-8")) for mode, p in meta_paths.items() if p.exists()}
+
+    def write_meta(modes):
+        for mode in modes:
+            keep = {"deterministic": prev[mode]["deterministic"]} if "deterministic" in prev.get(mode, {}) else {}
+            meta_paths[mode].write_text(json.dumps({"config": cfgs[mode], **keep, **meta}, ensure_ascii=False, indent=1), encoding="utf-8")
+    write_meta([mode for mode in cfgs if mode not in prev])   # 도중에 멈춰도 보고서가 메타를 읽게 먼저 한 번
 
     first = {}   # 설정마다 이번에 처음 부른 그림 — 끝에 한 번 더 불러 결과가 같은지(결정적인지) 본다
     files = {mode: path.open("a", encoding="utf-8") for mode, path in paths.items()}
@@ -277,7 +320,7 @@ def main():
         for c in cases:
             d = HERE / "out" / "cases" / c["id"]
             info = json.loads((d / "case.json").read_text(encoding="utf-8"))
-            if c["id"] not in round3 or info.get("stopped_s", 0) < 3:
+            if not run_vlm.stopped_scene(c["id"], info, round3):
                 continue   # 4차와 같은 장면 — 규칙이 고를 '멈춘 차'만 (run_vlm.run_config 와 같은 조건)
             for v in run_vlm.VARIANTS:
                 for mode, cfg in cfgs.items():
@@ -296,7 +339,7 @@ def main():
                             parsed, probs, full = from_form(res)
                             extra = {"probs": probs, "form_probs": full}
                         else:
-                            parsed, ev = cues_from_describe(res)
+                            parsed, ev = cues_from_describe(res, box_center(info, v))
                             parsed["description_ko"] = summary(res)
                             extra = {"evidence": ev}
                         rec.update(wall_s=wall, cpu_s=cpu, done_reason=mode, total_s=wall, load_s=0, thinking_chars=0, nan_fixed=fixed,
@@ -322,12 +365,15 @@ def main():
             f.close()
     same = {}
     for mode, (img, opts, content) in first.items():
-        res, _ = call(m, img, **opts)
-        same[mode] = json.dumps(strip_masks(res), ensure_ascii=False) == content
+        try:
+            res, _ = call(m, img, **opts)
+            same[mode] = json.dumps(strip_masks(res), ensure_ascii=False) == content
+        except Exception as e:   # 확인이 실패해도 메타·보고서는 남긴다 — 사유를 값 자리에
+            same[mode] = f"{type(e).__name__}: {e}"[:200]
     if same:
         meta["deterministic"] = same
         print(f"같은 그림을 다시 부른 결과가 같은가: {same}", flush=True)
-    write_meta()
+    write_meta(first)
     try:   # 장면별 보고서 — 실패해도 결과(jsonl)는 이미 남았다
         import report
         print(f"보고서: {report.build(out_dir)}", flush=True)

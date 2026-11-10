@@ -372,14 +372,25 @@ def check(parsed, enums=ENUMS, texts=("description_ko",)):
     return bad
 
 
-def run_config(cfg, cases, out_dir, round3=()):
-    res_path = out_dir / f"{cfg['name']}.jsonl"
+def done_pairs(res_path):
+    """결과 jsonl 에서 이미 성공한 (장면, 입력) — 다시 돌리면 건너뛴다. run_decide·run_mirage 도 이걸 쓴다(꼴이 바뀌면 한 곳)"""
     done = set()
     if res_path.exists():
         for line in res_path.read_text(encoding="utf-8").splitlines():
             r = json.loads(line)
             if r.get("error") is None:
                 done.add((r["case"], r["variant"]))
+    return done
+
+
+def stopped_scene(cid, info, round3):
+    """3·4차 장면인가 — 규칙이 고를 '멈춘 차'만(3초 이상). 러너마다 따로 쓰면 장면 집합이 어긋난다"""
+    return cid in round3 and info.get("stopped_s", 0) >= 3
+
+
+def run_config(cfg, cases, out_dir, round3=()):
+    res_path = out_dir / f"{cfg['name']}.jsonl"
+    done = done_pairs(res_path)
     # 모델 올리기 — 걸린 시간과 VRAM 을 남긴다
     before = gpu_mem_mib()
     t0 = time.time()
@@ -409,7 +420,7 @@ def run_config(cfg, cases, out_dir, round3=()):
         for c in cases:
             d = HERE / "out" / "cases" / c["id"]
             info = json.loads((d / "case.json").read_text(encoding="utf-8"))
-            if (cfg.get("r3") or cfg.get("r4")) and (c["id"] not in round3 or info.get("stopped_s", 0) < 3):
+            if (cfg.get("r3") or cfg.get("r4")) and not stopped_scene(c["id"], info, round3):
                 continue   # 3·4차는 규칙이 고를 '멈춘 차'만
             for v in VARIANTS:
                 if (c["id"], v) in done or v not in cfg.get("variants", ["A", "B", "C"]):

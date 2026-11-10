@@ -93,12 +93,7 @@ def main():
     out_dir = HERE / "out" / a.results
     out_dir.mkdir(parents=True, exist_ok=True)
     res_path = out_dir / f"{cfg['name']}.jsonl"
-    done = set()
-    if res_path.exists():
-        for line in res_path.read_text(encoding="utf-8").splitlines():
-            r = json.loads(line)
-            if r.get("error") is None:
-                done.add((r["case"], r["variant"]))
+    done = run_vlm.done_pairs(res_path)
 
     import torch
     import transformers
@@ -129,7 +124,7 @@ def main():
         for c in cases:
             d = HERE / "out" / "cases" / c["id"]
             info = json.loads((d / "case.json").read_text(encoding="utf-8"))
-            if c["id"] not in round3 or info.get("stopped_s", 0) < 3:
+            if not run_vlm.stopped_scene(c["id"], info, round3):
                 continue   # 4차와 같은 장면 — 규칙이 고를 '멈춘 차'만 (run_vlm.run_config 와 같은 조건)
             for v in run_vlm.VARIANTS:
                 if (c["id"], v) in done or v not in cfg["variants"]:
