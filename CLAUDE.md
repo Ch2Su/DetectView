@@ -28,25 +28,14 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
 ```
 
 - 프로젝트 파일(`DetectView.csproj`)을 꼭 지정한다. 생략하면 폴더의 `.slnx` 가 잡혀 `NETSDK1194`(솔루션 + `--output`) 경고가 난다
-- 결과: `DetectView.exe` 126.4 MB (2026-10-24, Windows ML 런타임. 이전 DirectML 1.23 은 119.4 MB. 2026-10-30·10-31·11-01 다시 배포도 같은 크기 — 11-01 은 세 번: 이슈 수정판 `53db7ed`, 화면 개편판 `c274575`, 클래스별 검출 수 범례판 `fb06cf9` · 11-02 추적기 연결·라벨/꺾쇠·상태바판 `3939f40` · 11-03 관심 구역·화면 전환 감지·구역 이벤트 로그·유고 규칙·화면 식별판 `10f7b31` · 같은 날 폴더 이전·이름 정리판 — 위 '이름' · 11-05 YOLO 쌍선형 레터박스·NPU 짝 재보정판 `f863585` · 11-06 YOLO26m 640×384 판 `a378a58` — 이때는 사용자 승인으로 배포 폴더 모델도 바꿨다, 아래 · 11-07 VLM 설명판 `4c05f5f` 132,590,495 바이트 — exe 만 옮김 · 11-08 8클래스 모델판 `79a041a` 132,590,524 바이트 — 이때도 사용자 승인으로 배포 폴더 모델을 바꿨다, 아래 · 같은 날 TensorRT 판 `b8d4ee0` 132,596,048 바이트 — 배포 폴더에 FP16 짝 `best.fp16.onnx` 를 더함). 테스트 영상(`test1~4.mp4`)은 같은 폴더에 있어도 덮어쓰지 않는다
+- 결과: `DetectView.exe` 한 파일 약 132.6 MB(판별 배포 이력은 docs/build-deploy.md). 테스트 영상(`test1~4.mp4`)은 같은 폴더에 있어도 덮어쓰지 않는다
 - publish 뒤에는 배포본으로 UI 테스트를 돌린다: `pwsh tests\ui\Run-All.ps1 -ExeDir publish`
-- **`publish\best.onnx` 는 루트의 것과 다를 수 있고, 사용자가 수시로 바꾼다** (YOLO26s ↔ YOLO26x(COCO 80클래스),
-  데이터셋이 다른 7클래스 모델 등 — 2026-09-23 한 세션 안에서도 바뀌었다). 건드리지 말 것.
-  2026-11-06 엔 사용자 승인으로 루트와 같은 YOLO26m 640×384(`94A26C12…`)로 바꿨다 — 그 전 YOLO26s(09-17, `87D0E1CB…`)와 그 짝은
-  `publish\best.yolo26s-0917.onnx` · `best.yolo26s-0917.npu.onnx` 로 이름을 바꿔 옆에 두었다(앱은 `best.onnx`·`best.npu.onnx` 만 읽는다. `Test-NpuSwitch` 의 '다른 모델의 짝'이 이것을 쓴다).
-  2026-11-08 루트를 8클래스 YOLO26m(`AB56CED7…`)으로 바꾸고 같은 날 사용자 승인("배포하기")으로 배포 폴더도 같은 모델·짝(`546567CB…` — 루트 짝과 바이트까지 같다)으로 바꿨다.
-  그 전 7클래스 YOLO26m(11-05, `94A26C12…`)과 짝(`BD18D32C…`)은 `publish\best.yolo26m-1105.onnx` · `best.yolo26m-1105.npu.onnx` 로 이름을 바꿔 보관했다
-  **성능을 재거나 비교하기 전엔 그 순간 어떤 모델인지 확인한다** — 앱이 떠 있으면 창 제목에 보이고(아래),
-  아니면 파일 끝의 Ultralytics 메타데이터를 읽는다:
-  `uv run --no-project --python 3.12 python -c "import re,sys;f=open(sys.argv[1],'rb');f.seek(-65536,2);t=f.read().decode('utf-8','ignore');[print(k,'=',v.strip()[:80]) for k,v in re.findall(r'(description|names|date|imgsz)\x12.?([^\x00-\x08\x0e-\x1f]+)',t)]" publish/best.onnx`
-  (`imgsz` 가 `[384, 640]` 이면 16:9 영상용 640×384 판 — 같은 가중치의 640×640 판과 이름·날짜가 같을 수 있다)
+- **`publish\best.onnx` 는 루트의 것과 다를 수 있고, 사용자가 수시로 바꾼다. 건드리지 말 것** (바꾼 경과와 옆에 보관한 옛 모델 이름은 docs/build-deploy.md — 11-08 부터는 루트와 같은 8클래스 YOLO26m 이다).
+  **성능을 재거나 비교하기 전엔 그 순간 어떤 모델인지 확인한다** — 앱이 떠 있으면 창 제목에 보이고, 아니면 파일 끝의 Ultralytics 메타데이터를 읽는다(한 줄 명령은 docs/build-deploy.md)
 - 배포 폴더 모델을 바꾸면 짝 둘도 다시 만든다: NPU `pwsh tools\Make-NpuModel.ps1 -Model publish\best.onnx` (→ 그 옆 `best.npu.onnx`) ·
   TensorRT `pwsh tools\Make-Fp16Model.ps1 -Model publish\best.onnx` (→ 그 옆 `best.fp16.onnx`, 2026-11-08 — 아래 "추론 장치")
-- **앱용 ONNX 를 새로 내보낼 땐 end-to-end(`[1,300,6]`)인지 본다** — Ultralytics 8.4.142(라벨링 도구가 쓰는 판)의 `export(format="onnx")` 기본값은 NMS 전 원출력 `[1,84,8400]`(메타데이터 `end2end False`)이다.
-  `nms=False`(또는 `end2end=True`)를 줄 것. 지금 루트 `best.onnx`(8클래스 YOLO26m 640×384, 11-08 — 그 전 7클래스 판도)는 8.4.142 에서 `nms=False` 로 내보낸 end-to-end 다
-  (`experiments/RfDetrBench/step2/export_trained.py yolo <best.pt> <이름> --imgsz 384 640` — 그 README 끝 '8클래스'). 그 전 YOLO26s 는 8.4.31 기본값으로 end-to-end 였다 (2026-11-04 실측 — `experiments/RfDetrBench` README. 원출력 꼴을 앱이 어떻게 처리하는지는 확인 안 함 — 아래 3번의 전제가 깨진다).
-  같은 판의 **val 도 `nms` 를 안 주면 one-to-many 출력 + NMS 로 잰다**(학습 중 검증·`best.pt` 고르기도) — 학습 로그의 mAP 는 앱이 쓰는 end-to-end 출력보다 0.007~0.010 높게 나온다(2026-11-05 실측). 앱과 같은 걸 재려면 val 에 `nms=False`.
-  그 몫은 val 의 NMS 가 **multi-label**(한 박스가 여러 클래스로 남음)이라서다 — `nms=True` 로 내보낸 ONNX(박스마다 최고 클래스 하나)는 앱 경로에서 end-to-end 보다 AP 가 0.003~0.005 **낮다**(같은 날 — 아래 3번·"RF-DETR 검토")
+- **앱용 ONNX 를 새로 내보낼 땐 end-to-end(`[1,300,6]`)인지 본다** — Ultralytics 8.4.142(라벨링 도구가 쓰는 판)의 `export(format="onnx")` 기본값은 NMS 전 원출력 `[1,84,8400]` 이다.
+  `nms=False`(또는 `end2end=True`)를 줄 것. val 도 `nms=False` 를 줘야 앱과 같은 걸 잰다(안 주면 mAP 가 0.007~0.010 높게 나온다). 내보내기 명령·실측은 docs/build-deploy.md
 - publish 는 `best.onnx` 를 `PreserveNewest` 로 복사한다 → **루트 `best.onnx` 가 배포 폴더의 것보다 새로우면 덮어쓴다**.
   **worktree 에서 배포하면 거의 늘 그렇다**(루트 `best.onnx` 의 시각이 체크아웃한 때다) — 그땐 임시 폴더로 `-o` 를 주고 `DetectView.exe` 만 배포 폴더로 옮긴다(2026-11-05).
   worktree 에서 UI 테스트를 돌릴 때도 테스트가 `<저장소>\publish\test*.mp4` 를 찾으니 worktree 에 `publish` → `E:\DetectView\publish` 연결(junction)을 두고, 끝나면 링크만 지운다
@@ -56,66 +45,12 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
 - `.csproj` 의 `ExcludeSymbolsFromPublish` 타깃이 publish 출력에서 pdb(~92 MB, exe 밖에 따로 생기던 것)와 `.lib` 를 뺀다. 배포물은 `DetectView.exe` + `best.onnx` 뿐이다.
 - 실행 시 창 제목이 `DetectView — <모델> <입력 가로×세로> (<학습일> 학습) — <GPU 이름> (DirectML)` 로 바뀌면 GPU 초기화 성공이다.
   예: `DetectView — YOLO26m 640×384 (2026-11-08 학습) — NVIDIA GeForce RTX 5060 Laptop GPU (DirectML)`. 스모크 테스트는 이걸로 확인하면 된다.
-  모델 이름은 ONNX 메타데이터 `description`("Ultralytics YOLO26m model …")에서, 입력 크기는 ONNX 입력 꼴에서, 학습일은 `date` 에서 뽑는다(`DescribeModel`).
-  입력 크기는 2026-11-06 더했다 — 같은 가중치의 640×640 판과 640×384 판은 이름·학습일이 같은데 속도가 31% 다르다.
-  `date` 는 Ultralytics 가 **내보낸 때**를 쓴다(지금 모델은 11-08 학습을 마치고 같은 날 내보냄 · 그 전 7클래스 판은 11-05 — 배포 YOLO26s 도 학습한 날 내보냈다)
-  YoloDotNet 의 `ModelInfo` 에는 s/x 크기가 없어서 쓰지 않는다. 메타데이터가 없는 모델이면 `ModelInfo` 로 대신한다
+  제목을 만드는 법(`DescribeModel` — 이름·입력 크기·학습일을 어디서 뽑는지)은 docs/build-deploy.md
 
 ## 파일 구조
 
-`MainWindow` 는 partial class 로 기능별 분할돼 있다 (솔루션 탐색기에서는 `MainWindow.xaml` 아래에 묶여 보임).
-
-| 파일 | 역할 |
-|---|---|
-| `MainWindow.xaml.cs` | 공용 상태(`_mode`, 재생 루프 제어) + 모드 공통 UI(정지·재생/일시정지·슬라이더·`ApplyModeToUi`(지금 소스 버튼·상태 점 포함)·제목 표시줄 색·종료) |
-| `MainWindow.File.cs` | 파일 열기, VFR 메타데이터 분석(`AnalyzeAsync`/`ProbeSeekConsistent`/`ScanFrames`) |
-| `MainWindow.Camera.cs` | 카메라 열거(DirectShow)·시작 |
-| `MainWindow.Playback.cs` | 파일/카메라 공용 재생 루프, 재생 시계(원본 속도), 시크(`SeekToMs`→`ApplyPendingSeek`), EOF·카메라 유실. 보이는 프레임마다 추적기(`Tracker`)를 돌려 박스에 번호를 붙인다 |
-| `MainWindow.Screen.cs` | 화면 HUD: 모니터 선택, 캡처 루프(`ScreenLoop` — 첫 캡처 결과 보고·캡처 복구·모니터 배치 감시·추적기), 오버레이 갱신, 상태바 무시 영역, FPS 칸 문제 표시, UIA 진단 값 |
-| `MainWindow.Inference.cs` | 모델 로드, GPU 선택(`SelectBestGpu`·`CreateGpuYolo` — 판정은 `GpuAdapters`), `ProcessFrame`, `DetectTile`/`DetectBgra`(검출이 모두 여기로 — 레터박스는 `YoloLetterbox`, `_yoloLock` 안에서). YoloDotNet 의 축소 방식 `InputSampling`(쌍선형 — GPU·NPU 세션 모두 `YoloOptionsFor`, 레터박스 경로엔 듣지 않는 대비) |
-| `YoloLetterbox.cs` | YOLO 입력 레터박스를 OpenCV 쌍선형(`INTER_LINEAR`)으로 직접 만들어 YoloDotNet 에 넘기고(배율 1), 박스를 +0.5 해 그린 자리 그대로의 여백·배율로 되돌린다(2026-11-05 — 아래 '화면 HUD' 성능 절의 '입력 축소'). 크기는 모델 입력(`InputSize` — 정사각형이 아닐 수 있다. SAHI 타일·창 제목도 이걸 읽는다). WPF 없음 — TrackerCheck·RuntimeParity 가 소스로 링크 |
-| `MainWindow.Npu.cs` | 추론 장치 GPU · TensorRT · NPU 전환(장치 공통 상태 기계 — `_onDevice`·`_wantDevice`·`_prepDevice`)과 NPU: 왼쪽 패널 "추론 장치" 선택, 짝 모델 확인 → VitisAI EP 준비 → 백그라운드 컴파일 → `_yolo` 교체 (아래 "추론 장치") |
-| `MainWindow.Trt.cs` | 추론 장치 TensorRT (2026-11-08): FP16 짝 확인(`CheckTrtModel`) → Windows ML 카탈로그의 TensorRT for RTX EP 준비 → 백그라운드 엔진 만들기(커널 캐시) — 전환은 `MainWindow.Npu.cs` 의 상태 기계 |
-| `MainWindow.Roi.cs` | 왼쪽 패널 '구역' 절(목록·추가/지우기·유형)과 `RoiLayer` 를 잇고 구역 파일에 바로 저장. 편집 가능 여부는 `UpdateRoiUi` 한 곳 (파일 + 멈춤 + SAHI 아님) |
-| `WindowsMlExecutionProvider.cs` | YoloDotNet 실행 공급자 — Windows ML 의 ONNX Runtime 으로 DirectML(나중에 NPU) 세션을 돌린다. `FindDmlDevice` 로 PCI ID 매칭 |
-| `MainWindow.Sahi.cs` | SAHI 버튼·실행·결과 그리기 |
-| `Sahi.cs` | SAHI 순수 알고리즘 (`TileOrigins`, 앱이 쓰는 `TouchesInnerEdge`·`MergeCutPieces`, 비교용 `MergeNms`·`MergeNmm`, IoU/IoS) |
-| `Tracker.cs` | 객체 추적기 (시각 기반 탐욕적 IoU, 순수 알고리즘). 프레임 크기를 받으면(`Update(dets, ms, 폭, 높이)`) 테두리에 걸친 박스의 멈춤 판정을 바로잡는다. `UpdateTagged` 는 번호·정지 여부를 `Det` 에 붙여 돌려준다. 파일·카메라·화면 HUD 에 연결돼 있다(2026-11-02) — 아래 "추적기" |
-| `Roi.cs` | 관심 구역(ROI) 순수 모델·기하·파일 — 구역(`RoiZone`, 프레임 0~1 좌표 점들 + 유형 `RoiKind` + 그린 뷰 `ViewId`)·`RoiSet`(번호·`<영상>.roi.json` 판 2 읽기/쓰기 — 뷰 목록 포함)·`RoiGeometry`(안·밖·넓이·점 집기). WPF 없음 — experiments 가 소스로 링크 (2026-11-03, 아래 "관심 구역"·"화면 식별") |
-| `RoiLayer.cs` | 영상 위 구역 그리기·편집 요소(`RoiLayer`)와 유형별 색(`RoiTheme` — App.xaml 의 `Roi.*`). 앱 안 영상(파일)에서만, 편집 중에만 마우스를 받는다 |
-| `SceneChange.cs` | 화면 전환 감지 순수 알고리즘(`SceneChangeDetector`) — 카메라가 돌거나 화면이 바뀌었는지 64×36 흑백 그림 열로 본다. WPF·OpenCV 없음 — experiments 가 소스로 링크 (2026-11-03, 아래 "화면 전환 감지") |
-| `SceneThumbnail.cs` | 프레임 → 64×36 흑백 그림(면적 평균 축소 — 썸네일 + 감지기로 프레임당 약 0.8 ms). 앱과 실험 도구가 **같은 코드**로 만들어야 도구가 잰 임계값이 앱에서도 맞는다 (OpenCvSharp — TrackerCheck 도 소스로 링크) |
-| `MainWindow.Scene.cs` | 영상 위 화면 전환 배지(`SceneBadge` — `ShowSceneBadge`). 감지·추적기 연결은 `PlaybackLoop` |
-| `ZoneEvents.cs` | 구역 진입·나감 이벤트 순수 알고리즘(`ZoneEventDetector`) — 추적기를 거친 박스의 발 위치가 구역 안인지로 본다. WPF 없음 — experiments 가 소스로 링크 (2026-11-03, 아래 "구역 진입·나감 이벤트") |
-| `MainWindow.Events.cs` | 영상 아래 접이식 이벤트 로그 패널(`EventLogPanel` — 목록·CSV 저장·비우기·헤더의 `⚠ 유고 후보 N`)과 구역 스냅샷을 루프에 넘기는 `PublishZoneShapes`. 유고 후보 행의 VLM 둘째 줄(`EventListItem` 의 VLM 속성 — 단서 칩·한 줄 설명, CSV 끝 `vlm`·`vlm_cues`·`vlm_desc`) |
-| `MainWindow.Vlm.cs` | VLM 설명(2026-11-07 — 아래 "VLM 설명"): [VLM 설명] 토글·Ollama 확인·모델 올리고 내리기, 루프가 떼어 준 그림 영역을 큐(4칸)에 넣고 작업 하나가 VLM 을 불러 그 행에 붙인다 |
-| `VlmAnnotator.cs` | VLM 질문·스키마·요청 JSON·답 읽기(`VlmPrompt` — 실험 4차와 글자까지 같게)와 Ollama HTTP 호출(`OllamaVlmClient`), 단서(`VlmCue`)·결과(`VlmResult`). WPF·OpenCV 없음 — TrackerCheck 가 소스로 링크 |
-| `VlmCrop.cs` | VLM 에 보낼 그림 — 실험(`make_cases.crop_around`)과 같은 3배 정사각 크롭·빨간 박스·긴 변 512·JPEG 90. 자르기는 루프, 그리기·JPEG 은 작업 스레드 (OpenCvSharp — TrackerCheck 가 소스로 링크) |
-| `ViewIdentity.cs` | 화면 식별(뷰 식별 2b) — `ViewMatcher`(ORB 특징점 + RANSAC 호모그래피로 두 화면이 같은 카메라 자세인지)·`ViewRegistry`(알고 있는 뷰들: 알아보고, 처음 보는 안정 화면은 새 뷰로 기억)·`ViewInfo`(번호 + 기준 화면 JPEG — 구역 파일에 들어감). OpenCvSharp 만 쓰고 WPF 없음 — experiments 가 소스로 링크 (2026-11-03, 아래 "화면 식별") |
-| `IncidentRules.cs` | 유고 규칙 순수 알고리즘(`IncidentDetector`) — 차로에 멈춘 차량이 정지로 5초 이어지면 유고 후보. 이벤트는 `ZoneEvent`(Incident·IncidentEnd). WPF 없음 — experiments 가 소스로 링크 (2026-11-03, 아래 "유고 규칙") |
-| `GpuAdapters.cs` | GPU 어댑터 목록(DXGI 하드웨어)과 고성능/저전력 판정 — **내장 여부(DXCore `IsIntegrated`)** 로 가르고 못 읽으면 전용 VRAM. 추론 GPU 선택(`SelectBestGpu`)과 HUD 안내(`DisplayTopology.FindMonitorGpu`)가 같은 함수(`IsHighPerformance`·`Best`)를 쓴다. WPF 없음 — experiments 가 소스로 링크 |
-| `DisplayTopology.cs` | 모니터가 실제로 붙은 GPU(`QueryDisplayConfig`)와 이 exe 의 Windows 그래픽 설정(레지스트리 읽기) — GDI 대체 안내용. 저전력/고성능은 `GpuAdapters` 판정 |
-| `ScreenCapture.cs` | `MonitorInfo`, `PixelRect`, `IScreenCapture` 인터페이스(`Interruption`·`Redelivered` 포함), `ScreenCaptureLostException`, `ScreenCapture.Create()`(DXGI 우선·GDI 대체)·`Fallback()`(사유 붙은 GDI)·`GetMonitors()` |
-| `DxgiScreenCapture.cs` | DXGI Desktop Duplication 캡처 (기본 경로) |
-| `GdiScreenCapture.cs` | GDI BitBlt 캡처 (DXGI 불가 시 대체 경로) |
-| `OverlayWindow.xaml(.cs)` | 바탕화면 위 투명 HUD 창 (박스와 클래스별 개수 범례는 `BoxLayer` 가 그린다) |
-| `BoxLayer.cs` | 검출 박스 렌더러(단일 비주얼) — HUD 오버레이와 앱 안 영상(파일·카메라·SAHI, `FrameBoxes`)이 같이 쓴다. 왼쪽 위 클래스별 개수 범례도 같이 그리고 그 글자(`LegendText`)는 검출 수 칸의 UIA `ItemStatus` 로 나간다. 추적기를 거친 박스는 라벨에 번호·'정지'가 붙고(`CAR #12 정지 0.95`) 그 글자(`TrackText`)는 UIA `ItemType` 으로 나간다. 모양·색은 `App.xaml` 의 `Box.*` (아래 "화면 디자인") |
-| `Detection.cs` | `Det` 레코드 구조체 — SAHI와 HUD가 공유하는 검출 결과 타입. 추적기를 거친 박스는 `TrackId`·`Stationary`(init 속성)가 붙고, 유고 후보로 선언된 박스는 `Incident` 도 붙는다(아래 "유고 규칙"). `DuplicateBoxes` — 같은 자리 중복 박스 판정(앱 표시·추적기 공용, 아래 3번) |
-| `App.xaml` | 화면 모양 전체를 한 곳에 — 색(색 조합 B2 스틸 블루)·글꼴·버튼/콤보/슬라이더/툴팁/스크롤바 스타일·박스 색(`Box.*`) (아래 "화면 디자인") |
-| `Ui.cs` | 스타일이 읽는 첨부 속성 — 버튼 아이콘(`Glyph`·`GlyphBrush`)·`HoverBackground`·`IconOnly`·지금 소스 버튼(`IsActive`) |
-| `TestFaults.cs` | Debug 빌드 전용 결함 주입 — 환경 변수 `DETECTVIEW_TEST_FAULTS`(쉼표 구분): `hud-create-fail` · `hud-capture-lost` · `hud-detect-fail`. 훅은 `[Conditional("DEBUG")]` 라 Release 엔 호출 자체가 없다(Release DLL 에 결함 이름 문자열 없음 확인). `Test-ScreenHud.ps1` 이 쓴다. 가짜 VLM `vlm-fake` · `vlm-down` · `vlm-absent`(값을 돌려줘야 해서 `#if DEBUG` — `Test-VlmAnnotation.ps1`) |
-| `Directory.Build.props` | OpenCvSharp 판(`OpenCvSharpVersion`)을 두는 한 곳 — 본 앱·실험 프로젝트 넷이 같이 읽는다 ("절대 건드리면 안 되는 것들" 1번, 이슈 #9) |
-| `old/` | **2026-11-06 지웠다** — 사용자가 클라우드에 백업한 뒤. 있던 것: 이전 CPU 버전 보관본·최적화 전 백업(`backup_20260911_*`)·학교 과제 제출본(폴더·zip)·`old/docs/`(SRS·아키텍처 설계서)·옛 모델(9.5 MB)·공개 전 git 기록 bundle(아래 '도구 사용 주의'의 원격 항목). `.csproj` 의 제외 글롭과 `.gitignore` 의 `/old/` 는 그대로 둔다 — 다시 생겨도 빌드·graft 가 안전하게(아래 5번·graft 함정 1) |
-| `publish/` | 배포 산출물 + 테스트 영상(`test1~4.mp4`, 1280×720 30fps · `test5.mp4`, 아래 "테스트 영상 내용"). 원래의 VFR 테스트 파일 `recording.webm` 은 없어졌고, 대신 합성 파일 `tests/ui/media/vfr60_nodur.webm` 을 쓴다 |
-| `tests/ui/` | UI 자동화 회귀 테스트 (PowerShell + UI Automation). 아래 "테스트" 참고 |
-| `README.md` | GitHub 첫 화면 (2026-11-02 작성 — 기능·빌드·사용법·테스트·라이선스). 화면이 크게 바뀌면 같이 고칠 것. 스크린샷(test4 3초 장면, 실제 도로 CCTV 프레임)은 같은 날 넣었다가 영상 사용 권리를 확인하지 못해 뺐다(`docs/screenshot.png` 삭제 — 이 PC 의 옛 기록 `old-history` 의 `10e65db` 에만 남음). 다시 넣으려면 권리가 분명한 영상으로 |
-| `docs/` | CLAUDE.md 에서 옮긴 긴 설명·실측·지난 기록(2026-11-05) — 아래 '자세한 문서' 표. 세션마다 자동으로 읽히지 않는다 |
-| `LICENSE` · `THIRD-PARTY-NOTICES.md` | 저장소 라이선스 GNU AGPL-3.0 (2026-11-02 — 들어 있는 `best.onnx` 가 Ultralytics YOLO26 파인튜닝이라 Ultralytics 가 프로젝트 전체에 AGPL-3.0 을 요구)과 저장소 안 남의 저작물 고지(모델 AGPL-3.0 · `WindowsMlExecutionProvider.cs` 의 바탕 YoloDotNet MIT · `.claude/` 의 graft 연동 파일 MIT — 각 전문). 남의 코드·파일을 가져오면 여기에 더한다 |
-| `tools/` | `Make-NpuModel.ps1`(+ `npu_quantize.py`): YOLO 모델의 NPU 용 짝 `<이름>.npu.onnx` 만들기 · `Make-Fp16Model.ps1`(+ `fp16_convert.py`, 2026-11-08): TensorRT 용 FP16 짝 `<이름>.fp16.onnx` 만들기 (아래 "추론 장치") |
-| `best.npu.onnx` | 루트 `best.onnx` 의 NPU 짝 (A16W8·가중치 채널별 QDQ, 21.4 MB, git 추적 — 2026-11-08 8클래스 YOLO26m 640×384 로 다시 만듦, MD5 `546567CB…` · 그 전 7클래스 짝 `BD18D32C…`). 원본을 바꾸면 다시 만든다 |
-| `best.fp16.onnx` | 루트 `best.onnx` 의 TensorRT 짝 (FP16 — 입출력은 FP32, 40.9 MB, git 추적 — 2026-11-08, MD5 `D7D760DC…`). DirectML 로는 못 연다. 원본을 바꾸면 다시 만든다 |
-| `experiments/` | 따로 빌드하는 실험 프로젝트(각자 `.csproj`). 본 `.csproj` 의 `Compile/Page/None Remove` 로 빠져 있다. `NpuBench/`: AMD NPU 실험 — 짝 확인(`npu_quant`·`npu_source_md5`) 뒤에만 NPU 에 넣는다 (아래 "NPU"). `RuntimeParity/`: 런타임 교체 전후 검출 결과 비교 (1번 항목, GPU 선택은 두 빌드 모두 `GpuAdapters.cs`, 레터박스는 `YoloLetterbox.cs` 링크 — 2026-11-05 부터 좌표가 실수라 그 전 CSV 와 견주지 말 것). `TrackerCheck/`: 추적기 검증 (아래 "추적기")·테두리 멈춤 판정 합성 장면(`selftest` — 관심 구역 `Roi.cs` 의 판정·파일 검사 ⑧, 화면 전환 감지 합성 장면 ⑨, 구역 진입·나감 이벤트 ⑩, 유고 규칙 ⑪, 화면 식별 ⑫도 여기)·화면 식별 맞춤 실측(`views`)·화면 전환이 있는 합성 영상 만들기(`mkrevisit`)·화면 전환 감지 임계값 실측(`scene`)·GPU 고성능/저전력 판정(`gpu`)·중복 박스 필터 전후 비교 (3번 항목)·YOLO 입력 축소 방식(`InputCheck.cs` — 데이터셋 시험 분할을 앱 경로로 검출하고 Skia·OpenCV 축소를 화소 비교 `testsplit`, 축소 시간·결정성 `inputbench`)·앱의 VLM 그림·요청이 실험과 같은지(`vlm` — `VlmCheck/check_app_parity.py` 가 부른다). `RfDetrBench/`: RF-DETR 를 앱 런타임(DirectML)에서 — 노드 배치·속도·결과 일치, 같은 COCO 정확도의 YOLO26 과 비교. `step2/` 는 같은 데이터로 학습(WSL)·내보내기·시험 분할 평가, YOLO 변형(NMS 내보내기·640×384 — 속도는 `yolo`)도 (아래 "RF-DETR 검토"). `VlmCheck/`: 유고 후보를 로컬 VLM(Ollama)으로 2차 확인하는 실험(파이썬 — 앱에는 없음, `docs/incident-detection.md` 끝)과 앱과 GPU 를 나눠 쓸 때의 계측(`Measure-GpuShare.ps1` — 앱 연결 설계는 `docs/vlm-annotation.md`). 산출물 `*/out/`·`*/bin/`·`*/obj/`·`*/.venv/` 는 gitignore |
-| `graft/` · `.claude/` | 코드 인덱스(graft)와 그 에이전트 연동. graft 는 CLI 로만 쓴다 — MCP 서버 등록은 2026-11-02 사용자 결정으로 전역(`~/.claude.json`)과 이 저장소(`.mcp.json` 삭제) 모두 뺐다. `graft/` 는 재생성 가능한 캐시라 커밋하지 않는다. `.claude/helpers/graft-statusline.cjs`(상태줄)는 graft 설치 경로를 `%APPDATA%\npm` 에서 계산한다(2026-11-02 — graft 가 박아 넣은 `C:\Users\<이름>\…` 경로를 저장소에서 뺌. graft 를 다시 설치해 박힌 경로로 돌아오면 다시 고칠 것). graft 훅은 전역 `~/.claude/settings.json` 에만 둔다 — 프로젝트에도 있으면 둘 다 돌아 세션마다 graft 안내문이 두 번 들어가고 도구마다 훅이 두 번 돈다(2026-11-02 프로젝트 쪽 훅과 `graft-hooks.cjs` 를 뺌. graft 를 이 저장소에 다시 설치해 돌아오면 다시 뺄 것) |
+파일별 역할 표는 [docs/files.md](docs/files.md) 에 있다(실험 프로젝트는 `experiments/CLAUDE.md` — 그 폴더의 파일을 다룰 때 읽힌다).
+`MainWindow` 는 partial class 로 기능별 분할돼 있다(`MainWindow.<기능>.cs` — 솔루션 탐색기에서는 `MainWindow.xaml` 아래에 묶여 보임). 코드 위치는 graft 로 찾는다.
 
 ## 자세한 문서 (`docs/` — 세션마다 자동으로 읽히지 않는다)
 
@@ -132,6 +67,10 @@ CLAUDE.md 가 매 세션 컨텍스트를 너무 많이 차지해서(13만 자) 2
 | `docs/rf-detr.md` | RF-DETR 검토 — 단계별 결과(실험 자체는 `experiments/RfDetrBench/README.md`) |
 | `docs/vlm-annotation.md` | VLM 설명 — 유고 후보에 로컬 VLM 단서·설명을 붙인다(2026-11-07 구현 — 화면 '두 줄 행'): 흐름·크롭·단서 표시·실패·GPU 공유 실측·실험과의 대조·진짜 Ollama 확인 |
 | `docs/testing.md` | UI 테스트 — 파일별 설명 · 지난 전체 통과 기록 · 테스트가 확인하지 않는 것 |
+| `docs/files.md` | 파일 구조 — 파일별 역할 표(2026-11-10 CLAUDE.md 에서 옮김) |
+| `docs/build-deploy.md` | 빌드 · 배포 — 배포 이력 · 배포 폴더 모델을 바꾼 경과 · ONNX 내보내기 실측 · 창 제목 만드는 법 |
+| `docs/runtime.md` | 런타임 교체 전후 비교 · OpenCvSharp 판을 맞춘 경과 · 중복 박스 필터 실측 |
+| `docs/repo-history.md` | 공개 저장소 경과 — 첫 커밋 · 옛 기록 보관 · 공개 정리 |
 
 새로 알게 된 실측·경과는 해당 `docs/` 문서에 쓰고, CLAUDE.md 에는 모든 세션이 알아야 할 규칙·함정만 더한다.
 
@@ -154,22 +93,15 @@ CLAUDE.md 가 매 세션 컨텍스트를 너무 많이 차지해서(13만 자) 2
 - DirectML 장치는 DXGI 어댑터의 **PCI 벤더·장치 ID 로** 맞춘다(`SelectBestGpu` → `FindDmlDevice`). 하이브리드라 DirectML 장치가 AMD·NVIDIA 둘이다. 못 찾으면 첫 DirectML 장치로 돌고 제목에 `<벤더> GPU` 로 드러난다
 - 검증법: 출력의 `runtimes\win-x64\native\onnxruntime.dll` 이 **22.0 MB · 파일 버전 1.27**, `DirectML.dll` 17.8 MB(1.15.4). 실행 중 프로세스 모듈에 이 둘이 올라와 있어야 한다
 - TFM 은 `net10.0-windows10.0.19041.0` (Windows ML 의 WinRT API 때문에 SDK 버전 필요). **22621 이상으로 올리지 말 것** — `Vortice.DXGI` 가 그 TFM 전용 빌드로 바뀐다. Debug 출력도 `bin\Debug\net10.0-windows10.0.19041.0\` 로 바뀌었다
-- 교체 전후 비교(2026-10-24, 단일 파일 배포본, test1.mp4 재생 처리 FPS 5회 중앙): 기존 DirectML 1.23 **98.5 / 98.6** vs Windows ML **99.1** — 차이 없음. exe 119.4 → 126.4 MB. UI 테스트 3종 통과
-- **검출 결과는 비트 단위로 같다**: test1~5 각 40프레임(200장)·검출 2538개가 좌표·신뢰도까지 완전히 일치(결과 CSV 해시 동일). 같은 런타임 두 번 실행도 완전히 같다(DirectML 결정적).
-  `experiments/RuntimeParity/`(같은 소스를 `Old/`·`WinML/` 로 두 번 빌드) — 런타임을 다시 바꿀 때 같은 방법으로 확인한다.
-  참고로 옛 조합은 `DirectML.dll` 을 배포하지 않고 **OS 의 `System32\DirectML.dll`(1.15.6)** 을 썼다. Windows ML 은 자기 것(1.15.4)을 exe 에 넣는다
+- 교체 전후 속도는 차이가 없고 **검출 결과는 비트 단위로 같다**(실측은 docs/runtime.md) — 런타임을 다시 바꿀 땐 `experiments/RuntimeParity/`(같은 소스를 `Old/`·`WinML/` 로 두 번 빌드)로 같은 방법으로 확인한다
 - 이전 조합(`Microsoft.ML.OnnxRuntime.DirectML`/`.Managed`/`ExcludeAssets` 세 줄, `onnxruntime.dll` 16.4 MB 검증)은 `main` 기록에 있다.
   그때의 교훈은 그대로다: 코드에서 쓰지도 않던 `YoloSharp` 6.1.0 이 `Microsoft.ML.OnnxRuntime >= 1.23.2` 를 끌어와 CPU판으로 되돌려놨었다. **ONNX 관련 패키지를 추가할 때 이 충돌을 먼저 의심할 것.**
 - 미사용 패키지(`Compunet.ScreenCapture`, `SixLabors.ImageSharp`, `OpenCvSharp4.Extensions`/`.WpfExtensions`/`.Windows`)는 2026-09-11 제거했다. `Vortice.Direct3D11` 은 DXGI 캡처용으로 추가(`Vortice.DXGI` 와 같은 3.8.3 으로 맞출 것).
 - OpenCvSharp 두 패키지(관리 `OpenCvSharp4`·네이티브 `OpenCvSharp4.runtime.win`)는 **같은 날짜 판**이어야 한다. 판은 저장소 루트 **`Directory.Build.props` 의 `OpenCvSharpVersion` 한 곳**이고,
   본 앱과 실험 프로젝트 넷(NpuBench·TrackerCheck·RuntimeParity/Old·WinML)의 두 `PackageReference` 가 모두 그 값을 쓴다. 지금 판은 4.13.0.**20260302**(두 nuspec 이 같은 원본 커밋 shimat/opencvsharp `4f66185` 을 가리키는 짝).
-  초기 커밋부터 관리 20260526 + 네이티브 20260302 로 어긋나 있었다 — 관리 DLL 의 P/Invoke 진입점 2879개 중 117개(`aruco_*`·`saliency_*`·`shape_*`·`ximgproc_*` 등)가 네이티브에 없었고
-  시그니처가 바뀐 것도 10개(LineSegmentDetector·MergeDebevec·MergeMertens) 있었다. 빌드는 되고 부르는 순간 터진다.
-  runtime.win 에 20260526 판이 없어 관리 쪽을 내렸다(2026-10-31, 이슈 #9): 네이티브 DLL(`OpenCvSharpExtern.dll`·`opencv_videoio_ffmpeg4130_64.dll`)은 바이트 단위로 그대로,
-  앱 컴파일 결과(IL·MemberRef 750개)도 같고, test1~5·`vfr60_nodur.webm` 7,696 프레임의 디코딩·시크·CvtColor·그리기와 RuntimeParity 검출 CSV(2538개)도 옛 짝과 완전히 같았다.
+  (초기 커밋부터 두 판이 어긋나 있던 경과와 맞춘 뒤의 검증은 docs/runtime.md 'OpenCvSharp 판')
   **판은 `Directory.Build.props` 에서만 바꾼다** — `dotnet add package` 로 한쪽만 올리면 그 줄의 `$(OpenCvSharpVersion)` 이 숫자로 덮여 다시 어긋난다(속성이 비면 복원이 NU1015 로 멈춘다).
   바꿀 땐 ① NuGet 에 그 날짜의 runtime.win 이 있는지 먼저 보고 ② 네이티브가 바뀌면 아래 "파일 재생 · 시크"의 OpenCV 동작·검출 결과(RuntimeParity)·UI 테스트를 다시 본다.
-  참고(10-31 평가만, 채택 안 함): 20260627 짝은 네이티브를 다시 빌드해 contrib 13개가 빠졌고(bioinspired·ccalib·dpm·stereo·videostab 등) 관리 쪽 AssemblyVersion 이 4.0.0.0 이다.
   `Directory.Build.props` 는 MSBuild 가 위로 올라가며 처음 찾은 하나만 읽어서 `.claude\worktrees\` 의 빌드(예전엔 `old\*.csproj` 도)도 가져간다 — 지금은 속성 하나라 무해하지만 타깃을 넣으면 그 빌드들에도 걸린다
 
 ### 2. `TargetClasses` 의 `"scooter"`·`"pickup"` 은 의도된 것
@@ -198,14 +130,9 @@ TrackerCheck 사본 둘에도 같이 더했다. 클래스를 또 더하면 이 �
 - 넣은 곳: `ProcessFrame`(그리기 전), HUD(`DetectBgra` 결과를 받자마자), SAHI(**타일 병합(`MergeCutPieces`) 뒤**). SAHI 를 타일마다 먼저 빼면
   병합 입력이 바뀌어 중복 아닌 박스가 빠지거나(test4 20.0초 원거리 car, test5 44.75초 타일 경계에 걸린 탱크로리 아랫부분) 병합이 지웠던 박스가
   되살아났다(test5 29.25초) → 병합 결과는 그대로 두고 그 위에서 뺀다. 이러면 다른 타일에서 나온 car/truck 중복(병합은 같은 라벨끼리만)도 빠진다
-- 실측(2026-10-25, `experiments/TrackerCheck` 의 `dedup`): 프레임 검출 test4 18795 → **17892개(−4.8%)** (같은 라벨 IoU>0.7 553 · 같은 라벨 범위만 다름 294 ·
-  차량 라벨 다름 56), test5 5451 → **5289개(−3.0%)**. 목표 정지 차량(test4 덤프트럭·test5 갓길 화물차) 자리에 박스가 둘 이상인 프레임 1·2 → 0.
-  SAHI(15프레임에 1장) 병합 결과 test4 2054 → 2028, test5 468 → 427 — 빠진 것은 모두 남은 박스의 중복이고 새로 생긴 박스 없음.
-  앱으로 test4 를 1.1·4.9·23.9초에서 멈춰(SAHI 포함) 눈으로 봤을 때 겹친 라벨이 사라지고 빠진 차 없음
+- 필터 전후 검출 수·SAHI 병합 결과 실측(`experiments/TrackerCheck` 의 `dedup`)은 docs/runtime.md '중복 박스 필터'
 - 한계(확인 안 함): 크기가 비슷한 두 물체가 앞뒤로 거의 다 겹치면(작은 쪽 80% 이상이 큰 쪽 안) 하나로 친다 — 사람 둘이 앞뒤로 선 경우 등
-- **NMS 를 넣어 내보낸 모델(Ultralytics `nms=True`)로 바꿔도 이 필터는 그대로 필요하다** (2026-11-05, 2단계 학습 YOLO26s 로 test1~5 모든 프레임 — `experiments/RfDetrBench` README 'YOLO 남은 여지'):
-  같은 클래스 IoU>0.7 쌍은 180~553 → 0~6 으로 거의 없어지지만, 클래스별 NMS 가 못 지우는 같은 자리 car+truck·범위만 다른 중복은 영상 5개 중 4개에서 늘고(test4 1,027 → 1,577쌍) 박스도 5~10% 많다.
-  그 모델 자체도 권하지 않았다 — 시험 분할 AP 가 오히려 0.003~0.005 낮고(작은 물체·AR100 손해) `NonMaxSuppression` 이 DirectML 에 없어 CPU 로 가 `session.Run` 이 1 ms 느리다
+- **NMS 를 넣어 내보낸 모델(Ultralytics `nms=True`)로 바꿔도 이 필터는 그대로 필요하다** — 클래스별 NMS 는 같은 자리 car+truck·범위만 다른 중복을 못 지운다(실측은 docs/runtime.md '중복 박스 필터')
 
 ### 4. DXGI GPU 선택 시 `PointerUSize`
 어댑터 열거는 `GpuAdapters.Enumerate` 한 곳이다. `AdapterDescription1.DedicatedVideoMemory` 는 `SharpGen.Runtime.PointerUSize` 다.
@@ -409,28 +336,14 @@ pwsh tests/ui/Run-All.ps1
 - 마지막 전체 통과: 2026-11-08 저녁, 배포본 `publish`(`b8d4ee0` — TensorRT 판) `Run-All` 270 항목 모두 통과(`Test-Incident` 의 표본 구간을 13.6초까지 늘린 뒤 — 그 전엔 1초도 안 되는 구간에서
   표본이 하나 모자라는 실행이 있었다). 같은 날 Debug 는 305 항목 중 304 — 남은 1건이 그 표본 수였다. 자세한 기록과 그 전 기록은 docs/testing.md
 
-### 테스트 영상 내용 (유고 감지 구상용 기준 사례, 2026-10-23 분석)
-
-둘 다 실제 도로 CCTV 다. 시각은 각 파일 안의 시각.
-
-- **`test4.mp4`** (30.5초) — **방향이 바뀌는 CCTV**(이어 붙인 영상 아님). 10.5~11.4초·20.5~21.2초에 카메라가 돌아간다(모션 블러, 방향 안내 오버레이 글자도 같이 움직임)
-  - 0~10.5초: 2차로 한가운데 고장 정차한 **덮개 덮은 덤프트럭**(약 98×86 px) + 트럭 오른쪽 뒤에 서 있는 사람(8×23 px — 전체 프레임 검출로는 안 잡히고 2배 확대해야 잡힘). 다른 차는 옆 차로로 비켜 감 → 양성(차로 차단)
-  - 21.2~30.5초: 교차로 정지선 앞 신호대기 행렬 21~32대가 내내 정지, 교차·반대 방향·우회전 차량은 움직임 → 음성(정상 정차)
-- **`test5.mp4`** (47.0초, 1280×854 60fps, 26.6 MB) — [청주영덕선] 사일산터널(청주외부1). 흰색 소형 화물차가 **터널 출구 직후 갓길**에 내내 정차, 터널에서 나온 차가 옆 차로로 통과 → 양성(갓길). 카메라 회전 없음
-  - 원본: 사용자가 UTIC 웹 뷰어를 OBS 로 녹화한 `2026-10-23 11-18-42.mkv`(OBS 녹화 폴더, 2560×1440) 의 18.0~65.0초를 영상 영역 (643,314) 1280×854 로 잘라 ffmpeg `mp4v` 로 저장. 검출 결과는 원본 크롭과 172/175 일치(IoU 0.98), `Set(PosFrames)` 시크 정확
-  - 원본 스트림은 약 31fps 라 프레임의 약 49% 가 중복이다(60fps 로 저장해 타이밍 유지). **29.63~29.98초에 스트림이 검게 끊긴다**(원본의 실제 끊김, 일부러 남김)
-  - MSMF H.264 로 쓰면 고정 비트레이트라 같은 길이가 200 MB 가 된다 — 다시 만들 땐 `VideoCaptureAPIs.FFMPEG` + `mp4v`
+- 테스트 영상 내용(유고 감지 기준 사례)은 docs/testing.md 끝 '테스트 영상 내용' — `test4.mp4` 는 방향이 바뀌는 CCTV(0~10.5초 차로에 정차한 덤프트럭 = 양성, 21.2초~ 신호대기 행렬 = 음성),
+  `test5.mp4` 는 터널 출구 갓길에 정차한 화물차(양성, 1280×854 60fps — 29.63~29.98초에 스트림이 검게 끊긴다)
 
 ## 코드 인덱스 (graft)
 
 `graft/` 에 파일별 카드 + 호출 그래프가 들어 있다 (2026-09-21 도입. 인덱싱 대상은 git 이 추적하는 소스 — 루트, `tests/`, `tools/`, `experiments/`).
 소스를 통째로 읽는 대신 여기서 `file:line` 을 받아 그 지점만 열면 된다.
 
-```bash
-graft ask "화면 캡처 루프 흐름" --source
-```
-
-`ask`(위치+이해) · `grep`(빠짐없이 찾기) · `callers <sym>`(호출자, `--depth`) · `skeleton <file>`(파일 API) · `map`(전체 조감).
 쿼리마다 그래프를 자동 갱신하므로 **코드를 고친 뒤 `graft build` 를 다시 돌릴 필요는 없다.**
 `graft/` 안의 `.md` 카드만 턴 끝에 갱신되므로, 방금 고친 파일은 카드보다 위 도구를 믿을 것.
 또 git 이 추적하는 `.ignore` 의 `!graft/` 때문에 Grep(ripgrep) 결과에 `graft/*.md` 카드(줄 범위 포함)가 섞여 나온다 — 소스 줄로 착각하지 말 것.
@@ -467,23 +380,16 @@ LLM 개념 맵(`graft build --deep`)은 API 키가 필요해서 돌리지 않았
 - **git 저장소다** (2026-09-21 `git init`, 브랜치 `main`). 되돌리기 안전망이 생겼으니 백업 폴더를 따로 쌓지 않는다. git 이전 기록이 든 옛 `old/`(공개 전 기록 bundle 포함 — 아래 원격 항목)는
   2026-11-06 사용자가 클라우드에 백업하고 이 PC 에서 지웠다
 - **원격은 `origin` 하나 = 공개 저장소 GitHub `Ch2Su/DetectView`** (2026-11-02 공개 — 사용자 결정: 옛 기록은 공개하지 않는다).
-  옛 기록의 마지막 상태(`f8d66f4`)를 그대로 담은 기록 없는 첫 커밋(`6c43790`)부터 시작했다. 올리는 건 `main` 하나다.
-  2026-11-06 GitHub 사용자 이름이 `chisu0208` → `Ch2Su` 로 바뀌어(계정 ID 42445310 같음) origin 주소를 옮겼다 — 옛 주소는 GitHub 가 새 주소로 넘겨 주지만, 옛 이름을 다른 사람이 가져가면 끊긴다.
-  - **옛 개발 기록(2026-09-21~11-02, 커밋 75개)은 공개하지 않았다** — 이 PC 의 로컬 태그 `old-history`(`f8d66f4`)와, 사용자가 클라우드에 백업한 bundle `DetectView-history-2026-11-02.bundle`
-    (44.9 MB — 2026-11-06 까지 `old/` 안에 있었다. `git clone <파일>` 로 되살아난다 — 복원 확인함)에만 있다. 그 기록을 담았던 비공개 저장소(`DetectView` → `DetectView-history` 로 이름 바꿈)는 같은 날 사용자가 지웠고 이슈 #1~#11 도 함께 없어졌다.
+  올리는 건 `main` 하나다. 경과(첫 커밋·GitHub 사용자 이름 변경·옛 비공개 저장소)는 docs/repo-history.md
+  - **옛 개발 기록(2026-09-21~11-02, 커밋 75개)은 공개하지 않았다** — 이 PC 의 로컬 태그 `old-history`(`f8d66f4`)와 사용자가 클라우드에 백업한 bundle 에만 있다.
     **이 문서·메모의 커밋 해시(`6d1f61a` 등)와 이슈 번호 #1~#11 은 모두 그 옛 기록의 것**이다 — 해시는 `git show <해시>`·`git log old-history` 로 이 PC 에서 본다.
-    이슈 본문은 남아 있지 않지만 내용은 이 문서의 해당 서술(번호 옆)에 있다. 이 PC 엔 이제 태그만 있다 — 태그를 지우면 이 PC 에선 옛 기록이 사라진다
-    (클라우드의 bundle 로 되살린다. `git gc` 는 태그가 가리키는 커밋은 지우지 않는다).
+    태그를 지우면 이 PC 에선 옛 기록이 사라진다(클라우드의 bundle 로 되살린다)
   - **옛 기록을 `origin` 에 올리지 말 것** — `old-history` 태그·`claude/*`·`spike/*` 브랜치·옛 worktree 가 다 그렇다. 올리면 옛 커밋 75개(실제 이메일이 작성자인 72개와 뺀 CCTV 스크린샷 포함)가 공개된다.
     로컬 `.git/hooks/pre-push`(git 이 추적하지 않음 — 지우면 보호가 사라진다)가 옛 기록의 뿌리 커밋 둘을 조상으로 가진 커밋·태그를 공개 저장소로 올리면 push 전체를 거부한다(그래서 `git push --tags` 도 막힌다).
     공개 저장소는 **주소로** 알아본다 — 새·옛 주인 이름(`ch2su`·`chisu0208`) 둘 다, 대소문자 무시(11-06). 주인 이름이 또 바뀌면 훅의 목록에도 더할 것 — 안 그러면 origin 을 새 주소로 바꾸는 순간 보호가 소리 없이 꺼진다.
     옛 기록의 커밋을 `main` 에 merge·cherry-pick 하지도 말 것 — merge 는 옛 기록 전체를, cherry-pick 은 옛 작성자(실제 이메일)를 끌고 온다. 필요한 건 파일 내용만 옮긴다.
   - **rebase·amend·force push 로 올린 기록을 고쳐 쓰지 말 것** (옛 기록 때도 웹에서 생긴 첫 커밋을 force push 로 지우지 않고 합쳤다 — `f7646a6`).
-  - 공개 정리 (2026-11-02 점검 — 비밀값은 옛 기록 전체에 없었다): 저장소 전체 GNU AGPL-3.0(`LICENSE`), 남의 저작물 고지 `THIRD-PARTY-NOTICES.md`(README 라이선스 절엔 NuGet 외부 구성요소 표).
-    커밋 작성자 이메일은 이 저장소 설정(`.git/config` 의 `user.email` — worktree 도 같이 쓴다)만 GitHub noreply `42445310+chisu0208@users.noreply.github.com` 이다(계정 ID 로 잇는 주소라 11-06 사용자 이름이 바뀐 뒤에도 그대로 쓴다 · 전역 `~/.gitconfig` 도 같은 날 사용자 승인으로 같은 noreply 로 바꿨다 — 이 PC 의 다른 저장소 push 가 GH007 로 막히지 않게).
-    README 스크린샷(test4 3초 장면, 실제 도로 CCTV 프레임 — 출처 기록 없음)은 영상 사용 권리를 확인하지 못해 뺐다(옛 기록에만 있다).
-    GitHub 계정은 'Keep my email addresses private'·'Block command line pushes that expose my email' 을 켰다(11-02 사용자) — 실제 주소가 작성자인 커밋을 push 하면 GitHub 가 막는다(GH007).
-    모델 메타데이터 `description` 에 학습 데이터 폴더 경로가 들어 있지만 그대로 뒀다 — 모델 파일을 바꾸면 MD5 가 바뀌어 NPU 짝·컴파일 캐시를 다시 만들어야 한다
+  - 커밋 작성자 이메일은 이 저장소 설정·전역 `~/.gitconfig` 모두 GitHub noreply 다 — 실제 주소가 작성자인 커밋을 push 하면 GitHub 가 막는다(GH007). 공개 정리의 나머지 경과는 docs/repo-history.md
 - GitHub CLI `gh` 2.103.3 은 2026-10-30 winget 으로 설치했다(`C:\Program Files\GitHub CLI\gh.exe`). 설치 전에 뜬 앱·셸에선 PATH 에 없으니 전체 경로로 부른다
 - **남은 버그·개선 거리는 GitHub 이슈로 관리한다** — 2026-10-30 분석에서 남은 낮은 버그 11건을 #1~#11 로 등록했고, 2026-10-31~11-01 모두 고쳤다
   (이 문서의 해당 서술 옆에 그 번호가 남아 있다 — **그 이슈들은 옛 비공개 저장소와 함께 지워졌다**. 공개 저장소의 이슈는 #1 부터 다시 매겨지니
