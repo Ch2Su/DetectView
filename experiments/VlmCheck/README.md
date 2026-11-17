@@ -10,7 +10,7 @@
   - `qwen3.5:2b`(Q8_0) · `qwen3.5:4b`(Q4_K_M) — 둘 다 비전 + 생각 모드(기본 켬 — 여기선 따로 켜고 끔)
   - `gemma3:4b` · `qwen3-vl:8b-instruct`
 - RTX 5060 Laptop 8 GB(다른 앱이 1.5 GB 쓰는 상태), 전원 연결
-- 영상: `E:/DetectView/publish` 의 test1~5 와 사용자가 11-07 모은 사고 처리 CCTV(`incidents/`, 그 폴더 README)
+- 영상: 저장소 `publish`(그때 노트북 `E:/DetectView/publish`)의 test1~5 와 사용자가 11-07 모은 사고 처리 CCTV(`incidents/`, 그 폴더 README)
 
 ## 장면 — `cases.json` 18개(1차) + 12개(2차 — 아래 결과 3) + 3개(3차 정상 정차 — 결과 4)
 

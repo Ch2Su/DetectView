@@ -7,15 +7,24 @@ WPF(.NET 10) 실시간 객체 검출 애플리케이션. YOLO ONNX 모델을 **D
 
 | 항목 | 값 | 비고 |
 |---|---|---|
-| 폴더 | `E:\DetectView` | 예전 `E:\VS_E\YOLO11_Test` — 2026-11-03 옮김 (옛 폴더는 사용자가 백업한 뒤 지웠다 — 2026-11-04 무렵) |
+| 폴더 | `C:\DetectView` | 2026-11-17 데스크탑으로 옮김(아래 "개발 PC"). 그 전 노트북에선 `E:\DetectView` — 그 앞은 `E:\VS_E\YOLO11_Test`(2026-11-03 옮김, 옛 폴더는 사용자가 백업한 뒤 지웠다 — 2026-11-04 무렵) |
 | 프로젝트·솔루션 / 네임스페이스 / `AssemblyName` / 제품명 / 창 제목 | `DetectView` (`DetectView.csproj`·`DetectView.slnx`·`namespace DetectView`) | 예전엔 `YOLO11_Test` 였다 — 옛 이름은 git 기록(`old-history` 태그)과 클라우드에 백업한 옛 `old/` 안에만 남는다 |
 | 배포 폴더 | `publish` | 예전 `publish_gpu_ver` |
 | 모델 | YOLO**26m** 파인튜닝 ONNX, 입력 **640×384**(16:9 영상용) (`best.onnx`, 78 MB, **8클래스** — 7클래스에 `pickup`) | 2026-11-08 교체 — 라벨링 도구(`E:\local_auto_labeling`)가 11-08 데이터로 학습한 8클래스 YOLO26m(사용자 결정). 그 전: 같은 YOLO26m 640×384 7클래스(11-06~, "RF-DETR 검토" 3단계) · YOLO26s 640×640(36 MB, 2026-09-11~ · 그 전엔 9.5 MB 모델). YOLO11 아님 |
 
 원래 학교 과제로 시작해(제출 완료) 지금은 개인 취미 프로젝트다. CPU 추론 → GPU(DirectML) 전환이 끝난 상태.
 **이 문서·`docs/`·메모의 옛 서술(날짜가 붙은 기록)에는 `YOLO11_Test`·`publish_gpu_ver` 대신 새 이름이 들어가 있다** — 이름만 일괄로 바꿨고 그때 폴더가 달랐다는 건 위 표가 말해 준다.
-Windows 그래픽 설정(`HKCU\…\UserGpuPreferences`)은 exe 경로별이라 옛 `publish_gpu_ver\DetectView.exe` 의 `GpuPreference=0` 은 새 `E:\DetectView\publish\DetectView.exe` 에 없다 —
-없으면 'Windows에서 결정'(0 과 같은 동작)이다. 필요하면 설정 → 디스플레이 → 그래픽에서 새 exe 를 다시 지정한다 (이 도구로는 건드리지 않는다).
+Windows 그래픽 설정(`HKCU\…\UserGpuPreferences`)은 exe 경로별이라 옛 `publish_gpu_ver\DetectView.exe` 의 `GpuPreference=0` 은 폴더를 옮긴 새 exe 에 없다 —
+없으면 'Windows에서 결정'(0 과 같은 동작)이다. 필요하면 설정 → 디스플레이 → 그래픽에서 새 exe 를 다시 지정한다 (이 도구로는 건드리지 않는다). 하이브리드 GPU 인 노트북 얘기다 — 데스크탑은 GPU 가 하나라 지정할 게 없다.
+
+## 개발 PC (2026-11-17 노트북 → 데스크탑)
+
+- **지금: 데스크탑** `C:\DetectView` — Intel i5-14400F · **NVIDIA RTX 5060 Ti 하나**(내장 그래픽 없음 → 하이브리드 GPU 아님) · **NPU 없음** · 배터리 없음 · 모니터 1대 2560×1440
+- 그 전: 노트북 `E:\DetectView` — Ryzen AI 5 340 · Radeon 840M + RTX 5060 Laptop(하이브리드) · AMD NPU · 배터리.
+  **이 문서·`docs/`·메모에서 2026-11-17 전의 '이 PC'·성능 실측·GPU 이름·`E:\` 경로는 모두 노트북 것이다** — 데스크탑에서 잰 값과 섞어 견주지 말 것(날짜가 붙은 옛 기록은 그때 사실이라 고치지 않는다)
+- 데스크탑에선 확인할 수 없는 것: 하이브리드 GPU·DXGI 어댑터 함정("화면 HUD"), NPU(장치 목록에서 막히고 `Test-NpuSwitch` 의 NPU 쪽은 [INFO] 로 건너뛴다). 그 코드·규칙은 그대로 둔다 — 그 영역을 고치면 검증이 비는 걸 알린다
+- 데스크탑에 옮기지 않은 것: 라벨링 도구(`E:\local_auto_labeling`) · Ollama 모델(VLM 설명을 쓰려면 `ollama pull qwen3.5:4b`) · 옛 worktree. `old-history` 태그 · `pre-push` 훅 · 로컬 브랜치는 같이 왔다
+- .NET SDK 가 10.0.404 · 11.0.100 둘이고 `global.json` 이 없어 빌드는 SDK 11 로 돈다(TFM 은 그대로 net10.0). 이전 경과·그날 검증은 docs/testing.md 의 2026-11-17 기록
 
 ## 빌드 · 배포
 
@@ -38,13 +47,13 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
   `nms=False`(또는 `end2end=True`)를 줄 것. val 도 `nms=False` 를 줘야 앱과 같은 걸 잰다(안 주면 mAP 가 0.007~0.010 높게 나온다). 내보내기 명령·실측은 docs/build-deploy.md
 - publish 는 `best.onnx` 를 `PreserveNewest` 로 복사한다 → **루트 `best.onnx` 가 배포 폴더의 것보다 새로우면 덮어쓴다**.
   **worktree 에서 배포하면 거의 늘 그렇다**(루트 `best.onnx` 의 시각이 체크아웃한 때다) — 그땐 임시 폴더로 `-o` 를 주고 `DetectView.exe` 만 배포 폴더로 옮긴다(2026-11-05).
-  worktree 에서 UI 테스트를 돌릴 때도 테스트가 `<저장소>\publish\test*.mp4` 를 찾으니 worktree 에 `publish` → `E:\DetectView\publish` 연결(junction)을 두고, 끝나면 링크만 지운다
+  worktree 에서 UI 테스트를 돌릴 때도 테스트가 `<저장소>\publish\test*.mp4` 를 찾으니 worktree 에 `publish` → 본 checkout 의 `publish`(지금 `C:\DetectView\publish`) 연결(junction)을 두고, 끝나면 링크만 지운다
 - `best.onnx` 는 단일 파일 exe에 포함되지 않는다. **exe 옆에 같이 놓아야** 실행된다.
   경로는 작업 디렉터리가 아니라 `AppContext.BaseDirectory`(exe 폴더) 기준이다. 예전엔 상대 경로라 바로가기의 "시작 위치"나
   다른 폴더에서 실행하면 모델을 못 찾고 엉뚱하게 "GPU 드라이버 확인" 오류를 냈다 (2026-09-23 수정, 실측 확인)
 - `.csproj` 의 `ExcludeSymbolsFromPublish` 타깃이 publish 출력에서 pdb(~92 MB, exe 밖에 따로 생기던 것)와 `.lib` 를 뺀다. 배포물은 `DetectView.exe` + `best.onnx` 뿐이다.
 - 실행 시 창 제목이 `DetectView — <모델> <입력 가로×세로> (<학습일> 학습) — <GPU 이름> (DirectML)` 로 바뀌면 GPU 초기화 성공이다.
-  예: `DetectView — YOLO26m 640×384 (2026-11-08 학습) — NVIDIA GeForce RTX 5060 Laptop GPU (DirectML)`. 스모크 테스트는 이걸로 확인하면 된다.
+  예: `DetectView — YOLO26m 640×384 (2026-11-08 학습) — NVIDIA GeForce RTX 5060 Ti (DirectML)`(노트북에선 `… RTX 5060 Laptop GPU`). 스모크 테스트는 이걸로 확인하면 된다.
   제목을 만드는 법(`DescribeModel` — 이름·입력 크기·학습일을 어디서 뽑는지)은 docs/build-deploy.md
 
 ## 파일 구조
@@ -91,11 +100,11 @@ CLAUDE.md 가 매 세션 컨텍스트를 너무 많이 차지해서(13만 자) 2
   YoloDotNet 본체는 ORT 를 참조하지 않고 세션을 리플렉션으로 읽는다(`ParseOnnx`). GPU 는 Windows ML 에 들어 있는 DirectML 로 돈다 (EP 카탈로그 다운로드 없음).
   원본과 다른 점 두 가지(2026-10-25): FP16 출력 버퍼를 **모든 차원의 곱**으로 잡는다(원본은 앞 두 차원만 곱해 분할 마스크 같은 4차원 출력에서 범위를 넘음 — 지금 모델은 FP32 라 해당 없음),
   생성자에서 세션을 만든 뒤 실패하면 세션을 해제하고 넘긴다
-- **TensorRT 도 이 런타임으로 쓴다** — Windows ML EP 카탈로그에 NVIDIA TensorRT for RTX EP(`NvTensorRTRTXExecutionProvider`, 이 PC 2.30.51)가 VitisAI 처럼 들어온다.
+- **TensorRT 도 이 런타임으로 쓴다** — Windows ML EP 카탈로그에 NVIDIA TensorRT for RTX EP(`NvTensorRTRTXExecutionProvider`, 노트북 2.30.51 · 데스크탑 2.30.49)가 VitisAI 처럼 들어온다.
   TensorRT 를 쓰겠다고 `Microsoft.ML.OnnxRuntime.Gpu` 류 패키지를 넣지 말 것(위 이름 겹침). 2026-11-08 실측: 같은 모델 FP32 6.6 ms · FP16 2.8 ms(DirectML 10.0 ms), 검출은 사실상 같고
   같은 입력이면 비트까지 같다. 대가는 추론 동안 CPU 코어 하나가 돌고, 첫 엔진 만들기 약 10초(`experiments/NpuBench` README 결과 6).
   같은 날 앱의 '추론 장치'에 TensorRT 로 넣었다 — 아래 "추론 장치"
-- DirectML 장치는 DXGI 어댑터의 **PCI 벤더·장치 ID 로** 맞춘다(`SelectBestGpu` → `FindDmlDevice`). 하이브리드라 DirectML 장치가 AMD·NVIDIA 둘이다. 못 찾으면 첫 DirectML 장치로 돌고 제목에 `<벤더> GPU` 로 드러난다
+- DirectML 장치는 DXGI 어댑터의 **PCI 벤더·장치 ID 로** 맞춘다(`SelectBestGpu` → `FindDmlDevice`). 하이브리드인 노트북은 DirectML 장치가 AMD·NVIDIA 둘이다(데스크탑은 하나). 못 찾으면 첫 DirectML 장치로 돌고 제목에 `<벤더> GPU` 로 드러난다
 - 검증법: 출력의 `runtimes\win-x64\native\onnxruntime.dll` 이 **22.0 MB · 파일 버전 1.27**, `DirectML.dll` 17.8 MB(1.15.4). 실행 중 프로세스 모듈에 이 둘이 올라와 있어야 한다
 - TFM 은 `net10.0-windows10.0.19041.0` (Windows ML 의 WinRT API 때문에 SDK 버전 필요). **22621 이상으로 올리지 말 것** — `Vortice.DXGI` 가 그 TFM 전용 빌드로 바뀐다. Debug 출력도 `bin\Debug\net10.0-windows10.0.19041.0\` 로 바뀌었다
 - 교체 전후 속도는 차이가 없고 **검출 결과는 비트 단위로 같다**(실측은 docs/runtime.md) — 런타임을 다시 바꿀 땐 `experiments/RuntimeParity/`(같은 소스를 `Old/`·`WinML/` 로 두 번 빌드)로 같은 방법으로 확인한다
@@ -255,7 +264,8 @@ SDK 기본 글롭이 `old/**` 의 소스와 생성 `.g.cs` 까지 끌어와 **72
 - **2026-11-08 루트를 8클래스 YOLO26m 640×384 로 다시 바꿨다**(사용자 — 라벨링 도구가 11-08 데이터(8클래스, test 749장)로 같은 학습 설정으로 학습한 `models/best.pt`. 같은 날 배포 폴더도).
   라벨링 도구의 test 비교(Ultralytics val 기본값 — 앱 경로보다 0.007~0.010 높게 나오는 방식, 위 숫자와 섞지 말 것): pickup 뺀 7클래스 mAP50-95 0.6957 → 0.7398(CCTV 0.6986 → 0.7367),
   pickup 과 상관없는 5클래스는 거의 같고(+0.013, CCTV +0.004) 큰 차이는 truck +0.24(7클래스 모델은 pickup 을 truck 으로 잡았다)·pickup 0.606. 앱 경로 AP 는 다시 재지 않았다(새 데이터셋 백업이 필요하다)
-- 학습·평가 데이터는 WSL 백업 `/home/chisu/datasets_backup/visible_2026-11-04` 를 쓴다(원본은 라벨링 도구의 'WSL 학습' 버튼이 덮어쓴다). 오래 도는 벤치·학습은 전원을 연결한다(배터리 20분 무입력이면 GPU 작업도 멈춘다)
+- 학습·평가 데이터는 WSL 백업 `/home/chisu/datasets_backup/visible_2026-11-04` 를 쓴다(원본은 라벨링 도구의 'WSL 학습' 버튼이 덮어쓴다) — **노트북의 WSL 에 있다**(데스크탑 WSL 엔 2026-11-17 현재 없다 — 평가를 다시 하려면 먼저 옮긴다).
+  노트북에서 오래 도는 벤치·학습은 전원을 연결한다(배터리 20분 무입력이면 GPU 작업도 멈춘다 — 데스크탑은 유휴 절전이 꺼져 있다)
 
 ## 도메인 지식 — 추론 장치: NPU · TensorRT (왼쪽 패널 "추론 장치"에서 GPU / TensorRT / NPU 선택)
 
@@ -330,7 +340,7 @@ pwsh tests/ui/Run-All.ps1
 
 - 기본 대상은 `bin\Debug` 아래 **가장 최근에 빌드된** `DetectView.exe`(먼저 `dotnet build`). `-ExeDir publish` 로 배포본도 본다(상대 경로는 저장소 루트 기준).
   필요: GPU(DirectML), `publish\test1~5.mp4`(gitignore — worktree 에선 `publish` 연결을 둔다, '빌드 · 배포'). 실행 중 창이 떴다 닫히고 바탕화면을 캡처한다.
-  NPU 전환 검사는 AMD NPU 와 exe 옆 짝 모델이 있을 때만 돈다
+  NPU 전환 검사는 AMD NPU 와 exe 옆 짝 모델이 있을 때만 돈다(데스크탑에선 [INFO] 로 건너뛴다 — `Test-NpuSwitch` 55 → 36 항목)
 - 요소는 **`x:Name`(UIA AutomationId)** 으로 찾고 [파일 열기]만 버튼 글자로 찾는다. 버튼 아이콘은 `Ui.Glyph` 로 그린다 — `Content` 를 문자열이 아닌 것으로 바꾸면 UIA 이름이 비어 버튼을 못 찾는다.
   툴팁도 문자열로(UIA HelpText). 상태 문구·버튼 글자·툴팁 문구·창 제목 형식도 검사 대상이다 — **이름·문구를 바꾸면 테스트도 같이 고칠 것**
 - 파일: `Test-FilePlayback`(재생·시크·SAHI·EOF·범례·번호) · `Test-Tracking`(test4 덤프트럭의 번호·정지, 시크 뒤 새 번호) · `Test-Roi`(실제 마우스로 구역 편집·파일) ·
@@ -338,8 +348,10 @@ pwsh tests/ui/Run-All.ps1
   `Test-VfrPlayback`(VFR webm 두 개) · `Test-ScreenHud`(HUD·캡처 방식·결함 주입) · `Test-NpuSwitch`(NPU·TensorRT 전환·창 응답·TensorRT 와 GPU 검출 비교·실패 경로)
 - `Measure-Fps.ps1 -ExeDir <폴더>` 는 테스트가 아니라 A/B 계측이다 — 실행 묶음끼리 수 FPS 흔들리니 기준선을 앞뒤로 두 번 잰다
 - 종료 코드 = 실패 건수(`Run-All` 은 0/1). 스크립트는 UTF-8 **BOM** 으로 저장한다(Windows PowerShell 5.1 이 한국어를 깨뜨리지 않게). 파일 열기 대화상자 자동화 요령은 `Common.ps1` 머리말
-- 마지막 전체 통과: 2026-11-08 저녁, 배포본 `publish`(`b8d4ee0` — TensorRT 판) `Run-All` 270 항목 모두 통과(`Test-Incident` 의 표본 구간을 13.6초까지 늘린 뒤 — 그 전엔 1초도 안 되는 구간에서
-  표본이 하나 모자라는 실행이 있었다). 같은 날 Debug 는 305 항목 중 304 — 남은 1건이 그 표본 수였다. 자세한 기록과 그 전 기록은 docs/testing.md
+- `Start-DetectView` 는 제목이 바뀐 뒤 **WPF 의 UIA 트리가 붙을 때까지** 기다린다(2026-11-17) — 창이 뜬 직후에 잡은 UIA 루트는 WPF 요소가 안 보이는 Win32 프록시일 수 있고 그 루트로는 끝까지 못 찾는다
+  (데스크탑에서 `Test-NpuSwitch` 가 `null 값 식…` 예외로 실패하던 원인 — NPU 와 무관). 앱을 따로 띄우는 스크립트를 쓸 때도 루트를 일찍 잡지 말 것
+- 마지막 전체 통과: 2026-11-17, **데스크탑으로 옮긴 뒤** — 배포본 `publish`(11-08 의 `b8d4ee0` 그대로) `Run-All` 251 항목 · Debug 286 항목 모두 통과(NPU 쪽 19 항목은 건너뜀).
+  노트북 마지막은 2026-11-08 저녁 배포본 270 항목 모두 통과 · Debug 305 중 304(`Test-Incident` 표본 수 1건). 자세한 기록과 그 전 기록은 docs/testing.md
 
 - 테스트 영상 내용(유고 감지 기준 사례)은 docs/testing.md 끝 '테스트 영상 내용' — `test4.mp4` 는 방향이 바뀌는 CCTV(0~10.5초 차로에 정차한 덤프트럭 = 양성, 21.2초~ 신호대기 행렬 = 음성),
   `test5.mp4` 는 터널 출구 갓길에 정차한 화물차(양성, 1280×854 60fps — 29.63~29.98초에 스트림이 검게 끊긴다)
@@ -395,7 +407,7 @@ LLM 개념 맵(`graft build --deep`)은 API 키가 필요해서 돌리지 않았
     옛 기록의 커밋을 `main` 에 merge·cherry-pick 하지도 말 것 — merge 는 옛 기록 전체를, cherry-pick 은 옛 작성자(실제 이메일)를 끌고 온다. 필요한 건 파일 내용만 옮긴다.
   - **rebase·amend·force push 로 올린 기록을 고쳐 쓰지 말 것** (옛 기록 때도 웹에서 생긴 첫 커밋을 force push 로 지우지 않고 합쳤다 — `f7646a6`).
   - 커밋 작성자 이메일은 이 저장소 설정·전역 `~/.gitconfig` 모두 GitHub noreply 다 — 실제 주소가 작성자인 커밋을 push 하면 GitHub 가 막는다(GH007). 공개 정리의 나머지 경과는 docs/repo-history.md
-- GitHub CLI `gh` 2.103.3 은 2026-10-30 winget 으로 설치했다(`C:\Program Files\GitHub CLI\gh.exe`). 설치 전에 뜬 앱·셸에선 PATH 에 없으니 전체 경로로 부른다
+- GitHub CLI `gh` 는 `C:\Program Files\GitHub CLI\gh.exe`(노트북 2.103.3 — 2026-10-30 winget · 데스크탑 2.104.0). 설치 전에 뜬 앱·셸에선 PATH 에 없으니 전체 경로로 부른다
 - **남은 버그·개선 거리는 GitHub 이슈로 관리한다** — 2026-10-30 분석에서 남은 낮은 버그 11건을 #1~#11 로 등록했고, 2026-10-31~11-01 모두 고쳤다
   (이 문서의 해당 서술 옆에 그 번호가 남아 있다 — **그 이슈들은 옛 비공개 저장소와 함께 지워졌다**. 공개 저장소의 이슈는 #1 부터 다시 매겨지니
   옛 번호는 '옛 이슈 #7' 처럼 구분해 가리킨다). 고칠 땐 커밋 메시지에 `Fixes #N` 을 넣는다(`main` 에 push 되면 공개 저장소의 그 이슈가 닫힌다). 이 문서의 서술도 같이 고친다.

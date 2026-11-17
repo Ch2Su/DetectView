@@ -35,7 +35,7 @@ WPF(.NET 10)로 만들었고, 추론은 Windows ML 의 ONNX Runtime 으로 **GPU
 | NPU (선택) | AMD Ryzen AI NPU (XDNA 2). VitisAI 실행 공급자는 Windows ML 이 필요할 때 내려받습니다 |
 | 짝 모델 만들기 (선택) | [uv](https://docs.astral.sh/uv/) — Python 을 따로 설치하지 않고 `tools/npu_quantize.py`(NPU)·`tools/fp16_convert.py`(TensorRT)를 돌립니다 |
 
-개발 PC 는 NVIDIA GeForce RTX 5060 Laptop GPU 와 AMD 내장 GPU 가 함께 있는 하이브리드 노트북(Ryzen AI 5 340)입니다.
+개발 PC 는 2026-11-17 까지 NVIDIA GeForce RTX 5060 Laptop GPU 와 AMD 내장 GPU 가 함께 있는 하이브리드 노트북(Ryzen AI 5 340)이었고, 그 뒤로는 데스크탑(Intel Core i5-14400F · NVIDIA GeForce RTX 5060 Ti, NPU 없음)입니다. NPU 와 하이브리드 GPU 쪽 동작은 노트북에서 확인한 것입니다.
 
 ## 빌드와 실행
 
@@ -85,7 +85,7 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
 
 ## 성능 (참고)
 
-개발 PC(RTX 5060 Laptop GPU · Ryzen AI 5 340)에서 잰 값입니다. 모델은 지금 루트 모델(YOLO26m 640×384)이고, 표시한 줄만 이전 모델(YOLO26s 640×640) 때 값입니다.
+예전 개발 PC 인 노트북(RTX 5060 Laptop GPU · Ryzen AI 5 340)에서 잰 값입니다. 모델은 지금 루트 모델(YOLO26m 640×384)이고, 표시한 줄만 이전 모델(YOLO26s 640×640) 때 값입니다.
 
 | 항목 | 값 |
 |---|---|

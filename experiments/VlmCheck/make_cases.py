@@ -130,7 +130,8 @@ def stopped_seconds(det, path, t, box, step=0.5, horizon=10.0):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--media", default="E:/DetectView/publish")
+    # 저장소의 publish — 예전엔 노트북 경로(E:/DetectView/publish)가 박혀 있어 폴더·PC 를 옮기면 깨졌다 (2026-11-17)
+    ap.add_argument("--media", default=str(HERE.parents[1] / "publish"))
     ap.add_argument("--model", default=str(HERE.parents[1] / "best.onnx"))
     ap.add_argument("--out", default=str(HERE / "out"))
     a = ap.parse_args()

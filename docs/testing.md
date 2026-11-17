@@ -106,7 +106,25 @@ pwsh tests/ui/Run-All.ps1
   옛 판 `UiLatency` 형식이 남은 PowerShell 세션에선 분명한 메시지로 멈춘다(Add-Type 형식은 못 바꿈 — 새 pwsh 에서 돌릴 것)
 - 종료 코드 = 실패 건수(`Run-All` 은 0/1). 파일 열기 대화상자 자동화 요령 등은 `Common.ps1` 머리말에 정리해 두었다.
   `Run-All` 은 테스트 파일이 try 밖에서 throw 해도(영상·빌드 없음) 그 파일만 실패로 세고 다음 파일을 돈다(2026-10-30 — 예전엔 거기서 통째로 멈췄다)
-- 마지막 전체 통과: 2026-11-08 저녁, **배포본 `publish`** — 사용자 "배포하기"로 TensorRT 판 `b8d4ee0` 을 배포(작업 트리가 깨끗한 worktree 에서 임시 폴더로 내보내 exe 만 옮김 —
+- `Start-DetectView` 는 창 제목이 `(DirectML)` 로 바뀐 뒤 **WPF 의 UIA 트리가 붙을 때까지** 더 기다린다(2026-11-17, 데스크탑으로 옮긴 날): 볼 때마다 `FromHandle` 로 루트를 새로 잡아
+  FrameworkId 가 `WPF` 이고 `Btn_PlayPause` 가 보이면 끝(10초 제한 — 넘으면 throw). 제목 직후에 잡은 루트는 Win32 창 프록시(ClassName `HwndWrapper[DetectView;;…]` · FrameworkId `Win32`)일 수 있고,
+  **그 루트로는 나중에도 WPF 요소를 하나도 못 찾는다**(`ById` 가 `$null` — 루트를 다시 잡아야 `Window`/`WPF` 가 된다). 데스크탑 실측(배포본, 제목을 10 ms 마다 봄): WPF 공급자는 제목 뒤 115~160 ms 에 붙고,
+  제목을 보자마자 잡은 루트는 16번 중 14번 빈 트리였다(나머지 둘은 묶음의 첫 실행 — UIA 를 처음 불러 늦게 잡혔다. 400 ms 기다렸다 잡으면 4번 모두 정상). 테스트는 제목을 100 ms 마다 보므로 실행마다 걸리기도 안 걸리기도 했다 —
+  11-17 첫 `Run-All -ExeDir publish` 에선 11개 파일 중 `Test-NpuSwitch` 하나가 예외로 끝났고(앱을 일곱 번 띄우는 파일이다), 그 파일만 다시 돌리니 실패 경로 5번째('TensorRT 다른 모델의 짝')를 띄운 직후
+  `[FAIL] 예외 — null 값 식에서 메서드를 호출할 수 없습니다.`(`InferenceSelector` 를 못 찾음)였다. NPU 가 없어서가 아니다(NPU 쪽은 [INFO] 로 건너뛴다). 노트북에선 한 번도 드러나지 않았다(이유는 재지 않았다 — 그쪽이 느려 제목과 트리 사이가 안 벌어진 것으로 짐작).
+  고친 뒤 10번 띄워 10번 모두 돌아온 직후의 루트가 `Window`/`WPF`. `Common.ps1` 에 BOM 이 빠져 있던 것도 그날 붙였다(다른 스크립트는 모두 있었다)
+- 마지막 전체 통과: 2026-11-17 낮, **데스크탑으로 옮긴 뒤**(`C:\DetectView` — i5-14400F · RTX 5060 Ti 하나 · NPU 없음 · 모니터 2560×1440, CLAUDE.md "개발 PC") — 노트북에서 통째로 복사해 온 **배포본 `publish`**(11-08 의 `b8d4ee0` 그대로,
+  132,596,048 바이트 · 모델·짝·영상도 그대로)로 `Run-All -ExeDir publish` 한 번에 **251 항목 모두 통과**: `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 · `Test-SceneChange` 21 ·
+  `Test-ZoneEvents` 21 · `Test-Incident` 16 · `Test-VlmAnnotation` 6(Release) · `Test-ViewIdentity` 27 · `Test-VfrPlayback` 26 · `Test-ScreenHud` 25(DXGI 2560×1440, Release) · `Test-NpuSwitch` 36
+  (노트북의 55 에서 NPU 쪽 19 항목이 빠진 수 — `NPU 전환 건너뜀 — 이 PC 에서 쓸 수 있는 AMD NPU 실행 공급자(VitisAI)가 없음`. 실패 경로 여섯은 NPU 것까지 다 돈다 — 짝 파일 확인이 EP 확인보다 먼저라).
+  TensorRT: 전환 2.3초 · 재생 중 다시 2.0초(둘 다 캐시 — 앞서 따로 돌린 실행이 엔진을 남겼다. 엔진 캐시 키 `D7D760DC…_2.30.49.0_1.27.20260711.1.7b7c0e2` — EP 가 노트북의 2.30.51 과 다르다), ①② 창 응답 WM_NULL 최대 1 ms · UIA 최대 2 ms,
+  멈춘 프레임 3.0·6.5초의 검출이 GPU 와 클래스까지 같음(11 · 13개 — 노트북과 같은 수), SAHI 19개. 참고용 재생 처리 **TensorRT 148.7 FPS**, HUD 110.8 FPS(GPU 재생 FPS 는 NPU 구간에서만 적어 이번엔 없다).
+  그 앞서 빌드(`dotnet build` 경고 0 — SDK 11.0.100 으로, 대상은 net10.0)와 배포본 스모크(제목 `… — NVIDIA GeForce RTX 5060 Ti (DirectML)`)도 봤다.
+  이어서 그날 빌드한 **Debug** 로 `Run-All` 한 번에 **286 항목 모두 통과**(4.5분): `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 · `Test-SceneChange` 21 · `Test-ZoneEvents` 21 · `Test-Incident` 16 ·
+  `Test-VlmAnnotation` 27 · `Test-ViewIdentity` 27 · `Test-VfrPlayback` 26 · `Test-ScreenHud` 39(결함 주입 포함 — 복제 상실 뒤 DXGI 로 이어 감) · `Test-NpuSwitch` 36 — 노트북의 305 에서 NPU 쪽 19 만 빠진 수.
+  TensorRT 전환 7.5초 · 재생 중 다시 2.0초, 참고용 재생 처리 TensorRT 110.3 FPS, HUD 79.4 FPS.
+  **이 날 수치는 데스크탑 것이라 아래 노트북 기록의 FPS·전환 시간과 견주지 말 것.** 이 PC 에서 돌지 않은 것: NPU 전환(②)과 `Test-ScreenHud` 의 하이브리드 GPU 안내 검사(HUD 가 GDI 로 뜰 때만 돈다 — 이 PC 는 DXGI 로 떴다)
+- 그 전 전체 통과: 2026-11-08 저녁, **배포본 `publish`** — 사용자 "배포하기"로 TensorRT 판 `b8d4ee0` 을 배포(작업 트리가 깨끗한 worktree 에서 임시 폴더로 내보내 exe 만 옮김 —
   132,596,048 바이트, Release DLL 에 결함·가짜 VLM 이름 없음·TensorRT 코드 있음). 배포 폴더 FP16 짝은 `Make-Fp16Model.ps1 -Model publish\best.onnx`(5초)로 만들어 루트 짝과 바이트까지 같다(`D7D760DC…`).
   `Run-All -ExeDir publish` 첫 실행은 270 항목 중 269 — 남은 1건이 아래 Debug 와 같은 `Test-Incident` 표본 수(11.7초 뒤 7개 < 8, 남은 표시 0)였다.
   시작 때의 TensorRT 짝 확인은 '확인 끝'을 1초쯤 늦출 뿐 계속되는 CPU 부담은 없어(짝 있음·없음을 두 번씩 — 앱 CPU 5.5·6.5 vs 7.1·3.3초) 검사 구간이 1초도 안 되는 게 원인으로 보고
