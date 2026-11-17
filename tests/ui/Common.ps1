@@ -1,4 +1,4 @@
-# DetectView UI 자동화 테스트 — 공용 도우미 (각 테스트 스크립트가 dot-source 한다)
+﻿# DetectView UI 자동화 테스트 — 공용 도우미 (각 테스트 스크립트가 dot-source 한다)
 #
 # 다시 알아내기 번거로웠던 요령 (2026-09-23):
 #  - WPF 버튼의 InvokePattern.Invoke() 는 클릭을 Dispatcher 로 넘기고 곧바로 돌아온다.
@@ -9,6 +9,7 @@
 #  - 대화상자 창이 먼저 뜨고 하단 컨트롤은 나중에 붙는다 → 생길 때까지 기다린다
 #  - 다른 프로세스 컨트롤의 글자는 GetWindowText 로 못 읽는다 → WM_GETTEXT
 #  - 도우미 이름을 Cls 로 짓지 말 것. Clear-Host 별칭이 함수보다 먼저 잡혀 "핸들이 잘못되었습니다" 가 난다
+#  - 창이 뜬 직후에 잡은 UIA 루트는 WPF 요소가 안 보이는 Win32 프록시일 수 있다 → Start-DetectView 가 WPF 트리까지 기다린다 (2026-11-17)
 
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
@@ -86,6 +87,22 @@ function Start-DetectView([string]$ExeDir, [string]$WorkingDirectory = $ExeDir) 
     if (-not $ok) {
         Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
         throw '메인 창이 뜨지 않음 — 모델 또는 GPU 초기화 실패 (오류 대화상자에서 멈췄을 수 있음)'
+    }
+
+    # 제목이 바뀐 직후엔 WPF 의 UIA 공급자가 아직 창에 붙지 않았을 수 있다. 그때 FromHandle 로 잡은 루트는 Win32 창 프록시
+    # (ClassName 'HwndWrapper[…]' · FrameworkId 'Win32')이고, 그 루트로는 나중에도 WPF 요소를 하나도 못 찾는다 — 루트를 다시 잡아야 한다.
+    # 2026-11-17 데스크탑(i5-14400F · RTX 5060 Ti) 실측: 제목 뒤 115~160 ms 에 붙고, 제목을 보자마자 잡은 루트는 16번 중 14번 빈 트리였다
+    # (ById 가 $null → Test-NpuSwitch 가 'null 값 식에서 메서드를 호출할 수 없습니다'. 노트북에선 드러나지 않았다).
+    # 호출한 쪽이 돌아오자마자 FromHandle 을 불러도 되게 여기서 기다린다 — 볼 때마다 루트를 새로 잡는다
+    $ready = WaitFor {
+        try {
+            $r = $AE::FromHandle($proc.MainWindowHandle)
+            $r.Current.FrameworkId -eq 'WPF' -and $null -ne (ById $r 'Btn_PlayPause')
+        } catch { $false }
+    } 10000 50
+    if (-not $ready) {
+        Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+        throw '메인 창의 UIA 트리가 준비되지 않음 — WPF 요소(Btn_PlayPause)를 10초 안에 찾지 못함'
     }
     return $proc
 }
