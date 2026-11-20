@@ -40,7 +40,7 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
 ```
 
 - 프로젝트 파일(`DetectView.csproj`)을 꼭 지정한다. 생략하면 폴더의 `.slnx` 가 잡혀 `NETSDK1194`(솔루션 + `--output`) 경고가 난다
-- 결과: `DetectView.exe` 한 파일 126.4 MB(132,596,048 바이트 — 11-08 TensorRT 판. 판별 배포 이력은 docs/build-deploy.md). 테스트 영상(`test1~4.mp4`)은 같은 폴더에 있어도 덮어쓰지 않는다
+- 결과: `DetectView.exe` 한 파일 126.4 MB(132,596,048 바이트 — 11-08 TensorRT 판. 판별 배포 이력은 docs/build-deploy.md). 테스트 영상(`test*.mp4`)은 같은 폴더에 있어도 덮어쓰지 않는다
 - publish 뒤에는 배포본으로 UI 테스트를 돌린다: `pwsh tests\ui\Run-All.ps1 -ExeDir publish`
 - **`publish\best.onnx` 는 루트의 것과 다를 수 있고, 사용자가 수시로 바꾼다. 건드리지 말 것** (바꾼 경과와 옆에 보관한 옛 모델 이름은 docs/build-deploy.md — 11-08 부터는 루트와 같은 8클래스 YOLO26m 이다).
   **성능을 재거나 비교하기 전엔 그 순간 어떤 모델인지 확인한다** — 앱이 떠 있으면 창 제목에 보이고, 아니면 파일 끝의 Ultralytics 메타데이터를 읽는다(한 줄 명령은 docs/build-deploy.md)
@@ -359,7 +359,10 @@ pwsh tests/ui/Run-All.ps1
   자세한 기록과 그 전 기록(노트북 포함)은 docs/testing.md
 
 - 테스트 영상 내용(유고 감지 기준 사례)은 docs/testing.md 끝 '테스트 영상 내용' — `test4.mp4` 는 방향이 바뀌는 CCTV(0~10.5초 차로에 정차한 덤프트럭 = 양성, 21.2초~ 신호대기 행렬 = 음성),
-  `test5.mp4` 는 터널 출구 갓길에 정차한 화물차(양성, 1280×854 60fps — 29.63~29.98초에 스트림이 검게 끊긴다)
+  `test5.mp4` 는 터널 출구 갓길에 정차한 화물차(양성, 1280×854 60fps — 29.63~29.98초에 스트림이 검게 끊긴다),
+  `test6.mp4` 는 26분짜리 터널 입구 차량 화재 처리 현장(2026-11-21 — 한 방향이 막히고 뒤로 정체, 소방차·경찰차·사람. 1620×1080 60fps · 2.2 GB, 녹화 65 구간을 이어 붙여
+  약 24.6초마다 이음매 — 원본 녹화의 6.6~16.8초가 빠져 차가 한 프레임에 자리를 옮긴다. 1416초쯤 천천히 줌아웃하는데 이음매도 줌도 앱의 화면 전환 감지엔 안 잡힌다).
+  아직 어떤 테스트도 쓰지 않고(위 '필요'에 없다), 테스트 영상이라 검출기 학습에 쓰지 않는다
 
 ## 코드 인덱스 (graft)
 

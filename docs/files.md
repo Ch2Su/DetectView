@@ -48,7 +48,7 @@
 | `TestFaults.cs` | Debug 빌드 전용 결함 주입 — 환경 변수 `DETECTVIEW_TEST_FAULTS`(쉼표 구분): `hud-create-fail` · `hud-capture-lost` · `hud-detect-fail`. 훅은 `[Conditional("DEBUG")]` 라 Release 엔 호출 자체가 없다(Release DLL 에 결함 이름 문자열 없음 확인). `Test-ScreenHud.ps1` 이 쓴다. 가짜 VLM `vlm-fake` · `vlm-down` · `vlm-absent`(값을 돌려줘야 해서 `#if DEBUG` — `Test-VlmAnnotation.ps1`) |
 | `Directory.Build.props` | OpenCvSharp 판(`OpenCvSharpVersion`)을 두는 한 곳 — 본 앱·실험 프로젝트 넷이 같이 읽는다 ("절대 건드리면 안 되는 것들" 1번, 이슈 #9) |
 | `old/` | **2026-11-06 지웠다** — 사용자가 클라우드에 백업한 뒤. 있던 것: 이전 CPU 버전 보관본·최적화 전 백업(`backup_20260911_*`)·학교 과제 제출본(폴더·zip)·`old/docs/`(SRS·아키텍처 설계서)·옛 모델(9.5 MB)·공개 전 git 기록 bundle(아래 '도구 사용 주의'의 원격 항목). `.csproj` 의 제외 글롭과 `.gitignore` 의 `/old/` 는 그대로 둔다 — 다시 생겨도 빌드·graft 가 안전하게(아래 5번·graft 함정 1) |
-| `publish/` | 배포 산출물 + 테스트 영상(`test1~4.mp4`, 1280×720 30fps · `test5.mp4`, 아래 "테스트 영상 내용"). 원래의 VFR 테스트 파일 `recording.webm` 은 없어졌고, 대신 합성 파일 `tests/ui/media/vfr60_nodur.webm` 을 쓴다 |
+| `publish/` | 배포 산출물 + 테스트 영상(`test1~4.mp4`, 1280×720 30fps · `test5.mp4` · `test6.mp4`(26분 · 2.2 GB, 2026-11-21) — docs/testing.md "테스트 영상 내용"). 원래의 VFR 테스트 파일 `recording.webm` 은 없어졌고, 대신 합성 파일 `tests/ui/media/vfr60_nodur.webm` 을 쓴다 |
 | `tests/ui/` | UI 자동화 회귀 테스트 (PowerShell + UI Automation). 아래 "테스트" 참고 |
 | `README.md` | GitHub 첫 화면 (2026-11-02 작성 — 기능·빌드·사용법·테스트·라이선스). 화면이 크게 바뀌면 같이 고칠 것. 스크린샷(test4 3초 장면, 실제 도로 CCTV 프레임)은 같은 날 넣었다가 영상 사용 권리를 확인하지 못해 뺐다(`docs/screenshot.png` 삭제 — 이 PC 의 옛 기록 `old-history` 의 `10e65db` 에만 남음). 다시 넣으려면 권리가 분명한 영상으로 |
 | `docs/` | CLAUDE.md 에서 옮긴 긴 설명·실측·지난 기록(2026-11-05) — 아래 '자세한 문서' 표. 세션마다 자동으로 읽히지 않는다 |
