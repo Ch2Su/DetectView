@@ -48,7 +48,7 @@ function Header-Count($Toggle) { if ((NameOf $Toggle) -match '^이벤트 (\d+)�
 $proc = $null
 try {
     $proc = Start-DetectView $ExeDir
-    $root = $AE::FromHandle($proc.MainWindowHandle)
+    $root = $proc.Root
     $play   = ById $root 'Btn_PlayPause'
     $stop   = ById $root 'Btn_Stop'
     $status = ById $root 'Txt_Status'
@@ -125,7 +125,7 @@ try {
     $null = WaitFor { $range.Current.Value -ge 4000 } 15000
     Check '구역 없는 영상: 4초 재생해도 이벤트 0건' ($ok -and (Header-Count $toggle) -eq 0 -and -not $save.Current.IsEnabled) "상태='$(NameOf $status)' 헤더='$(NameOf $toggle)'"
 }
-catch { Check '예외' $false $_.Exception.Message }
+catch { Check '예외' $false (Format-Error $_) }
 finally {
     Stop-DetectView $proc
     Remove-Item $roiFile, "$roiFile.bad", "$roiFile.tmp", $csvFile -ErrorAction SilentlyContinue   # 영상 옆에 파일을 남기지 않는다

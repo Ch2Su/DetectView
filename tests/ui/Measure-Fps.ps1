@@ -22,7 +22,7 @@ for ($run = 1; $run -le $Runs; $run++) {
     $proc = $null
     try {
         $proc = Start-DetectView $ExeDir
-        $root = $AE::FromHandle($proc.MainWindowHandle)
+        $root = $proc.Root
         $fps = ById $root 'Txt_InferenceFps'
         $status = ById $root 'Txt_Status'
         Open-VideoFile $root $Video

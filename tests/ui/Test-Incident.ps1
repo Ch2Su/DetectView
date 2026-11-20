@@ -62,7 +62,7 @@ function Get-LogItems($List) {
 $proc = $null
 try {
     $proc = Start-DetectView $ExeDir
-    $root = $AE::FromHandle($proc.MainWindowHandle)
+    $root = $proc.Root
     $play   = ById $root 'Btn_PlayPause'
     $status = ById $root 'Txt_Status'
     $count  = ById $root 'Txt_DetectionCount'
@@ -135,7 +135,7 @@ try {
     $ok = WaitFor { @(Get-LogItems $list | Where-Object { $_.Name -like '*유고 해소 (시크)*' }).Count -eq 1 } 5000
     Check '선언 중에 시크하면 유고 해소 (시크) 행이 남음' $ok "로그: $((Get-LogItems $list | ForEach-Object { $_.Name }) -join ' | ')"
 }
-catch { Check '예외' $false $_.Exception.Message }
+catch { Check '예외' $false (Format-Error $_) }
 finally {
     Stop-DetectView $proc
     Remove-Item $roiFile, "$roiFile.bad", "$roiFile.tmp", $csvFile -ErrorAction SilentlyContinue   # 영상 옆에 파일을 남기지 않는다

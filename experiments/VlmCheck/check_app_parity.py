@@ -22,11 +22,9 @@ import numpy as np
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-from make_cases import crop_around, read_frame  # noqa: E402
+from make_cases import MEDIA, REPO, crop_around, read_frame  # noqa: E402 — 영상 폴더는 make_cases 한 곳에서 정한다
 from run_vlm import IMAGE_TEXT, OPTIONS, SYSTEM4, VARIANTS, make_schema4  # noqa: E402
 
-REPO = HERE.parents[1]
-VIDEOS = REPO / "publish"
 OUT = HERE / "out" / "parity"
 
 
@@ -60,7 +58,7 @@ def main():
         if (want and c["id"] not in want) or not info_path.exists():
             continue
         info = json.loads(info_path.read_text(encoding="utf-8"))
-        frame, _, _ = read_frame(VIDEOS / c["video"], c["t"])
+        frame, _, _ = read_frame(MEDIA / c["video"], c["t"])
         png = OUT / f"{c['id']}.png"
         cv2.imwrite(str(png), frame)
         prefix = OUT / c["id"]

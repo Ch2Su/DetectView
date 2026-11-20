@@ -23,7 +23,7 @@ if (-not (Test-Path $Video)) { throw "테스트 영상이 없습니다: $Video" 
 $proc = $null
 try {
     $proc = Start-DetectView $ExeDir
-    $root = $AE::FromHandle($proc.MainWindowHandle)
+    $root = $proc.Root
 
     $play   = ById $root 'Btn_PlayPause'
     $stop   = ById $root 'Btn_Stop'
@@ -80,7 +80,7 @@ try {
     $ok = WaitFor { (NameOf $status) -eq '정지됨' } 5000
     Check '정지 → 추적 번호 지움' ($ok -and [string]::IsNullOrEmpty($count.Current.ItemType)) "상태='$(NameOf $status)' 번호='$($count.Current.ItemType)'"
 }
-catch { Check '예외' $false $_.Exception.Message }
+catch { Check '예외' $false (Format-Error $_) }
 finally { Stop-DetectView $proc }
 
 Complete-Test

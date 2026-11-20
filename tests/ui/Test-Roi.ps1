@@ -94,7 +94,7 @@ Remove-Item $roiFile, "$roiFile.bad", "$roiFile.tmp" -ErrorAction SilentlyContin
 $proc = $null
 try {
     $proc = Start-DetectView $ExeDir
-    $root = $AE::FromHandle($proc.MainWindowHandle)
+    $root = $proc.Root
 
     $play    = ById $root 'Btn_PlayPause'
     $stop    = ById $root 'Btn_Stop'
@@ -228,7 +228,7 @@ try {
     Check '깨진 구역 파일: 상태바에 사유, 빈 구역으로 시작' ($ok -and (Get-ZoneNames $list).Count -eq 0 -and (NameOf $zcount) -eq 'V1 · 0개') "상태='$(NameOf $status)' 목록 $((Get-ZoneNames $list).Count)개"
     Check '옛 파일은 .bad 로 복사해 둠' ((Test-Path "$roiFile.bad") -and (Get-Content -Raw "$roiFile.bad").Contains('깨진')) ''
 }
-catch { Check '예외' $false $_.Exception.Message }
+catch { Check '예외' $false (Format-Error $_) }
 finally {
     Stop-DetectView $proc
     Remove-Item $roiFile, "$roiFile.bad", "$roiFile.tmp" -ErrorAction SilentlyContinue   # 영상 옆에 파일을 남기지 않는다

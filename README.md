@@ -54,7 +54,7 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
 - 프로젝트 파일(`DetectView.csproj`)을 꼭 지정합니다. 빼면 폴더의 `.slnx` 가 잡혀 `NETSDK1194` 경고가 납니다.
 - 결과는 `publish\DetectView.exe`(약 126 MB, .NET 런타임 포함)와 `best.onnx` 입니다. **모델은 exe 에 들어가지 않으니 같은 폴더에 둡니다.**
 - 짝 모델(NPU·TensorRT)은 publish 에 복사되지 않습니다. 배포 폴더 모델로 만듭니다: `pwsh tools\Make-NpuModel.ps1 -Model publish\best.onnx` · `pwsh tools\Make-Fp16Model.ps1 -Model publish\best.onnx`
-- 실행해서 창 제목이 `DetectView — YOLO26m 640×384 (2026-11-08 학습) — NVIDIA GeForce RTX 5060 Laptop GPU (DirectML)` 처럼 바뀌면 GPU 초기화에 성공한 것입니다.
+- 실행해서 창 제목이 `DetectView — YOLO26m 640×384 (2026-11-08 학습) — NVIDIA GeForce RTX 5060 Ti (DirectML)` 처럼(GPU 이름은 PC 마다 다릅니다) 바뀌면 GPU 초기화에 성공한 것입니다.
 
 ## 사용법
 

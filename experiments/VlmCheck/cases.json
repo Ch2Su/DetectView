@@ -1,5 +1,5 @@
 {
- "_설명": "로컬 VLM 유고 후보 확인 실험의 장면 목록. video 는 --media(기본 저장소의 publish) 기준. hint 는 후보를 고를 프레임 좌표(그 점을 담은·가까운 검출 박스), box 는 직접 준 후보(가짜 검출·검은 화면). gt 는 Claude 가 쓴 초안 — 사용자 확인 전. verdict 는 입력 방식(A·B·C)마다 맞다고 볼 답 목록, 나머지 null 은 채점하지 않음.",
+ "_설명": "로컬 VLM 유고 후보 확인 실험의 장면 목록. video 는 --media 로 준 폴더(기본은 make_cases.py 의 MEDIA) 기준. hint 는 후보를 고를 프레임 좌표(그 점을 담은·가까운 검출 박스), box 는 직접 준 후보(가짜 검출·검은 화면). gt 는 Claude 가 쓴 초안 — 사용자 확인 전. verdict 는 입력 방식(A·B·C)마다 맞다고 볼 답 목록, 나머지 null 은 채점하지 않음.",
  "_3차": "round3 = 3차(추적기 사실을 글로 주고 '왜 멈췄나'만 묻는다)에 쓰는 장면과 정답. 멈춘 시간은 make_cases.py 가 앞 프레임과 박스를 맞춰 재고(3초 미만이면 3차에서 뺌), 직접 준 박스는 round3_stopped_s 를 쓴다",
  "round3": {
   "P1": ["accident_or_breakdown"], "P2": ["accident_or_breakdown"], "P3": ["accident_or_breakdown"], "P4": ["accident_or_breakdown"],

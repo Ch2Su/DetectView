@@ -48,7 +48,7 @@ function Start-WithFault([string]$Fault) {
 # 앱을 띄워 영상을 열고 로그를 펼쳐 둔다 (펼쳐야 행이 UIA 에 보인다). 영상은 열자마자 재생된다 — 유고 후보는 약 5.2초
 function Open-Session([string]$Fault) {
     $proc = Start-WithFault $Fault
-    $root = $AE::FromHandle($proc.MainWindowHandle)
+    $root = $proc.Root
     $s = @{ Proc = $proc; Root = $root; Play = (ById $root 'Btn_PlayPause'); Status = (ById $root 'Txt_Status')
             Range = (ById $root 'VideoSlider').GetCurrentPattern([System.Windows.Automation.RangeValuePattern]::Pattern) }
     Open-VideoFile $root $Video
@@ -157,7 +157,7 @@ try {
         Check '[vlm-absent] 켜지 못하고 꺼진 채, 상태바에 사유' ($ok -and (Status-Of $sess.Vlm) -eq '꺼짐' -and (NameOf $sess.Status) -like '*Ollama 가 꺼져 있음*') "상태='$(Status-Of $sess.Vlm)' · 상태바='$(NameOf $sess.Status)'"
     }
 }
-catch { Check '예외' $false $_.Exception.Message }
+catch { Check '예외' $false (Format-Error $_) }
 finally {
     if ($sess) { Stop-DetectView $sess.Proc }
     if ($OrigFaults) { $env:DETECTVIEW_TEST_FAULTS = $OrigFaults } else { Remove-Item Env:DETECTVIEW_TEST_FAULTS -ErrorAction SilentlyContinue }

@@ -22,8 +22,11 @@ Windows 그래픽 설정(`HKCU\…\UserGpuPreferences`)은 exe 경로별이라 �
 - **지금: 데스크탑** `C:\DetectView` — Intel i5-14400F · **NVIDIA RTX 5060 Ti 하나**(내장 그래픽 없음 → 하이브리드 GPU 아님) · **NPU 없음** · 배터리 없음 · 모니터 1대 2560×1440
 - 그 전: 노트북 `E:\DetectView` — Ryzen AI 5 340 · Radeon 840M + RTX 5060 Laptop(하이브리드) · AMD NPU · 배터리.
   **이 문서·`docs/`·메모에서 2026-11-17 전의 '이 PC'·성능 실측·GPU 이름·`E:\` 경로는 모두 노트북 것이다** — 데스크탑에서 잰 값과 섞어 견주지 말 것(날짜가 붙은 옛 기록은 그때 사실이라 고치지 않는다)
-- 데스크탑에선 확인할 수 없는 것: 하이브리드 GPU·DXGI 어댑터 함정("화면 HUD"), NPU(장치 목록에서 막히고 `Test-NpuSwitch` 의 NPU 쪽은 [INFO] 로 건너뛴다). 그 코드·규칙은 그대로 둔다 — 그 영역을 고치면 검증이 비는 걸 알린다
+- 데스크탑에선 확인할 수 없는 것: 하이브리드 GPU·DXGI 어댑터 함정("화면 HUD"), NPU(장치 목록에서 막히고 `Test-NpuSwitch` 의 NPU 쪽은 [INFO] 로 건너뛴다 — NPU 실패 경로 셋은
+  툴팁 사유만 본다. 항목은 VitisAI 가 없어 어차피 막혀 있다). 그 코드·규칙은 그대로 둔다 — 그 영역을 고치면 검증이 비는 걸 알린다
 - 데스크탑에 옮기지 않은 것: 라벨링 도구(`E:\local_auto_labeling`) · Ollama 모델(VLM 설명을 쓰려면 `ollama pull qwen3.5:4b`) · 옛 worktree. `old-history` 태그 · `pre-push` 훅 · 로컬 브랜치는 같이 왔다
+- 전역 Claude 설정(`~/.claude/settings.json` — graft 훅·자동 모드)은 아직 켜지 않았다(`settings.json.from-laptop` 으로만 있다 — 켜는 건 사용자). 그동안 `graft/` 의 `.md` 카드는
+  갱신되지 않는다(아래 '코드 인덱스' — 데스크탑에선 2026-11-11 노트북 빌드 그대로). graft 도구(ask·grep·callers·skeleton)는 쿼리마다 그래프를 새로 읽으니 그것만 믿는다
 - .NET SDK 가 10.0.404 · 11.0.100 둘이고 `global.json` 이 없어 빌드는 SDK 11 로 돈다(TFM 은 그대로 net10.0). 이전 경과·그날 검증은 docs/testing.md 의 2026-11-17 기록
 
 ## 빌드 · 배포
@@ -100,7 +103,7 @@ CLAUDE.md 가 매 세션 컨텍스트를 너무 많이 차지해서(13만 자) 2
   YoloDotNet 본체는 ORT 를 참조하지 않고 세션을 리플렉션으로 읽는다(`ParseOnnx`). GPU 는 Windows ML 에 들어 있는 DirectML 로 돈다 (EP 카탈로그 다운로드 없음).
   원본과 다른 점 두 가지(2026-10-25): FP16 출력 버퍼를 **모든 차원의 곱**으로 잡는다(원본은 앞 두 차원만 곱해 분할 마스크 같은 4차원 출력에서 범위를 넘음 — 지금 모델은 FP32 라 해당 없음),
   생성자에서 세션을 만든 뒤 실패하면 세션을 해제하고 넘긴다
-- **TensorRT 도 이 런타임으로 쓴다** — Windows ML EP 카탈로그에 NVIDIA TensorRT for RTX EP(`NvTensorRTRTXExecutionProvider`, 노트북 2.30.51 · 데스크탑 2.30.49)가 VitisAI 처럼 들어온다.
+- **TensorRT 도 이 런타임으로 쓴다** — Windows ML EP 카탈로그에 NVIDIA TensorRT for RTX EP(`NvTensorRTRTXExecutionProvider`)가 VitisAI 처럼 들어온다.
   TensorRT 를 쓰겠다고 `Microsoft.ML.OnnxRuntime.Gpu` 류 패키지를 넣지 말 것(위 이름 겹침). 2026-11-08 실측: 같은 모델 FP32 6.6 ms · FP16 2.8 ms(DirectML 10.0 ms), 검출은 사실상 같고
   같은 입력이면 비트까지 같다. 대가는 추론 동안 CPU 코어 하나가 돌고, 첫 엔진 만들기 약 10초(`experiments/NpuBench` README 결과 6).
   같은 날 앱의 '추론 장치'에 TensorRT 로 넣었다 — 아래 "추론 장치"
@@ -340,18 +343,20 @@ pwsh tests/ui/Run-All.ps1
 
 - 기본 대상은 `bin\Debug` 아래 **가장 최근에 빌드된** `DetectView.exe`(먼저 `dotnet build`). `-ExeDir publish` 로 배포본도 본다(상대 경로는 저장소 루트 기준).
   필요: GPU(DirectML), `publish\test1~5.mp4`(gitignore — worktree 에선 `publish` 연결을 둔다, '빌드 · 배포'). 실행 중 창이 떴다 닫히고 바탕화면을 캡처한다.
-  NPU 전환 검사는 AMD NPU 와 exe 옆 짝 모델이 있을 때만 돈다(데스크탑에선 [INFO] 로 건너뛴다 — `Test-NpuSwitch` 55 → 36 항목)
+  NPU 전환 검사는 AMD NPU 와 exe 옆 짝 모델이 있을 때만 돈다(데스크탑에선 [INFO] 로 건너뛴다)
 - 요소는 **`x:Name`(UIA AutomationId)** 으로 찾고 [파일 열기]만 버튼 글자로 찾는다. 버튼 아이콘은 `Ui.Glyph` 로 그린다 — `Content` 를 문자열이 아닌 것으로 바꾸면 UIA 이름이 비어 버튼을 못 찾는다.
   툴팁도 문자열로(UIA HelpText). 상태 문구·버튼 글자·툴팁 문구·창 제목 형식도 검사 대상이다 — **이름·문구를 바꾸면 테스트도 같이 고칠 것**
 - 파일: `Test-FilePlayback`(재생·시크·SAHI·EOF·범례·번호) · `Test-Tracking`(test4 덤프트럭의 번호·정지, 시크 뒤 새 번호) · `Test-Roi`(실제 마우스로 구역 편집·파일) ·
   `Test-SceneChange`(전환 배지·검은 끊김) · `Test-ZoneEvents`(이벤트 로그·CSV) · `Test-Incident`(유고 후보·해소) · `Test-VlmAnnotation`(가짜 VLM 으로 VLM 줄·CSV·끄기·실패) · `Test-ViewIdentity`(합성 재방문 영상의 뷰 식별) ·
   `Test-VfrPlayback`(VFR webm 두 개) · `Test-ScreenHud`(HUD·캡처 방식·결함 주입) · `Test-NpuSwitch`(NPU·TensorRT 전환·창 응답·TensorRT 와 GPU 검출 비교·실패 경로)
 - `Measure-Fps.ps1 -ExeDir <폴더>` 는 테스트가 아니라 A/B 계측이다 — 실행 묶음끼리 수 FPS 흔들리니 기준선을 앞뒤로 두 번 잰다
-- 종료 코드 = 실패 건수(`Run-All` 은 0/1). 스크립트는 UTF-8 **BOM** 으로 저장한다(Windows PowerShell 5.1 이 한국어를 깨뜨리지 않게). 파일 열기 대화상자 자동화 요령은 `Common.ps1` 머리말
-- `Start-DetectView` 는 제목이 바뀐 뒤 **WPF 의 UIA 트리가 붙을 때까지** 기다린다(2026-11-17) — 창이 뜬 직후에 잡은 UIA 루트는 WPF 요소가 안 보이는 Win32 프록시일 수 있고 그 루트로는 끝까지 못 찾는다
-  (데스크탑에서 `Test-NpuSwitch` 가 `null 값 식…` 예외로 실패하던 원인 — NPU 와 무관). 앱을 따로 띄우는 스크립트를 쓸 때도 루트를 일찍 잡지 말 것
-- 마지막 전체 통과: 2026-11-17, **데스크탑으로 옮긴 뒤** — 배포본 `publish`(11-08 의 `b8d4ee0` 그대로) `Run-All` 251 항목 · Debug 286 항목 모두 통과(NPU 쪽 19 항목은 건너뜀).
-  노트북 마지막은 2026-11-08 저녁 배포본 270 항목 모두 통과 · Debug 305 중 304(`Test-Incident` 표본 수 1건). 자세한 기록과 그 전 기록은 docs/testing.md
+- 종료 코드 = 실패 건수(`Run-All` 은 0/1). 스크립트는 UTF-8 **BOM** 으로 저장한다(Windows PowerShell 5.1 이 한국어를 깨뜨리지 않게 — `Run-All` 이 첫머리에서 검사하고
+  `.editorconfig` 가 편집기에 알린다). 파일 열기 대화상자 자동화 요령은 `Common.ps1` 머리말
+- UIA 루트는 **`Start-DetectView` 가 돌려준 프로세스의 `.Root`** 를 쓴다 — WPF 트리가 붙을 때까지 기다려 확인한 바로 그 루트다(`Wait-AppRoot`). `$AE::FromHandle` 로 다시 잡지 말 것:
+  창이 뜬 직후에 잡은 루트는 WPF 요소가 안 보이는 Win32 프록시일 수 있고 그 루트로는 끝까지 못 찾는다(2026-11-17 데스크탑 — docs/testing.md).
+  꼭 있어야 하는 요소는 `Need`(없으면 이름을 담아 그 자리에서 던진다 — `ById` 는 조용히 `$null`), 예외 줄은 `Format-Error`(난 곳을 붙인다)
+- 마지막 전체 통과: 2026-11-20, 데스크탑 — 테스트 도우미를 고친 뒤 Debug `Run-All` 286 항목 · 배포본 `publish`(11-08 의 `b8d4ee0`) 251 항목 모두 통과(NPU 쪽은 건너뜀).
+  자세한 기록과 그 전 기록(노트북 포함)은 docs/testing.md
 
 - 테스트 영상 내용(유고 감지 기준 사례)은 docs/testing.md 끝 '테스트 영상 내용' — `test4.mp4` 는 방향이 바뀌는 CCTV(0~10.5초 차로에 정차한 덤프트럭 = 양성, 21.2초~ 신호대기 행렬 = 음성),
   `test5.mp4` 는 터널 출구 갓길에 정차한 화물차(양성, 1280×854 60fps — 29.63~29.98초에 스트림이 검게 끊긴다)
@@ -362,7 +367,7 @@ pwsh tests/ui/Run-All.ps1
 소스를 통째로 읽는 대신 여기서 `file:line` 을 받아 그 지점만 열면 된다.
 
 쿼리마다 그래프를 자동 갱신하므로 **코드를 고친 뒤 `graft build` 를 다시 돌릴 필요는 없다.**
-`graft/` 안의 `.md` 카드만 턴 끝에 갱신되므로, 방금 고친 파일은 카드보다 위 도구를 믿을 것.
+`graft/` 안의 `.md` 카드만 턴 끝에 갱신되므로, 방금 고친 파일은 카드보다 위 도구를 믿을 것(턴 끝 갱신은 전역 훅이 한다 — 데스크탑은 아직 꺼져 있어 카드가 멈춰 있다, '개발 PC').
 또 git 이 추적하는 `.ignore` 의 `!graft/` 때문에 Grep(ripgrep) 결과에 `graft/*.md` 카드(줄 범위 포함)가 섞여 나온다 — 소스 줄로 착각하지 말 것.
 
 ### 함정 1 — `old/` 를 커밋하면 인덱스가 망가진다
@@ -407,7 +412,7 @@ LLM 개념 맵(`graft build --deep`)은 API 키가 필요해서 돌리지 않았
     옛 기록의 커밋을 `main` 에 merge·cherry-pick 하지도 말 것 — merge 는 옛 기록 전체를, cherry-pick 은 옛 작성자(실제 이메일)를 끌고 온다. 필요한 건 파일 내용만 옮긴다.
   - **rebase·amend·force push 로 올린 기록을 고쳐 쓰지 말 것** (옛 기록 때도 웹에서 생긴 첫 커밋을 force push 로 지우지 않고 합쳤다 — `f7646a6`).
   - 커밋 작성자 이메일은 이 저장소 설정·전역 `~/.gitconfig` 모두 GitHub noreply 다 — 실제 주소가 작성자인 커밋을 push 하면 GitHub 가 막는다(GH007). 공개 정리의 나머지 경과는 docs/repo-history.md
-- GitHub CLI `gh` 는 `C:\Program Files\GitHub CLI\gh.exe`(노트북 2.103.3 — 2026-10-30 winget · 데스크탑 2.104.0). 설치 전에 뜬 앱·셸에선 PATH 에 없으니 전체 경로로 부른다
+- GitHub CLI `gh` 는 winget 으로 설치한 `C:\Program Files\GitHub CLI\gh.exe` 다. 설치 전에 뜬 앱·셸에선 PATH 에 없으니 전체 경로로 부른다
 - **남은 버그·개선 거리는 GitHub 이슈로 관리한다** — 2026-10-30 분석에서 남은 낮은 버그 11건을 #1~#11 로 등록했고, 2026-10-31~11-01 모두 고쳤다
   (이 문서의 해당 서술 옆에 그 번호가 남아 있다 — **그 이슈들은 옛 비공개 저장소와 함께 지워졌다**. 공개 저장소의 이슈는 #1 부터 다시 매겨지니
   옛 번호는 '옛 이슈 #7' 처럼 구분해 가리킨다). 고칠 땐 커밋 메시지에 `Fixes #N` 을 넣는다(`main` 에 push 되면 공개 저장소의 그 이슈가 닫힌다). 이 문서의 서술도 같이 고친다.

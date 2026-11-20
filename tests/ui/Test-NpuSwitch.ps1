@@ -219,14 +219,14 @@ function Test-UiResponsive($L) {
 
 # 추론 콤보 툴팁(UIA HelpText)이 채워지면 TensorRT·NPU 가능 여부 확인이 끝난 것이다 (그 전엔 툴팁이 없다 — 둘은 한 번에 채워진다)
 function Wait-DeviceCheck($Root) {
-    $combo = ById $Root 'InferenceSelector'
+    $combo = Need $Root 'InferenceSelector'
     $null = WaitFor { $h = $combo.Current.HelpText; $h -and $h -notmatch 'NPU 확인 중|TensorRT 확인 중' } 20000
     return $combo.Current.HelpText
 }
 
 # 콤보를 펼쳐 항목을 고른다. 막힌 항목이면 고르지 않고 $false
 function Select-Device($Root, [string]$Name) {
-    $combo = ById $Root 'InferenceSelector'
+    $combo = Need $Root 'InferenceSelector'
     $ec = $combo.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)
     $ec.Expand(); Start-Sleep -Milliseconds 300
     $item = $combo.FindFirst($Tree::Descendants, (New-Object $PC ($AE::NameProperty, $Name)))
@@ -237,7 +237,7 @@ function Select-Device($Root, [string]$Name) {
 }
 
 function Get-SelectedDevice($Root) {
-    $sel = (ById $Root 'InferenceSelector').GetCurrentPattern([System.Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection()
+    $sel = (Need $Root 'InferenceSelector').GetCurrentPattern([System.Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection()
     if ($sel.Count) { $sel[0].Current.Name } else { '' }
 }
 
@@ -294,7 +294,7 @@ $lat = $null
 try {
     # ---------- 1) 최소 폭 툴바 + 2) 정상 짝으로 전환 ----------
     $proc = Start-DetectView $ExeDir
-    $root = $AE::FromHandle($proc.MainWindowHandle)
+    $root = $proc.Root
     $play   = ById $root 'Btn_PlayPause'
     $status = ById $root 'Txt_Status'
     # 시작 때 NPU 확인(짝 모델 확인 → EP 카탈로그 조회)이 도는 동안의 창 응답 — 참고용 (창 크기 바꾸기·첫 화면 그리기가 섞인다)
@@ -350,7 +350,7 @@ try {
         # 이 PC 에선 둘 다 읽혀야 한다. ORT 조각은 앱 프로세스에 올라온 onnxruntime.dll 의 파일 버전과 같아야 한다(의미 버전으로 물러나지 않았는지).
         # Claude 도구에서 띄운 앱은 %LOCALAPPDATA% 쓰기가 Packages\Claude_*\LocalCache\Local 로 돌려져 캐시가 그쪽에 생긴다 → 두 곳 다 본다
         $md5 = Get-Md5 (Join-Path $ExeDir 'best.npu.onnx')
-        $tip = (ById $root 'InferenceSelector').Current.HelpText
+        $tip = (Need $root 'InferenceSelector').Current.HelpText
         $key = if ($tip -match '컴파일 캐시 키: (\S+)') { $Matches[1] } else { '' }
         $parts = @($key -split '_')
         # 다른 프로세스의 모듈 목록은 못 읽을 수도 있다(32비트 PowerShell 등) — 그땐 이 비교만 건너뛰고 내용에 '(못 읽음)'
@@ -429,7 +429,7 @@ try {
 
     # ---------- 2b) TensorRT (NVIDIA TensorRT for RTX — FP16 짝 best.fp16.onnx) ----------
     # 건너뛰는 건 NVIDIA RTX(TensorRT 실행 공급자)가 없는 PC 와 짝 파일이 없는 폴더뿐 — 짝이 낡았거나 확인이 예외로 끝나면 실패 (NPU 와 같은 규칙)
-    $help = (ById $root 'InferenceSelector').Current.HelpText
+    $help = (Need $root 'InferenceSelector').Current.HelpText
     $trtReady = $false
     if ($help -match 'TensorRT 를 쓸 수 없음: (.+)') {
         $why = $Matches[1]
@@ -457,7 +457,7 @@ try {
         Check '선택 칸 = TensorRT' ((Get-SelectedDevice $root) -eq 'TensorRT') "'$(Get-SelectedDevice $root)'"
 
         # 엔진 커널 캐시 키 = FP16 짝 MD5 _ EP 버전 _ ONNX Runtime 버전 — TensorRT 툴팁 끝 '엔진 캐시 키: …'(NPU 의 '컴파일 캐시 키:' 와 같은 꼴)
-        $tip = (ById $root 'InferenceSelector').Current.HelpText
+        $tip = (Need $root 'InferenceSelector').Current.HelpText
         $trtKey = if ($tip -match '엔진 캐시 키: (\S+)') { $Matches[1] } else { '' }
         $parts = @($trtKey -split '_')
         $fp16Md5 = Get-Md5 (Join-Path $ExeDir 'best.fp16.onnx')
@@ -533,7 +533,7 @@ try {
         $ok = WaitFor { (NameOf $status) -eq '정지됨' } 5000
         Check '정지 (TensorRT)' $ok "상태='$(NameOf $status)'"
     }
-    Stop-DetectView $proc; $proc.WaitForExit(10000) | Out-Null; $proc = $null
+    Stop-DetectView $proc; $proc = $null
 
     # ---------- 3) 실패 경로 (본뜬 폴더에서) ----------
     $mirror = New-ExeMirror $ExeDir
@@ -555,10 +555,10 @@ try {
 
     # 본뜬 폴더의 파일은 원래 폴더와 하드 링크다 — 바꿀 땐 늘 지운 뒤 새로 놓는다(덮어쓰면 원래 파일까지 바뀐다). 경우들은 앞 경우가 바꾼 상태에서 이어진다
     $cases = @(
-        @{ Name = '짝 모델 없음'; Device = 'NPU'; Expect = 'best\.npu\.onnx 없음'; Prepare = { Remove-Item $twin -Force -ErrorAction SilentlyContinue } }
-        @{ Name = '다른 모델의 짝'; Device = 'NPU'; Expect = '짝이 안 맞음'; Skip = if (-not $hasTwin) { '원래 폴더에 짝이 없음' } elseif (-not $other) { 'MD5 가 다른 모델이 없음' };
+        @{ Name = '짝 모델 없음'; Device = 'NPU'; Expect = 'NPU 를 쓸 수 없음: best\.npu\.onnx 없음'; Prepare = { Remove-Item $twin -Force -ErrorAction SilentlyContinue } }
+        @{ Name = '다른 모델의 짝'; Device = 'NPU'; Expect = 'NPU 를 쓸 수 없음: .*best\.npu\.onnx 와 짝이 안 맞음'; Skip = if (-not $hasTwin) { '원래 폴더에 짝이 없음' } elseif (-not $other) { 'MD5 가 다른 모델이 없음' };
            Prepare = { Copy-Item (Join-Path $ExeDir 'best.npu.onnx') $twin -Force; Remove-Item $model -Force; Copy-Item $other $model } }
-        @{ Name = 'FP32 를 짝 이름으로'; Device = 'NPU'; Expect = '양자화 모델이 아님';
+        @{ Name = 'FP32 를 짝 이름으로'; Device = 'NPU'; Expect = 'NPU 를 쓸 수 없음: best\.npu\.onnx 가 양자화 모델이 아님';
            Prepare = { Remove-Item $model -Force; Copy-Item (Join-Path $ExeDir 'best.onnx') $model; Remove-Item $twin -Force -ErrorAction SilentlyContinue; Copy-Item $model $twin } }
         # TensorRT 의 FP16 짝 (2026-11-08) — 사유는 'TensorRT 를 쓸 수 없음: …' 줄에서 본다(NPU 줄과 섞이지 않게)
         @{ Name = 'TensorRT 짝 없음'; Device = 'TensorRT'; Expect = 'TensorRT 를 쓸 수 없음: best\.fp16\.onnx 없음';
@@ -573,21 +573,20 @@ try {
         if ($c.Skip) { Note "실패 경로: $($c.Name)" "건너뜀 — $($c.Skip)"; continue }
         & $c.Prepare
         $proc = Start-DetectView $mirror
-        $root = $AE::FromHandle($proc.MainWindowHandle)
+        $root = $proc.Root
         $help = Wait-DeviceCheck $root
         $enabled = Select-Device $root $c.Device   # 막혀 있으면 고르지 못한다
         $proc.Refresh()
         $line = @($help -split "`n" | Where-Object { $_ -like "$($c.Device): *" -or $_ -like "$($c.Device) 를 쓸 수 없음*" -or $_ -like "*$($c.Device) 를 쓸 수 없음*" }) | Select-Object -Last 1
         Check "실패 경로: $($c.Name)" ((-not $enabled) -and $help -match $c.Expect -and $proc.MainWindowTitle -match '\(DirectML\)$') `
             "$($c.Device) 항목 열림=$enabled · 툴팁 줄='$(if ($line) { $line } else { ($help -split "`n")[-1] })'"
-        Stop-DetectView $proc; $proc.WaitForExit(10000) | Out-Null; $proc = $null
+        Stop-DetectView $proc; $proc = $null
     }
 }
-catch { Check '예외' $false $_.Exception.Message }
+catch { Check '예외' $false (Format-Error $_) }
 finally {
     if ($lat) { $lat.Stop() }   # 재는 스레드가 Run-All 의 다음 테스트까지 남지 않게
     Stop-DetectView $proc
-    if ($proc) { $proc.WaitForExit(10000) | Out-Null }
     if ($mirror -and (Test-Path $mirror)) { Remove-Item $mirror -Recurse -Force -ErrorAction SilentlyContinue }
 }
 

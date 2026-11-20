@@ -92,7 +92,9 @@ pwsh tests/ui/Run-All.ps1
   ②b **TensorRT**(2026-11-08 — FP16 짝 `best.fp16.onnx`): 지금 장치(NPU 를 거쳤으면 NPU)에서 곧바로 TensorRT → 진행 표시·창 응답(①② 250 ms 선) → 엔진 캐시 키(FP16 짝 MD5·EP·런타임) →
   재생(배속·검출) → 멈춘 프레임 두 곳(3.0·6.5초)의 검출 수를 GPU 와 견줌(±1 — 두 곳을 보는 건 엔진이 옛 입력을 다시 쓰는 잘못을 가리려고) → SAHI(작업 스레드의 추론) →
   키 폴더에 엔진 캐시 파일 → 재생 중 다시 TensorRT(캐시 — '엔진 만드는 중'이 없어야). NVIDIA RTX 가 아니거나 짝이 없으면 [INFO] 로 건너뛴다
-  ③ 실패 경로 6가지 — NPU·TensorRT 각각 짝 없음·다른 모델의 짝·FP32 를 짝 이름으로 — 에서 그 항목이 막히고 툴팁에 사유, GPU 유지. ③ 은 exe 폴더를 **하드 링크로 본뜬 옆 폴더(`<exe 폴더>.npu-test`, gitignore)** 에서 파일을 바꾼다 —
+  ③ 실패 경로 6가지 — NPU·TensorRT 각각 짝 없음·다른 모델의 짝·FP32 를 짝 이름으로 — 에서 그 항목이 막히고 툴팁에 사유, GPU 유지. 기대 사유는 **그 장치 줄**
+  ('NPU 를 쓸 수 없음: …' · 'TensorRT 를 쓸 수 없음: …')에 고정한다 — 툴팁 전체에 맞추면 다른 장치 줄로 통과할 수 있었다(2026-11-20: NPU '다른 모델의 짝'의 '짝이 안 맞음'이
+  그대로 남은 FP16 짝 때문에 TensorRT 줄에 맞았다 — NPU 가 없는 PC 에선 항목이 어차피 막혀 있어 그 경우는 아무것도 검사하지 않았다). ③ 은 exe 폴더를 **하드 링크로 본뜬 옆 폴더(`<exe 폴더>.npu-test`, gitignore)** 에서 파일을 바꾼다 —
   원래 폴더(배포 폴더 포함)는 건드리지 않고 끝나면 지운다. "다른 모델의 짝"은 MD5 가 다른 모델(루트·배포 폴더 `best.onnx`, 그다음 배포 폴더의 다른 `*.onnx` — 짝 `*.npu.onnx` 는 빼고)이 있어야 해서 없으면 [INFO].
   배포 폴더의 다른 모델을 후보에 넣은 건 2026-11-06 — 루트와 배포 폴더가 같은 YOLO26m 640×384 가 되어 옛 YOLO26s 를 `best.yolo26s-0917.onnx` 로 보관했는데, 후보가 둘뿐이면 이 경우가 늘 건너뛰어졌다.
   **NPU(VitisAI 실행 공급자)가 없는 PC 거나 짝 모델 파일이 없으면 ② 를 [INFO] 로 건너뛴다**(①·③ 은 NPU 없이도 돈다).
@@ -106,24 +108,48 @@ pwsh tests/ui/Run-All.ps1
   옛 판 `UiLatency` 형식이 남은 PowerShell 세션에선 분명한 메시지로 멈춘다(Add-Type 형식은 못 바꿈 — 새 pwsh 에서 돌릴 것)
 - 종료 코드 = 실패 건수(`Run-All` 은 0/1). 파일 열기 대화상자 자동화 요령 등은 `Common.ps1` 머리말에 정리해 두었다.
   `Run-All` 은 테스트 파일이 try 밖에서 throw 해도(영상·빌드 없음) 그 파일만 실패로 세고 다음 파일을 돈다(2026-10-30 — 예전엔 거기서 통째로 멈췄다)
-- `Start-DetectView` 는 창 제목이 `(DirectML)` 로 바뀐 뒤 **WPF 의 UIA 트리가 붙을 때까지** 더 기다린다(2026-11-17, 데스크탑으로 옮긴 날): 볼 때마다 `FromHandle` 로 루트를 새로 잡아
-  FrameworkId 가 `WPF` 이고 `Btn_PlayPause` 가 보이면 끝(10초 제한 — 넘으면 throw). 제목 직후에 잡은 루트는 Win32 창 프록시(ClassName `HwndWrapper[DetectView;;…]` · FrameworkId `Win32`)일 수 있고,
-  **그 루트로는 나중에도 WPF 요소를 하나도 못 찾는다**(`ById` 가 `$null` — 루트를 다시 잡아야 `Window`/`WPF` 가 된다). 데스크탑 실측(배포본, 제목을 10 ms 마다 봄): WPF 공급자는 제목 뒤 115~160 ms 에 붙고,
-  제목을 보자마자 잡은 루트는 16번 중 14번 빈 트리였다(나머지 둘은 묶음의 첫 실행 — UIA 를 처음 불러 늦게 잡혔다. 400 ms 기다렸다 잡으면 4번 모두 정상). 테스트는 제목을 100 ms 마다 보므로 실행마다 걸리기도 안 걸리기도 했다 —
-  11-17 첫 `Run-All -ExeDir publish` 에선 11개 파일 중 `Test-NpuSwitch` 하나가 예외로 끝났고(앱을 일곱 번 띄우는 파일이다), 그 파일만 다시 돌리니 실패 경로 5번째('TensorRT 다른 모델의 짝')를 띄운 직후
-  `[FAIL] 예외 — null 값 식에서 메서드를 호출할 수 없습니다.`(`InferenceSelector` 를 못 찾음)였다. NPU 가 없어서가 아니다(NPU 쪽은 [INFO] 로 건너뛴다). 노트북에선 한 번도 드러나지 않았다(이유는 재지 않았다 — 그쪽이 느려 제목과 트리 사이가 안 벌어진 것으로 짐작).
-  고친 뒤 10번 띄워 10번 모두 돌아온 직후의 루트가 `Window`/`WPF`. `Common.ps1` 에 BOM 이 빠져 있던 것도 그날 붙였다(다른 스크립트는 모두 있었다)
-- 마지막 전체 통과: 2026-11-17 낮, **데스크탑으로 옮긴 뒤**(`C:\DetectView` — i5-14400F · RTX 5060 Ti 하나 · NPU 없음 · 모니터 2560×1440, CLAUDE.md "개발 PC") — 노트북에서 통째로 복사해 온 **배포본 `publish`**(11-08 의 `b8d4ee0` 그대로,
+- UIA 루트는 **`Start-DetectView` 가 돌려준 프로세스의 `.Root`** 를 쓴다(2026-11-17 데스크탑으로 옮긴 날의 실패를 고치며 — 11-20 정리). `Start-DetectView` 는 창 제목이 `(DirectML)` 로 바뀐 뒤
+  `Wait-AppRoot` 로 50 ms 마다 `FromHandle` 로 루트를 새로 잡아 FrameworkId 가 `WPF` 이고 `Btn_PlayPause` 가 보일 때까지 기다리고(10초 제한), **확인한 바로 그 루트**를 `.Root` 로 붙여 돌려준다 —
+  11-17 판은 확인한 루트를 버리고 호출부 16곳이 `FromHandle` 로 다시 잡았다. 앱이 그사이 끝나면(제목 전·후 모두) 기다리지 않고 종료 코드를 담아 던진다 — 예전엔 제목 전이면 20초를 기다려
+  '모델 또는 GPU 초기화 실패'로, 제목 뒤면 10초를 기다려 'UIA 트리가 준비되지 않음'으로 보였다. `Stop-DetectView` 는 앱이 실제로 끝날 때까지(최대 10초) 기다린다 — 예전엔 호출부마다
+  `WaitForExit` 을 붙이거나(`Test-NpuSwitch`) 빠뜨렸고, `Start-DetectView` 가 실패하며 죽인 앱은 호출부가 프로세스를 받지 못해 기다릴 수도 없었다(그 미러 지우기·다음 테스트와 겹칠 수 있었다).
+  **잰 것**(데스크탑 · 배포본, 제목을 10 ms 마다 봄): 제목을 보자마자 잡은 루트는 Win32 창 프록시(ClassName `HwndWrapper[DetectView;;…]` · FrameworkId `Win32`)일 수 있고 **그 루트로는 나중에도 WPF 요소를
+  하나도 못 찾는다**(`ById` 가 `$null`). 새로 잡은 루트가 WPF 가 되기까지 제목 뒤 115~160 ms, 제목을 보자마자 잡은 루트는 16번 중 14번 빈 트리(나머지 둘은 묶음의 첫 실행 — UIA 를 처음 불러 늦게 잡혔다.
+  400 ms 기다렸다 잡으면 4번 모두 정상). (11-20 고친 판의 `Start-DetectView` 는 제목을 100 ms 마다 보므로 재는 법이 다르다 — 제목을 본 뒤 WPF 루트까지 더 걸린 시간은 56~168 ms(5번),
+  제목 검출이 최대 100 ms 늦을 수 있어 위 115~160 ms 와 견주지 말 것)
+  **재지 않은 것 — 원인**: 'WPF 의 UIA 공급자가 늦게 붙는다'와 '제목은 생성자에서 정해져 창이 보이자마자 뜨는데, 그 뒤 UI 스레드가 첫 레이아웃·렌더와 `Loaded` 의 동기 작업
+  (`RefreshCameras` — DirectShow 카메라 열거 · `RefreshMonitors`)으로 바빠 WM_GETOBJECT 에 늦게 답한다' 둘 다 맞아떨어진다. **간헐성의 계기도 모른다** — 옛 테스트는 제목을 100 ms 마다 보고 곧바로
+  루트를 잡았으니(제목 뒤 0~110 ms) 위 수치대로라면 거의 매번 실패했어야 하는데, 11-17 첫 `Run-All -ExeDir publish` 에선 11개 파일 중 `Test-NpuSwitch` 하나만, 그 파일만 다시 돌리면 일곱 번 띄우는 중
+  여섯째(실패 경로 5번째 'TensorRT 다른 모델의 짝')에서만 `[FAIL] 예외 — null 값 식에서 메서드를 호출할 수 없습니다.`(`InferenceSelector` 를 못 찾음)로 끝났다. 노트북에선 한 번도 드러나지 않았다.
+  NPU 가 없어서 난 실패가 아니다(NPU 쪽은 [INFO] 로 건너뛴다). 확인한 루트를 그대로 쓰게 했으니 원인이 어느 쪽이든 테스트엔 상관없다.
+  그때 원인을 찾느라 세션 하나가 들어서 같은 일이 없게 했다(11-20): 꼭 있어야 하는 요소는 `Need`(없으면 AutomationId·루트 종류를 담아 그 자리에서 던진다 — `ById` 는 조용히 `$null` 을 돌려
+  `Wait-DeviceCheck` 가 20초를 헛돈 뒤에야 이름 없는 예외가 났다), 각 테스트의 `catch` 는 `Format-Error`(난 곳 — 스크립트:줄과 그 줄, 함수 안에서 났으면 그것을 부른 테스트 쪽
+  자리와 그 줄을 두 단계까지 — 스택 글은 언어마다 달라('at f, …: line N' · 'f에서 …: 줄 N') 경로와 번호만 뽑는다)를, `Run-All` 의 `catch` 는 스크립트 스택 위 세 단계를 붙인다.
+  `ById` 자체는 그대로 조용히 `$null` 을 돌려준다(없을 수도 있는 요소를 기다리는 데 쓴다) — 그래도 그것으로 난 예외는 이제 부른 줄(어느 AutomationId 인지)까지 보인다.
+  `Test-ViewIdentity` 엔 `catch` 가 없어 예외 하나로 그때까지의 결과 줄이 하나도 찍히지 않았다 — 다른 테스트처럼 더했다.
+  `Run-All` 은 첫머리에 tests\ui·tools 스크립트의 UTF-8 BOM 을 본다 — `Common.ps1` 이 `0b75d64`(11-03)에서 BOM 을 잃고 11-17 에야 손으로 되살렸다(pwsh 는 BOM 없이도 읽어 아무도 몰랐다).
+  편집기용으론 저장소 루트 `.editorconfig` 의 `[*.ps1] charset = utf-8-bom`
+- 마지막 전체 통과: 2026-11-20, 데스크탑 — 코드 검토 뒤 **테스트 도우미를 고친 판**(`Start-DetectView` 가 확인한 루트를 `.Root` 로 돌려줌 · `Wait-AppRoot` · `Stop-DetectView` 가 끝날 때까지 기다림 ·
+  `Need`/`Format-Error` · `Run-All` 의 BOM 검사 · `Test-NpuSwitch` NPU 실패 경로 기대값을 NPU 줄에 고정 — 위 설명). 앱은 그대로(Debug 는 11-17 빌드, 배포본은 11-08 의 `b8d4ee0`).
+  `Run-All`(Debug) 한 번에 **286 항목 모두 통과**(4.8분), `Run-All -ExeDir publish` 한 번에 **251 항목 모두 통과**(3.8분) — 파일별 항목 수는 11-17 과 같다(새 도우미는 `Check` 를 더하지 않는다).
+  그사이 Windows ML 카탈로그가 TensorRT for RTX EP 를 **2.50.53.0** 으로 올려(11-17 엔 2.30.49.0), Debug 실행의 첫 TensorRT 전환이 EP 내려받기('… 내려받는 중 33% → 90% → 100%')와
+  엔진 만들기를 거쳐 18.8초 걸렸다 — **이 PC 에서 TensorRT EP 를 내려받는 경로를 처음 실제로 거쳤다**: 그동안 창 응답 WM_NULL 최대 4 ms · UIA 최대 25 ms(12.1초 동안 211회), 엔진 캐시 키 `D7D760DC…_2.50.53.0_…`.
+  배포본 실행은 Debug 실행이 남긴 새 키의 캐시로 '확인 중 → 준비 중'만 거쳤는데도 7.2초(11-17 의 캐시 전환은 2.3초 — 왜 느렸는지는 재지 않았다), 둘 다 재생 중 다시 고르면 2.3~2.4초.
+  검토로 도우미를 한 번 더 고친 뒤(`Format-Error` 가 부른 곳까지 · BOM 검사를 파일마다 · `Test-ViewIdentity` 의 `catch`) 같은 날 다시 돌린 Debug 286(4.3분) · 배포본 251(3.7분)도 모두 통과,
+  이때 TensorRT 캐시 전환은 둘 다 2.3초 — 위 7.2초는 한 번만 느렸다. 참고용 재생 처리 TensorRT 141.8(Debug) · 140.3(배포본) FPS, HUD 103.7 · 115.0 FPS
+- 그 전 전체 통과: 2026-11-17 낮, **데스크탑으로 옮긴 뒤**(`C:\DetectView` — i5-14400F · RTX 5060 Ti 하나 · NPU 없음 · 모니터 2560×1440, CLAUDE.md "개발 PC") — 노트북에서 통째로 복사해 온 **배포본 `publish`**(11-08 의 `b8d4ee0` 그대로,
   132,596,048 바이트 · 모델·짝·영상도 그대로)로 `Run-All -ExeDir publish` 한 번에 **251 항목 모두 통과**: `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 · `Test-SceneChange` 21 ·
   `Test-ZoneEvents` 21 · `Test-Incident` 16 · `Test-VlmAnnotation` 6(Release) · `Test-ViewIdentity` 27 · `Test-VfrPlayback` 26 · `Test-ScreenHud` 25(DXGI 2560×1440, Release) · `Test-NpuSwitch` 36
-  (노트북의 55 에서 NPU 쪽 19 항목이 빠진 수 — `NPU 전환 건너뜀 — 이 PC 에서 쓸 수 있는 AMD NPU 실행 공급자(VitisAI)가 없음`. 실패 경로 여섯은 NPU 것까지 다 돈다 — 짝 파일 확인이 EP 확인보다 먼저라).
+  (노트북의 55 에서 NPU 쪽 19 항목이 빠진 수 — `NPU 전환 건너뜀 — 이 PC 에서 쓸 수 있는 AMD NPU 실행 공급자(VitisAI)가 없음`. 실패 경로 여섯은 NPU 것까지 다 돈다 — 짝 파일 확인이 EP 확인보다 먼저라
+  툴팁 사유는 나온다. 다만 11-20 에 보니 NPU 항목은 VitisAI 가 없어 어차피 막혀 있고, NPU '다른 모델의 짝' 기대값은 TensorRT 줄에도 맞아 이날 그 경우는 아무것도 검사하지 않았다 — 위 ③ 설명).
   TensorRT: 전환 2.3초 · 재생 중 다시 2.0초(둘 다 캐시 — 앞서 따로 돌린 실행이 엔진을 남겼다. 엔진 캐시 키 `D7D760DC…_2.30.49.0_1.27.20260711.1.7b7c0e2` — EP 가 노트북의 2.30.51 과 다르다), ①② 창 응답 WM_NULL 최대 1 ms · UIA 최대 2 ms,
   멈춘 프레임 3.0·6.5초의 검출이 GPU 와 클래스까지 같음(11 · 13개 — 노트북과 같은 수), SAHI 19개. 참고용 재생 처리 **TensorRT 148.7 FPS**, HUD 110.8 FPS(GPU 재생 FPS 는 NPU 구간에서만 적어 이번엔 없다).
   그 앞서 빌드(`dotnet build` 경고 0 — SDK 11.0.100 으로, 대상은 net10.0)와 배포본 스모크(제목 `… — NVIDIA GeForce RTX 5060 Ti (DirectML)`)도 봤다.
   이어서 그날 빌드한 **Debug** 로 `Run-All` 한 번에 **286 항목 모두 통과**(4.5분): `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 · `Test-SceneChange` 21 · `Test-ZoneEvents` 21 · `Test-Incident` 16 ·
   `Test-VlmAnnotation` 27 · `Test-ViewIdentity` 27 · `Test-VfrPlayback` 26 · `Test-ScreenHud` 39(결함 주입 포함 — 복제 상실 뒤 DXGI 로 이어 감) · `Test-NpuSwitch` 36 — 노트북의 305 에서 NPU 쪽 19 만 빠진 수.
   TensorRT 전환 7.5초 · 재생 중 다시 2.0초, 참고용 재생 처리 TensorRT 110.3 FPS, HUD 79.4 FPS.
-  **이 날 수치는 데스크탑 것이라 아래 노트북 기록의 FPS·전환 시간과 견주지 말 것.** 이 PC 에서 돌지 않은 것: NPU 전환(②)과 `Test-ScreenHud` 의 하이브리드 GPU 안내 검사(HUD 가 GDI 로 뜰 때만 돈다 — 이 PC 는 DXGI 로 떴다)
+  **이 날 수치는 데스크탑 것이라 아래 노트북 기록의 FPS·전환 시간과 견주지 말 것.** 이 PC 에서 돌지 않은 것: NPU 전환(②)과 `Test-ScreenHud` 의 하이브리드 GPU 안내 검사(HUD 가 GDI 로 뜰 때만 돈다 — 이 PC 는 DXGI 로 떴다),
+  그리고 NPU 실패 경로 셋의 '항목이 막힘' 검사(VitisAI 가 없어 늘 막혀 있다 — 툴팁 사유만 실제로 본다)
 - 그 전 전체 통과: 2026-11-08 저녁, **배포본 `publish`** — 사용자 "배포하기"로 TensorRT 판 `b8d4ee0` 을 배포(작업 트리가 깨끗한 worktree 에서 임시 폴더로 내보내 exe 만 옮김 —
   132,596,048 바이트, Release DLL 에 결함·가짜 VLM 이름 없음·TensorRT 코드 있음). 배포 폴더 FP16 짝은 `Make-Fp16Model.ps1 -Model publish\best.onnx`(5초)로 만들어 루트 짝과 바이트까지 같다(`D7D760DC…`).
   `Run-All -ExeDir publish` 첫 실행은 270 항목 중 269 — 남은 1건이 아래 Debug 와 같은 `Test-Incident` 표본 수(11.7초 뒤 7개 < 8, 남은 표시 0)였다.
@@ -365,7 +391,7 @@ pwsh tests/ui/Run-All.ps1
   GDI `BitBlt` 실패(잠금 화면), FP16 모델의 출력 버퍼·공급자 생성자 실패 정리를 코드로만 확인했다.
   2026-10-30 작은 버그 수정 중엔 GDI `BitBlt` 실패 때 쉬기, 1시간 넘는 영상의 시간 표시(서식만 따로 확인), HUD 결과 전달 깃발 순서(동시성 검토)를
   코드로만 확인했다(NPU 캐시 문구는 같은 날 빈 키 폴더를 두고 실행해 '컴파일 중'이 뜨는 것까지 확인).
-  HUD 재개 때 마지막 화면 재검출(`_hudForceRefresh`)은 이제 진단 값으로 본다(이슈 #11 — 강제 경로를 끈 변종 빌드로 판별 확인, 위 '마지막 전체 통과').
+  HUD 재개 때 마지막 화면 재검출(`_hudForceRefresh`)은 이제 진단 값으로 본다(이슈 #11 — 강제 경로를 끈 변종 빌드로 판별 확인, 위 '그 전: 2026-11-01 새벽, Debug' 기록의 '판별 확인(A/B)').
   2026-10-31~11-01 이슈 수정 중엔 이것들을 확인하지 않았다: HUD 캡처 복구의 실제 회전·TDR·드라이버 업데이트·잠금 화면·UAC·모니터 뽑기(결함 주입은 루프의 복구 경로만 본다),
   DXGI 다시 열기 대기·Grace 초과 뒤 GDI·DXGI 인 채 배치 변경의 UI 갱신·끊김 중 박스 유지·검출 재시도 물러남(창이 있어야 도는 경로라 코드 검토와 콘솔 하네스로만),
   썸을 잡은 채 Alt+Tab 하는 슬라이더 드래그(UIA 로 못 함 — 이슈 #8. 11-01 사용자가 손으로 확인해 문제 없음, 고칠 땐 다시 손으로 볼 것), EP 패키지 ID 를 못 읽을 때의 LibraryPath·unknown 키 경로(이 PC 는 패키지 ID 가 있음),

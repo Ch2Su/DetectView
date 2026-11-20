@@ -6,7 +6,7 @@
 끝나면 report.py 가 out/results/report.html(장면마다 그림·답 원문·정답 — 화면에도 호출마다 단서·설명을 찍는다)
 이미 성공한 (장면, 입력) 은 건너뛴다(다시 돌리면 이어서).
 
-Ollama 서버가 떠 있으면 그것을 쓰고, 없으면 OLLAMA_MODELS=E:/Ollama/models 로 `ollama serve` 를 띄웠다가 끝에 끈다.
+Ollama 서버가 떠 있으면 그것을 쓰고, 없으면 `ollama serve` 를 띄웠다가 끝에 끈다 — 모델 폴더는 Ollama 설정(OLLAMA_MODELS, 없으면 기본 폴더)을 따른다.
 설정마다 끝나면 그 모델을 메모리에서 내린다(keep_alive 0).
 
     uv run --no-project --python 3.12 experiments/VlmCheck/run_vlm.py [설정 이름...]
@@ -532,12 +532,17 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
     started = None
     if not server_up():
-        env = dict(os.environ, OLLAMA_MODELS="E:/Ollama/models")
-        started = subprocess.Popen([str(OLLAMA), "serve"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # 모델 폴더는 정하지 않는다 — 사용자의 Ollama 설정(환경 변수 OLLAMA_MODELS, 없으면 `ollama pull` 이 받는 기본 폴더)을 따라야
+        # 받아 둔 모델이 보인다. 예전엔 노트북의 E:/Ollama/models 를 박아 둬, 그 폴더가 없는 PC 에선 빈 폴더로 서버를 띄우고
+        # 첫 호출이 404(model not found)로 멈췄다 (2026-11-20 — 데스크탑으로 옮긴 뒤)
+        started = subprocess.Popen([str(OLLAMA), "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for _ in range(30):
             if server_up():
                 break
             time.sleep(1)
+        else:
+            started.kill()
+            sys.exit(f"Ollama 서버를 30초 안에 띄우지 못함 ({OLLAMA})")
         print(f"Ollama 서버를 띄움(PID {started.pid})", flush=True)
     try:
         prev_model = None   # Ollama 에 올린 앞 모델 — Strata 쪽 모델은 `strata launch --stop` 이 내린다

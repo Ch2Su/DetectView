@@ -25,6 +25,8 @@ import onnxruntime as ort
 from run_vlm import CROPS, crop_rect   # 크롭 사각형 셈·배율은 run_vlm 한 곳(run_mirage 가 같은 값으로 박스 위치를 되찾는다)
 
 HERE = Path(__file__).resolve().parent
+REPO = HERE.parents[1]
+MEDIA = REPO / "publish"   # 테스트 영상(test1~5.mp4 · incidents/ — gitignore) 폴더. check_app_parity 도 이것을 쓴다(한 곳에서만 정한다)
 RED, GREEN = (0, 0, 255), (0, 200, 0)
 
 
@@ -130,9 +132,8 @@ def stopped_seconds(det, path, t, box, step=0.5, horizon=10.0):
 
 def main():
     ap = argparse.ArgumentParser()
-    # 저장소의 publish — 예전엔 노트북 경로(E:/DetectView/publish)가 박혀 있어 폴더·PC 를 옮기면 깨졌다 (2026-11-17)
-    ap.add_argument("--media", default=str(HERE.parents[1] / "publish"))
-    ap.add_argument("--model", default=str(HERE.parents[1] / "best.onnx"))
+    ap.add_argument("--media", default=str(MEDIA))
+    ap.add_argument("--model", default=str(REPO / "best.onnx"))
     ap.add_argument("--out", default=str(HERE / "out"))
     a = ap.parse_args()
     media, out = Path(a.media), Path(a.out)

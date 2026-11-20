@@ -6,7 +6,7 @@
 
 ## 준비
 
-- Ollama 0.40.15(사용자가 띄운 앱 서버) — 모델은 `E:/Ollama/models`
+- Ollama 0.40.15(사용자가 띄운 앱 서버) — 모델은 그때 노트북 `E:/Ollama/models`(2026-11-20 부터 run_vlm.py 는 모델 폴더를 정하지 않고 Ollama 설정을 따른다)
   - `qwen3.5:2b`(Q8_0) · `qwen3.5:4b`(Q4_K_M) — 둘 다 비전 + 생각 모드(기본 켬 — 여기선 따로 켜고 끔)
   - `gemma3:4b` · `qwen3-vl:8b-instruct`
 - RTX 5060 Laptop 8 GB(다른 앱이 1.5 GB 쓰는 상태), 전원 연결

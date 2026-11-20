@@ -55,7 +55,7 @@ function Fmt($Samples) { ($Samples | ForEach-Object { '{0:N1}s[{1}]' -f ($_.Pos 
 $proc = $null
 try {
     $proc = Start-DetectView $ExeDir
-    $root = $AE::FromHandle($proc.MainWindowHandle)
+    $root = $proc.Root
     $play   = ById $root 'Btn_PlayPause'
     $stop   = ById $root 'Btn_Stop'
     $status = ById $root 'Txt_Status'
@@ -117,7 +117,7 @@ try {
     Check '끊김 앞뒤로 멈춘 화물차의 번호가 그대로 (같은 화면이라 추적기를 안 비움)' ($stillIds.Count -gt 0 -and $kept.Count -gt 0) "끊김 전 정지 번호=[$($stillIds -join ' ')] → 끊김 뒤 정지 번호=[$($afterStill -join ' ')]"
     Check '끊김 뒤 번호가 다시 붙고 배지가 사라짐' (@($s5 | Where-Object { $_.Pos -ge 31000 -and $_.Ids.Count -gt 0 -and $_.Badge -eq '' }).Count -gt 0) ''
 }
-catch { Check '예외' $false $_.Exception.Message }
+catch { Check '예외' $false (Format-Error $_) }
 finally { Stop-DetectView $proc }
 
 Complete-Test

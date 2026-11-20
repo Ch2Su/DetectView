@@ -9,7 +9,7 @@
 #  - 대화상자 창이 먼저 뜨고 하단 컨트롤은 나중에 붙는다 → 생길 때까지 기다린다
 #  - 다른 프로세스 컨트롤의 글자는 GetWindowText 로 못 읽는다 → WM_GETTEXT
 #  - 도우미 이름을 Cls 로 짓지 말 것. Clear-Host 별칭이 함수보다 먼저 잡혀 "핸들이 잘못되었습니다" 가 난다
-#  - 창이 뜬 직후에 잡은 UIA 루트는 WPF 요소가 안 보이는 Win32 프록시일 수 있다 → Start-DetectView 가 WPF 트리까지 기다린다 (2026-11-17)
+#  - 창이 뜬 직후에 잡은 UIA 루트는 WPF 요소가 안 보이는 Win32 프록시일 수 있다 → 루트는 Start-DetectView 가 돌려준 프로세스의 .Root 를 쓴다 (2026-11-17)
 
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
@@ -45,6 +45,41 @@ function Note([string]$Label, [string]$Detail) { $Results.Add("[INFO] $Label —
 function ById($Root, [string]$Id) { $Root.FindFirst($Tree::Descendants, (New-Object $PC ($AE::AutomationIdProperty, $Id))) }
 function ByName($Root, [string]$Name) { $Root.FindFirst($Tree::Descendants, (New-Object $PC ($AE::NameProperty, $Name))) }
 function NameOf($El) { $El.Current.Name }
+
+# 꼭 있어야 하는 요소 — 없으면 그 자리에서 무엇을 못 찾았는지(AutomationId · 루트 종류) 담아 던진다.
+# ById 는 없으면 $null 이라 실패가 멀리서 이름 없는 'null 값 식에서 메서드를 호출할 수 없습니다' 로만 드러났다 (2026-11-17)
+function Need($Root, [string]$Id) {
+    $e = ById $Root $Id
+    if ($null -ne $e) { return $e }
+    $kind = '루트를 읽지 못함'
+    try { $kind = "$($Root.Current.ClassName) / $($Root.Current.FrameworkId)" } catch { }
+    throw "UIA 요소 '$Id' 를 찾지 못함 (루트: $kind)"
+}
+
+# 예외를 결과 한 줄로 — 메시지에 난 곳(스크립트:줄)과 그 줄을 붙인다. 메시지만 남기면 'null 값 식…' 처럼 어디서 났는지 모른다.
+# 함수 안에서 났으면 그것을 부른 테스트 쪽 자리와 그 줄도 두 단계까지 붙인다 — 공용 도우미 줄(예: Click)만으론 어느 호출·어느 요소인지 모른다
+function Format-Error($Err) {
+    $ii = $Err.InvocationInfo
+    if (-not $ii -or -not $ii.ScriptName) { return $Err.Exception.Message }
+    $out = "$($Err.Exception.Message) @ $(Split-Path $ii.ScriptName -Leaf):$($ii.ScriptLineNumber) — $(Format-SourceLine $ii.Line)"
+    # 스택 글은 언어에 따라 'at f, <경로>: line N' · 'f에서 <경로>: 줄 N' 이라 경로와 번호만 뽑는다. 공용 파일(Common·Run-All) 단계는 건너뛴다
+    $n = 0
+    foreach ($fr in ("$($Err.ScriptStackTrace)" -split "`r?`n")) {
+        if ($n -ge 2 -or $fr -notmatch '([A-Za-z]:\\.*?\.ps1): \S+ (\d+)\s*$') { continue }
+        $path = $Matches[1]; $num = [int]$Matches[2]; $leaf = Split-Path $path -Leaf
+        if ($leaf -in 'Common.ps1', 'Run-All.ps1' -or ($path -eq $ii.ScriptName -and $num -eq $ii.ScriptLineNumber)) { continue }
+        $src = ''
+        try { $src = [IO.File]::ReadAllLines($path)[$num - 1] } catch { }
+        $out += " ← $($leaf):$num — $(Format-SourceLine $src)"
+        $n++
+    }
+    $out
+}
+
+function Format-SourceLine([string]$Line) {
+    $s = "$Line".Trim()
+    if ($s.Length -gt 120) { $s.Substring(0, 120) + '…' } else { $s }
+}
 function Click($El) { $El.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke() }
 
 function WaitFor([scriptblock]$Cond, [int]$TimeoutMs, [int]$StepMs = 100) {
@@ -75,40 +110,60 @@ function Resolve-ExeDir([string]$ExeDir) {
     return $full
 }
 
-# 앱을 띄우고 모델(GPU) 로드까지 기다린다. 창 제목이 "... (DirectML)" 로 바뀌면 성공
+# 앱을 띄우고 모델(GPU) 로드까지 기다린다. 창 제목이 "... (DirectML)" 로 바뀌면 성공.
+# 돌려주는 프로세스에는 WPF 트리까지 확인한 UIA 루트가 .Root 로 붙어 있다 — 루트는 이것을 쓴다($AE::FromHandle 로 다시 잡지 말 것 — Wait-AppRoot)
 function Start-DetectView([string]$ExeDir, [string]$WorkingDirectory = $ExeDir) {
     $exe = Join-Path $ExeDir 'DetectView.exe'
     if (-not (Test-Path $exe)) { throw "실행 파일이 없습니다: $exe (먼저 빌드하세요)" }
     Note '대상' "$exe ($((Get-Item $exe).LastWriteTime.ToString('yyyy-MM-dd HH:mm')))"
 
     $proc = Start-Process $exe -WorkingDirectory $WorkingDirectory -PassThru
-    $ok = WaitFor { $proc.Refresh(); $proc.MainWindowTitle -like '*DirectML*' } 20000
-    Check '모델 로드 (GPU)' $ok "제목='$($proc.MainWindowTitle)'"
+    $null = $proc.Handle   # 핸들을 잡아 둔다 — 안 그러면 앱이 끝난 뒤 ExitCode 를 읽지 못한다
+    # 앱이 그사이 끝나면(시작 중 예외) 20초를 다 기다리지 않고 종료 코드를 남긴다
+    $ok = WaitFor { $proc.Refresh(); $proc.HasExited -or $proc.MainWindowTitle -like '*DirectML*' } 20000
+    $exited = $proc.HasExited   # 한 번만 읽는다 — 두 번 읽으면 그사이 끝난 앱이 'PASS · 앱이 끝남' 처럼 어긋나게 찍힌다
+    $ok = $ok -and -not $exited
+    Check '모델 로드 (GPU)' $ok $(if ($exited) { "제목을 띄우기 전에 앱이 끝남 (종료 코드 $($proc.ExitCode))" } else { "제목='$($proc.MainWindowTitle)'" })
     if (-not $ok) {
-        Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-        throw '메인 창이 뜨지 않음 — 모델 또는 GPU 초기화 실패 (오류 대화상자에서 멈췄을 수 있음)'
+        $why = if ($exited) { "앱이 끝남 (종료 코드 $($proc.ExitCode))" } else { '모델 또는 GPU 초기화 실패 (오류 대화상자에서 멈췄을 수 있음)' }
+        Stop-DetectView $proc
+        throw "메인 창이 뜨지 않음 — $why"
     }
-
-    # 제목이 바뀐 직후엔 WPF 의 UIA 공급자가 아직 창에 붙지 않았을 수 있다. 그때 FromHandle 로 잡은 루트는 Win32 창 프록시
-    # (ClassName 'HwndWrapper[…]' · FrameworkId 'Win32')이고, 그 루트로는 나중에도 WPF 요소를 하나도 못 찾는다 — 루트를 다시 잡아야 한다.
-    # 2026-11-17 데스크탑(i5-14400F · RTX 5060 Ti) 실측: 제목 뒤 115~160 ms 에 붙고, 제목을 보자마자 잡은 루트는 16번 중 14번 빈 트리였다
-    # (ById 가 $null → Test-NpuSwitch 가 'null 값 식에서 메서드를 호출할 수 없습니다'. 노트북에선 드러나지 않았다).
-    # 호출한 쪽이 돌아오자마자 FromHandle 을 불러도 되게 여기서 기다린다 — 볼 때마다 루트를 새로 잡는다
-    $ready = WaitFor {
-        try {
-            $r = $AE::FromHandle($proc.MainWindowHandle)
-            $r.Current.FrameworkId -eq 'WPF' -and $null -ne (ById $r 'Btn_PlayPause')
-        } catch { $false }
-    } 10000 50
-    if (-not $ready) {
-        Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-        throw '메인 창의 UIA 트리가 준비되지 않음 — WPF 요소(Btn_PlayPause)를 10초 안에 찾지 못함'
-    }
+    try { $root = Wait-AppRoot $proc }
+    catch { Stop-DetectView $proc; throw }
+    Add-Member -InputObject $proc -NotePropertyName Root -NotePropertyValue $root -Force
     return $proc
 }
 
+# 창 제목이 뜬 프로세스에서 WPF 트리까지 붙은 UIA 루트를 얻는다 — 볼 때마다 FromHandle 로 루트를 새로 잡는다.
+# 창이 뜬 직후에 잡은 루트는 WPF 요소가 안 보이는 Win32 창 프록시(FrameworkId 'Win32')일 수 있고 그 루트로는 끝까지 못 찾는다
+# (docs/testing.md 2026-11-17). 확인한 바로 그 루트를 돌려준다. 앱이 그사이 끝나면 기다리지 않고 종료 코드를 담아 던진다
+function Wait-AppRoot($Proc, [int]$TimeoutMs = 10000) {
+    $got = @{ Kind = '루트를 잡지 못함' }
+    $null = WaitFor {
+        if ($Proc.HasExited) { return $true }
+        try {
+            $r = $AE::FromHandle($Proc.MainWindowHandle)
+            $got.Kind = "$($r.Current.ClassName) / $($r.Current.FrameworkId)"
+            if ($r.Current.FrameworkId -eq 'WPF' -and $null -ne (ById $r 'Btn_PlayPause')) { $got.Root = $r; return $true }
+        }
+        catch { $got.Kind = "오류: $($_.Exception.Message)" }
+        $false
+    } $TimeoutMs 50
+    if ($Proc.HasExited) { throw "UIA 트리가 준비되기 전에 앱이 끝남 (종료 코드 $($Proc.ExitCode))" }
+    if (-not $got.Root) {
+        throw "메인 창의 UIA 트리가 준비되지 않음 — $([int]($TimeoutMs / 1000))초 안에 WPF 루트·Btn_PlayPause 를 찾지 못함 (마지막 루트: $($got.Kind))"
+    }
+    $got.Root
+}
+
+# 앱을 끄고 실제로 끝날 때까지(최대 10초) 기다린다 — Stop-Process 는 기다리지 않아서, 곧바로 다음 테스트를 띄우거나 exe 폴더를 지우면
+# 내려가는 중인 앱이 GPU·파일을 쥐고 있을 수 있다. 예전엔 호출부마다 WaitForExit 을 붙이거나(Test-NpuSwitch) 빠뜨렸고,
+# Start-DetectView 가 실패하며 죽인 앱은 호출부가 프로세스를 받지 못해 기다릴 수도 없었다
 function Stop-DetectView($Proc) {
-    if ($Proc) { Stop-Process -Id $Proc.Id -Force -ErrorAction SilentlyContinue }
+    if (-not $Proc) { return }
+    Stop-Process -Id $Proc.Id -Force -ErrorAction SilentlyContinue
+    try { $null = $Proc.WaitForExit(10000) } catch { }
 }
 
 # "파일 열기" → 대화상자에 경로 입력 → 열기. 대화상자가 닫힐 때까지 기다린다

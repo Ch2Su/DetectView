@@ -149,7 +149,7 @@ function Start-WithFault([string]$Fault) {
 $proc = $null
 try {
     $proc = Start-WithFault ''
-    $root = $AE::FromHandle($proc.MainWindowHandle)
+    $root = $proc.Root
     Move-MainToPrimary $root
 
     $play   = ById $root 'Btn_PlayPause'
@@ -289,7 +289,7 @@ try {
     $ok = WaitFor { (NameOf $status) -eq '정지됨' } 5000
     Check '파일 정지' $ok "상태='$(NameOf $status)'"
 }
-catch { Check '예외' $false $_.Exception.Message }
+catch { Check '예외' $false (Format-Error $_) }
 finally { Stop-DetectView $proc }
 
 # 6) 결함 주입 — 실제로 일으키기 어려운 실패의 복구·표시 경로를 끝까지 본다 (결함마다 앱을 따로 띄운다)
@@ -303,7 +303,7 @@ else {
     $fp = $null
     try {
         $fp = Start-WithFault 'hud-create-fail'
-        $froot = $AE::FromHandle($fp.MainWindowHandle)
+        $froot = $fp.Root
         Move-MainToPrimary $froot
         $fplay = ById $froot 'Btn_PlayPause'
         $fstatus = ById $froot 'Txt_Status'
@@ -325,14 +325,14 @@ else {
                 (NameOf $fplay) -eq '재생' -and $fscreen.Current.IsEnabled -and $n -eq 0) `
             "상태='$(NameOf $fstatus)'(오류 창 동안 '$idleText') 재생 버튼 활성=$($fplay.Current.IsEnabled) 글자='$(NameOf $fplay)' HUD 버튼 활성=$($fscreen.Current.IsEnabled) 클릭 통과 창 $n개"
     }
-    catch { Check '결함: 생성 실패 (예외)' $false $_.Exception.Message }
+    catch { Check '결함: 생성 실패 (예외)' $false (Format-Error $_) }
     finally { Stop-DetectView $fp }
 
     # (2) 복구 불가 복제 상실 → 캡처를 새로 만들어 이어 감 (이슈 #1 — 예전엔 같은 장치로 다시 복제만 해서 '대기'에 멈췄다)
     $fp = $null
     try {
         $fp = Start-WithFault 'hud-capture-lost'
-        $froot = $AE::FromHandle($fp.MainWindowHandle)
+        $froot = $fp.Root
         Move-MainToPrimary $froot
         $fplay = ById $froot 'Btn_PlayPause'
         $fstatus = ById $froot 'Txt_Status'
@@ -361,14 +361,14 @@ else {
             Check '결함: 복제 상실 → 다시 만든 캡처가 화면을 줌' $ok "전='$($f0.Text)' 후='$($fcount.Current.HelpText)'"
         }
     }
-    catch { Check '결함: 복제 상실 (예외)' $false $_.Exception.Message }
+    catch { Check '결함: 복제 상실 (예외)' $false (Format-Error $_) }
     finally { Stop-DetectView $fp }
 
     # (3) 검출 예외가 이어짐 → FPS 칸에 사유 → 풀리면 FPS/대기로 (이슈 #1 — 예전엔 Debug 출력뿐이라 박스·FPS 가 마지막 값에 멈췄다)
     $fp = $null
     try {
         $fp = Start-WithFault 'hud-detect-fail'
-        $froot = $AE::FromHandle($fp.MainWindowHandle)
+        $froot = $fp.Root
         Move-MainToPrimary $froot
         $fplay = ById $froot 'Btn_PlayPause'
         $fstatus = ById $froot 'Txt_Status'
@@ -392,7 +392,7 @@ else {
         Check '결함: 검출 예외 풀림 → FPS 표시로 돌아옴' ($ok -and [string]::IsNullOrEmpty($ffps.Current.HelpText)) `
             "FPS='$(NameOf $ffps)' 툴팁='$($ffps.Current.HelpText)'"
     }
-    catch { Check '결함: 검출 예외 (예외)' $false $_.Exception.Message }
+    catch { Check '결함: 검출 예외 (예외)' $false (Format-Error $_) }
     finally { Stop-DetectView $fp }
 }
 

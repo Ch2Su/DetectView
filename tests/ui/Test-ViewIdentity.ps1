@@ -101,7 +101,7 @@ function Share($Set, [scriptblock]$Pred) { if ($Set.Count -eq 0) { 0 } else { @(
 $proc = $null
 try {
     $proc = Start-DetectView $ExeDir
-    $root = $AE::FromHandle($proc.MainWindowHandle)
+    $root = $proc.Root
     $play   = ById $root 'Btn_PlayPause'
     $stop   = ById $root 'Btn_Stop'
     $status = ById $root 'Txt_Status'
@@ -201,6 +201,7 @@ try {
     $okStop = WaitFor { (Get-Name $root 'Txt_ZoneCount') -eq '' } 3000
     Check '정지: 구역 헤더가 빔' $okStop "헤더='$(Get-Name $root 'Txt_ZoneCount')'"
 }
+catch { Check '예외' $false (Format-Error $_) }   # 다른 테스트처럼 — 없으면 예외 하나로 그때까지의 결과 줄이 하나도 찍히지 않았다
 finally {
     Stop-DetectView $proc
     Remove-Item $roiFile, "$roiFile.bad", "$roiFile.tmp", $csvFile -ErrorAction SilentlyContinue

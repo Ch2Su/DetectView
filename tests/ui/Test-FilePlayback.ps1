@@ -25,7 +25,7 @@ $proc = $null
 try {
     # 일부러 exe 폴더가 아닌 곳을 작업 디렉터리로 띄운다 — 모델 경로 회귀 방지
     $proc = Start-DetectView $ExeDir -WorkingDirectory ([IO.Path]::GetTempPath())
-    $root = $AE::FromHandle($proc.MainWindowHandle)
+    $root = $proc.Root
 
     $play   = ById $root 'Btn_PlayPause'
     $stop   = ById $root 'Btn_Stop'
@@ -166,7 +166,7 @@ try {
     Check '정지 → 범례 지움' ([string]::IsNullOrEmpty($count.Current.ItemStatus)) "범례='$($count.Current.ItemStatus)'"
     Check '정지 → 추적 번호 지움' ([string]::IsNullOrEmpty($count.Current.ItemType)) "번호='$($count.Current.ItemType)'"
 }
-catch { Check '예외' $false $_.Exception.Message }
+catch { Check '예외' $false (Format-Error $_) }
 finally { Stop-DetectView $proc }
 
 Complete-Test

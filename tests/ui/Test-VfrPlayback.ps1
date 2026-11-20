@@ -31,7 +31,7 @@ $name = Split-Path $video -Leaf
 $proc = $null
 try {
     $proc = Start-DetectView $ExeDir
-    $root = $AE::FromHandle($proc.MainWindowHandle)
+    $root = $proc.Root
     $status = ById $root 'Txt_Status'
     $range = (ById $root 'VideoSlider').GetCurrentPattern([System.Windows.Automation.RangeValuePattern]::Pattern)
 
@@ -158,7 +158,7 @@ try {
     Check 'fps1000 EOF 후 재생 → 처음부터 계속 재생' ($ok -and (NameOf $play) -eq '일시정지' -and $range.Current.Value -lt 5000) `
         ('위치={0:N0} ms 버튼={1} 상태={2}' -f $range.Current.Value, (NameOf $play), (& $status0))
 }
-catch { Check '예외' $false $_.Exception.Message }
+catch { Check '예외' $false (Format-Error $_) }
 finally { Stop-DetectView $proc }
 
 Complete-Test
