@@ -137,7 +137,10 @@ pwsh tests/ui/Run-All.ps1
   `Run-All`(Debug) 한 번에 **306 항목 모두 통과**(4.2분): `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 · `Test-SceneChange` 21 · `Test-ZoneEvents` 21 · `Test-Incident` 16 ·
   `Test-VlmAnnotation` 27 · `Test-ViewIdentity` 27 · **`Test-CameraPose` 12(새로)** · `Test-VfrPlayback` 26 · `Test-ScreenHud` 47 · `Test-NpuSwitch` 36(NPU 쪽은 건너뜀).
   재생 속도 검사는 모두 0.99~1.01배속 — 합성 webm 이 한 번씩 움직임 판정(멈춘 뒤 SIFT 견주기 약 0.15초)을 거쳐도 그대로였다. 마지막 두 군데(전환 알림을 움직임 중에도 받기 · 화면 안 물체의
-  움직임을 자세에 안 쌓기)를 고치기 전 빌드로 한 번 더 돌린 것도 306 모두 통과. 배포본은 다시 만들지 않았다(`publish` 는 11-08 의 `b8d4ee0` — 자세 지켜보기가 없다)
+  움직임을 자세에 안 쌓기)를 고치기 전 빌드로 한 번 더 돌린 것도 306 모두 통과.
+  같은 날 사용자 요청으로 **배포본을 새로 만들어**(`2f62426` — 132,712,868 바이트, 임시 폴더로 만들고 exe 만 옮김, docs/build-deploy.md 배포 이력) `Run-All -ExeDir publish` 한 번에
+  **263 항목 모두 통과**(4.2분): 위 Debug 와 같고 Release 라 `Test-VlmAnnotation` 6 · `Test-ScreenHud` 25. 창 제목 `YOLO26m 640×384 (2026-11-08 학습) — NVIDIA GeForce RTX 5060 Ti (DirectML)`,
+  `Test-CameraPose` 의 새 뷰 배지는 1417.57초, 재생 속도 검사는 모두 0.99~1.01배속
 - 그 전 전체 통과: 2026-11-20, 데스크탑 — 코드 검토 뒤 **테스트 도우미를 고친 판**(`Start-DetectView` 가 확인한 루트를 `.Root` 로 돌려줌 · `Wait-AppRoot` · `Stop-DetectView` 가 끝날 때까지 기다림 ·
   `Need`/`Format-Error` · `Run-All` 의 BOM 검사 · `Test-NpuSwitch` NPU 실패 경로 기대값을 NPU 줄에 고정 — 위 설명). 앱은 그대로(Debug 는 11-17 빌드, 배포본은 11-08 의 `b8d4ee0`).
   `Run-All`(Debug) 한 번에 **286 항목 모두 통과**(4.8분), `Run-All -ExeDir publish` 한 번에 **251 항목 모두 통과**(3.8분) — 파일별 항목 수는 11-17 과 같다(새 도우미는 `Check` 를 더하지 않는다).

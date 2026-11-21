@@ -40,7 +40,7 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
 ```
 
 - 프로젝트 파일(`DetectView.csproj`)을 꼭 지정한다. 생략하면 폴더의 `.slnx` 가 잡혀 `NETSDK1194`(솔루션 + `--output`) 경고가 난다
-- 결과: `DetectView.exe` 한 파일 126.4 MB(132,596,048 바이트 — 11-08 TensorRT 판. 판별 배포 이력은 docs/build-deploy.md). 테스트 영상(`test*.mp4`)은 같은 폴더에 있어도 덮어쓰지 않는다
+- 결과: `DetectView.exe` 한 파일 126.6 MB(132,712,868 바이트 — 11-21 자세 지켜보기판 `2f62426`, 데스크탑·SDK 11 로 만든 첫 배포. 판별 배포 이력은 docs/build-deploy.md). 테스트 영상(`test*.mp4`)은 같은 폴더에 있어도 덮어쓰지 않는다
 - publish 뒤에는 배포본으로 UI 테스트를 돌린다: `pwsh tests\ui\Run-All.ps1 -ExeDir publish`
 - **`publish\best.onnx` 는 루트의 것과 다를 수 있고, 사용자가 수시로 바꾼다. 건드리지 말 것** (바꾼 경과와 옆에 보관한 옛 모델 이름은 docs/build-deploy.md — 11-08 부터는 루트와 같은 8클래스 YOLO26m 이다).
   **성능을 재거나 비교하기 전엔 그 순간 어떤 모델인지 확인한다** — 앱이 떠 있으면 창 제목에 보이고, 아니면 파일 끝의 Ultralytics 메타데이터를 읽는다(한 줄 명령은 docs/build-deploy.md)
@@ -361,8 +361,8 @@ pwsh tests/ui/Run-All.ps1
 - UIA 루트는 **`Start-DetectView` 가 돌려준 프로세스의 `.Root`** 를 쓴다 — WPF 트리가 붙을 때까지 기다려 확인한 바로 그 루트다(`Wait-AppRoot`). `$AE::FromHandle` 로 다시 잡지 말 것:
   창이 뜬 직후에 잡은 루트는 WPF 요소가 안 보이는 Win32 프록시일 수 있고 그 루트로는 끝까지 못 찾는다(2026-11-17 데스크탑 — docs/testing.md).
   꼭 있어야 하는 요소는 `Need`(없으면 이름을 담아 그 자리에서 던진다 — `ById` 는 조용히 `$null`), 예외 줄은 `Format-Error`(난 곳을 붙인다)
-- 마지막 전체 통과: 2026-11-21, 데스크탑 — 자세 지켜보기를 넣은 뒤 Debug `Run-All` 306 항목 모두 통과(`Test-CameraPose` 12 새로, NPU 쪽은 건너뜀). 배포본은 다시 만들지 않았다
-  (`publish` 는 11-08 의 `b8d4ee0` — 11-20 에 251 항목 통과). 자세한 기록과 그 전 기록(노트북 포함)은 docs/testing.md
+- 마지막 전체 통과: 2026-11-21, 데스크탑 — 자세 지켜보기를 넣은 뒤 Debug `Run-All` 306 항목 · 새로 만든 배포본 `publish`(`2f62426`) 263 항목 모두 통과
+  (`Test-CameraPose` 12 새로, NPU 쪽은 건너뜀). 자세한 기록과 그 전 기록(노트북 포함)은 docs/testing.md
 
 - 테스트 영상 내용(유고 감지 기준 사례)은 docs/testing.md 끝 '테스트 영상 내용' — `test4.mp4` 는 방향이 바뀌는 CCTV(0~10.5초 차로에 정차한 덤프트럭 = 양성, 21.2초~ 신호대기 행렬 = 음성),
   `test5.mp4` 는 터널 출구 갓길에 정차한 화물차(양성, 1280×854 60fps — 29.63~29.98초에 스트림이 검게 끊긴다),
