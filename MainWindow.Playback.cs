@@ -265,6 +265,12 @@ namespace DetectView
             ZoneShape[] viewZones = [];
             ZoneShape[]? viewZonesFrom = null;
             int viewZonesView = -1;
+            // 자세 지켜보기 (파일 전용 — CameraPoseWatch.cs, 2026-11-21): 뷰를 알아본 뒤 1초마다 ORB 로 카메라 자세를 본다. 화면 전환 감지(밝기 차이)가 못 잡는
+            // 천천히 하는 줌·팬으로 뷰의 허용 범위를 벗어나면(test6 1416초 줌아웃) 화면 전환처럼 처리해 뷰를 다시 알아본다 — 예전엔 그 전 뷰의 구역이 어긋난 채 남았다.
+            // 움직이는 동안은 화면 전환 감지의 움직임처럼 추적기에 넣지 않는다. 확인은 1초에 한 번(약 6~11 ms), 멈춘 뒤 앞뒤 견주기는 움직임마다 한 번(SIFT, 약 120~250 ms)
+            using var pose = views != null ? new CameraPoseWatch(view: views.Options) : null;
+            int identifyNotView = 0;   // 자세 지켜보기가 잰 움직임으로 벗어난 뷰 — 바로 다음 식별에서만 후보에서 뺀다(화면 고정 글자만으로 그 뷰에 맞지 않게)
+            double nextRecentMs = double.PositiveInfinity;   // 서 있는 화면을 그 뷰의 보조 기준 화면으로 더할 다음 영상 시각 (ViewRegistry.AddRecent)
             try
             {
                 while (!ct.IsCancellationRequested)
@@ -474,6 +480,8 @@ namespace DetectView
                         sceneNoticeUntilMs = double.NegativeInfinity;
                         badge = SceneBadgeKind.None;
                         resetTracker = false;
+                        pose?.Stop();   // 앞뒤가 이어지지 않는다 — 다시 알아본 뷰에서 새로 지켜본다
+                        identifyNotView = 0;
                         if (views != null) { needIdentify = true; nextIdentifyMs = double.NegativeInfinity; announceView = false; }   // 시크한 위치가 어느 뷰인지 다시 본다
                     }
                     if (Interlocked.Exchange(ref _zoneEventsReset, 0) == 1)   // 구역을 읽었거나 고쳤다
@@ -486,14 +494,48 @@ namespace DetectView
                     if (sceneThumbBytes != null)
                     {
                         var sc = scene.Update(sceneThumbBytes, posMs);
-                        if (sc.Unsettled)
+                        // 자세 지켜보기 — 화면 전환 감지가 안정이라 볼 때만(움직임·전환은 그쪽이 맡는다), 확인 차례에만 프레임을 줄여 맞춘다.
+                        // 방금 내보낼 프레임은 위 맞바꾸기로 _lastFrame 에 있다 (이 스레드만 쓰는 값 — 식별과 같다)
+                        var ps = default(PoseStep);
+                        if (pose != null && !sc.Unsettled && !sc.ViewChanged && pose.Due(posMs))
+                        {
+                            try
+                            {
+                                Mat current;
+                                lock (_lastFrameLock) current = _lastFrame!;
+                                ps = pose.Check(current, posMs, views!.Overlay);
+                                // 서 있는 화면을 1분마다 그 뷰의 보조 기준으로 — 연기가 걷히거나 정체가 생겨도 시크해 돌아오면 같은 뷰로 알아보게(글자를 빼고 맞추면 처음 기준 화면만으론 약하다)
+                                if (ps.Outcome == PoseOutcome.Still && viewNow > 0 && posMs >= nextRecentMs)
+                                {
+                                    views.AddRecent(viewNow, current, pose.KeyPose);
+                                    nextRecentMs = posMs + pose.Options.RecentEveryMs;
+                                }
+                            }
+                            catch (Exception ex) { Debug.WriteLine($"자세 지켜보기 오류: {ex.Message}"); pose.Stop(); }
+                        }
+                        // 자세 지켜보기가 움직이는 중이어도 이 프레임에서 화면 전환 감지가 전환을 알렸으면 그쪽을 처리한다 — 전환은 이 한 프레임에만 오는 알림이라
+                        // 움직임 쪽으로 빠지면 사라진다(지켜보기는 아래에서 멈추고 식별 뒤 다시 시작한다)
+                        if (sc.Unsettled || (pose?.Moving == true && !sc.ViewChanged))
                         {
                             feedTracker = false;   // 움직이는 중 — 박스는 그대로 보이되 번호는 안 붙인다
-                            badge = sc.Blanked ? SceneBadgeKind.Blank : SceneBadgeKind.Moving;
+                            badge = sc.Unsettled && sc.Blanked ? SceneBadgeKind.Blank : SceneBadgeKind.Moving;
                         }
                         else
                         {
-                            bool changedNow = sc.ViewChanged;
+                            bool changedNow = sc.ViewChanged || ps.Outcome == PoseOutcome.Moved;
+                            if (sc.ViewChanged) pose?.Stop();
+                            if (ps.Outcome == PoseOutcome.Moved && ps.Measured)
+                            {
+                                views!.LearnOverlay(ps.Overlay);   // 움직임 앞뒤에서 제자리였던 화면 고정 글자 — 이제부터 식별 맞춤에서 뺀다
+                                identifyNotView = viewNow;          // 잰 움직임으로 벗어난 뷰는 바로 다음 식별의 후보가 아니다
+                                try
+                                {
+                                    Mat current;
+                                    lock (_lastFrameLock) current = _lastFrame!;
+                                    views.PurgeExtrasLike(viewNow, current);   // 글자만으로 그 뷰에 잘못 들어간 보조 기준(움직인 뒤 자세의 화면)을 버린다
+                                }
+                                catch (Exception ex) { Debug.WriteLine($"보조 기준 정리 오류: {ex.Message}"); }
+                            }
                             if (changedNow)
                             {
                                 tracker.Reset();   // 직전과 다른 화면 — 이전 트랙은 이어지지 않는다 (번호는 이어서 센다)
@@ -512,17 +554,19 @@ namespace DetectView
                                 // 안정된 화면이 어느 뷰인지 알아본다 (처음 보는 화면이면 새 뷰로 기억한다). ORB·호모그래피라 한 번에 수 ms~수십 ms 지만
                                 // 영상을 연 직후·시크·전환 뒤에만 부른다. 방금 내보낼 프레임은 위 맞바꾸기로 _lastFrame 에 있다 (이 스레드만 쓰는 값)
                                 var vid = new ViewIdentification(ViewOutcome.Unknown, 0, default);
+                                Mat? identFrame = null;
                                 try
                                 {
-                                    Mat current;
-                                    lock (_lastFrameLock) current = _lastFrame!;
-                                    vid = views.Identify(current);
+                                    lock (_lastFrameLock) identFrame = _lastFrame!;
+                                    vid = views.Identify(identFrame, identifyNotView);
                                 }
                                 catch (Exception ex) { Debug.WriteLine($"뷰 식별 오류: {ex.Message}"); }
+                                identifyNotView = 0;   // 빼는 건 움직임 직후 한 번뿐 — 다시 볼 땐 글자 마스크로 충분하다(카메라가 돌아왔을 수도 있다)
 
                                 if (vid.Outcome == ViewOutcome.Unknown)
                                 {
                                     viewNow = 0;
+                                    pose?.Stop();
                                     nextIdentifyMs = posMs + 1000;   // 일시적으로 애매했을 수 있다 — 1초마다 다시
                                     if (changedNow && _zoneShapes.Length > 0)
                                         (frameEvents ??= []).Add(new ZoneEvent(ZoneEventKind.ViewChanged, posMs, 0, "", 0, default));   // 뷰를 알 수 없어 이벤트를 멈췄다는 표시
@@ -546,6 +590,18 @@ namespace DetectView
                                     }
                                     zoneEvents.Reset();   // 멈춘 상태를 풀고 이 뷰의 구역으로 시작한다 (이미 안에 있는 물체는 '이미 안에 있음')
                                     incidents.Reset("화면 전환");
+                                    // 이 뷰에서 카메라 자세를 지켜본다 — 아는 뷰면 기준 화면에 대한 지금 자세(식별의 호모그래피)부터, 새 뷰면 제자리부터
+                                    if (pose != null && identFrame != null)
+                                    {
+                                        try
+                                        {
+                                            pose.Start(identFrame, vid.Outcome == ViewOutcome.Known ? vid.Match.H : null, posMs);
+                                            // 아는 뷰로 알아본 화면도 보조 기준으로 — 짧게 보고 시크해 돌아와도 그 뷰로 알아보게(처음 기준 화면과 내용이 많이 다를 수 있다)
+                                            if (vid.Outcome == ViewOutcome.Known && vid.Match.H != null) views.AddRecent(viewNow, identFrame, vid.Match.H);
+                                        }
+                                        catch (Exception ex) { Debug.WriteLine($"자세 지켜보기 시작 오류: {ex.Message}"); pose.Stop(); }
+                                        nextRecentMs = posMs + pose.Options.RecentEveryMs;
+                                    }
                                 }
                             }
                             // 이 프레임의 구역 — 지금 뷰의 것만 (구역 스냅샷이나 뷰가 바뀔 때만 다시 거른다). 식별기가 없으면 전체

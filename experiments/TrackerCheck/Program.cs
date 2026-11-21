@@ -77,13 +77,27 @@ return args.FirstOrDefault() switch
     "testsplit" => InputCheck.TestSplit(args.Skip(1).ToArray()),
     "inputbench" => InputCheck.InputBench(args.Skip(1).ToArray()),
     "vlm" => VlmParity.Run(args.Skip(1).ToArray()),
+    "pose" => PoseCheck.Probe(args.Skip(1).ToArray()),
+    "poseseries" => PoseCheck.Series(args.Skip(1).ToArray()),
+    "posewatch" => PoseCheck.Replay(args.Skip(1).ToArray()),
+    "poseself" => PoseSelfOnly(),
     _ => Usage(),
 };
+
+// selftest 의 ⑬ 만 (자세 지켜보기를 고칠 때 빨리 돌려 보려고)
+static int PoseSelfOnly()
+{
+    int fails = 0;
+    PoseCheck.SelfTest((ok, what) => { Console.WriteLine($"[{(ok ? "통과" : "실패")}] {what}"); if (!ok) fails++; });
+    Console.WriteLine(fails == 0 ? "모두 통과" : $"실패 {fails}건");
+    return fails;
+}
 
 static int Usage()
 {
     Console.WriteLine("사용법: detect [nearest] | track [이름=값 ...] [noreset] [noframe] | selftest | gpu | dedup [Every=N] | sahi [Every=N] [영상@초 ...] | render <영상> <x,y,w,h|full> <배율> <초...> | " +
-                      "testsplit <데이터셋> <출력 폴더> <이름=모델.onnx> ... | inputbench [반복] | vlm <프레임.png> <x1> <y1> <x2> <y2> <출력 앞부분>");
+                      "testsplit <데이터셋> <출력 폴더> <이름=모델.onnx> ... | inputbench [반복] | vlm <프레임.png> <x1> <y1> <x2> <y2> <출력 앞부분> | " +
+                      "pose <영상> <기준초> <초...> | poseseries <영상> [간격초] [특징점] | posewatch <영상> [시작초] [끝초] [first=초] [@초 ...] | poseself");
     return 2;
 }
 
@@ -1008,6 +1022,8 @@ int SelfTest()
     }
 
     ViewsCheck.SelfTest(Check, RepoPaths.VideoDir);   // ⑫ 화면 식별 (2026-11-03)
+    Console.WriteLine("⑬ 자세 지켜보기 (CameraPoseWatch — 천천히 하는 줌·팬, 화면 고정 글자, 2026-11-21)");
+    PoseCheck.SelfTest(Check);
 
     Console.WriteLine(fails == 0 ? "모두 통과" : $"실패 {fails}건");
     return fails;

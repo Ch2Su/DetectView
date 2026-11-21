@@ -22,6 +22,7 @@
     <Compile Include="..\..\ZoneEvents.cs" />
     <Compile Include="..\..\IncidentRules.cs" />
     <Compile Include="..\..\ViewIdentity.cs" />
+    <Compile Include="..\..\CameraPoseWatch.cs" />
     <Compile Include="..\..\YoloLetterbox.cs" />
     <Compile Include="..\..\VlmAnnotator.cs" />
     <Compile Include="..\..\VlmCrop.cs" />
