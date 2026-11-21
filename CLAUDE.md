@@ -32,10 +32,6 @@ Windows 그래픽 설정(`HKCU\…\UserGpuPreferences`)은 exe 경로별이라 �
 ## 빌드 · 배포
 
 ```bash
-dotnet build
-```
-
-```bash
 dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o publish
 ```
 
@@ -265,16 +261,8 @@ SDK 기본 글롭이 `old/**` 의 소스와 생성 `.g.cs` 까지 끌어와 **72
 
 ## 도메인 지식 — RF-DETR 검토 (2026-11-04~06 — 3단계: 사용자가 YOLO26m 640×384 를 골라 루트 모델을 바꿨다)
 
-경과·수치는 [docs/rf-detr.md](docs/rf-detr.md)와 `experiments/RfDetrBench/README.md`. 요점:
-- 시험 분할 AP: RF-DETR-S 0.742(FP16 같음) · YOLO26m 0.708 · 배포 YOLO26s(앱 경로) 0.6658 · RF-DETR-N 0.665(11-06). **16:9 이미지만 보면 RF-DETR-S = YOLO26m(0.695 · 0.696)** — RF-DETR-S 는 재현율·사람·두 바퀴, YOLO26m 은 작은 물체·car·truck 이 낫다
-- 3단계(2026-11-06): 후보 RF-DETR-S FP16(새 추론 경로) · YOLO26m 640×384(지금 경로) 중 **사용자가 YOLO26m 640×384 를 골랐다** — 루트 `best.onnx`·NPU 짝을 바꾸고 SAHI 타일을 모델 입력 크기로.
-  앱 경로(C# — YoloDotNet 정수 좌표라 파이썬 평가기보다 0.006 낮다) 시험 분할 AP **0.694 · 16:9 0.687**(배포 YOLO26s 0.666 · 0.631). 소스 비율로 640×640 세션을 고르는 일(README 에 적었던 '세션 둘')은 하지 않았다.
-  RF-DETR-N 은 YOLO26s 급이고 16:9 에선 더 낮아(0.611 vs 0.654) 권하지 않았다 — 이점은 속도뿐
-- **2026-11-08 루트를 8클래스 YOLO26m 640×384 로 다시 바꿨다**(사용자 — 라벨링 도구가 11-08 데이터(8클래스, test 749장)로 같은 학습 설정으로 학습한 `models/best.pt`. 같은 날 배포 폴더도).
-  라벨링 도구의 test 비교(Ultralytics val 기본값 — 앱 경로보다 0.007~0.010 높게 나오는 방식, 위 숫자와 섞지 말 것): pickup 뺀 7클래스 mAP50-95 0.6957 → 0.7398(CCTV 0.6986 → 0.7367),
-  pickup 과 상관없는 5클래스는 거의 같고(+0.013, CCTV +0.004) 큰 차이는 truck +0.24(7클래스 모델은 pickup 을 truck 으로 잡았다)·pickup 0.606. 앱 경로 AP 는 다시 재지 않았다(새 데이터셋 백업이 필요하다)
-- 학습·평가 데이터는 WSL 백업 `/home/chisu/datasets_backup/visible_2026-11-04` 를 쓴다(원본은 라벨링 도구의 'WSL 학습' 버튼이 덮어쓴다) — **노트북의 WSL 에 있다**(데스크탑 WSL 엔 2026-11-17 현재 없다 — 평가를 다시 하려면 먼저 옮긴다).
-  노트북에서 오래 도는 벤치·학습은 전원을 연결한다(배터리 20분 무입력이면 GPU 작업도 멈춘다 — 데스크탑은 유휴 절전이 꺼져 있다)
+수치·경과(단계별 AP · 16:9 비교 · 2026-11-08 8클래스 교체)는 [docs/rf-detr.md](docs/rf-detr.md)와 `experiments/RfDetrBench/README.md` — **모델을 바꾸거나 AP 를 견주기 전에 읽는다**(이 절에 있던 요약은 2026-11-21 그 문서 끝으로 글자 그대로 옮겼다). 꼭 알 것:
+- 학습·평가 데이터는 WSL 백업 `/home/chisu/datasets_backup/visible_2026-11-04` 를 쓴다(원본은 라벨링 도구의 'WSL 학습' 버튼이 덮어쓴다) — **노트북의 WSL 에만 있다**(2026-11-17 현재 — 데스크탑에서 평가하려면 먼저 옮긴다)
 
 ## 도메인 지식 — 추론 장치: NPU · TensorRT (왼쪽 패널 "추론 장치"에서 GPU / TensorRT / NPU 선택)
 
@@ -426,4 +414,3 @@ LLM 개념 맵(`graft build --deep`)은 API 키가 필요해서 돌리지 않았
   (이 문서의 해당 서술 옆에 그 번호가 남아 있다 — **그 이슈들은 옛 비공개 저장소와 함께 지워졌다**. 공개 저장소의 이슈는 #1 부터 다시 매겨지니
   옛 번호는 '옛 이슈 #7' 처럼 구분해 가리킨다). 고칠 땐 커밋 메시지에 `Fixes #N` 을 넣는다(`main` 에 push 되면 공개 저장소의 그 이슈가 닫힌다). 이 문서의 서술도 같이 고친다.
   여러 이슈를 한꺼번에 고칠 땐 이슈 묶음마다 worktree 를 따로 두고 고친 뒤 검토를 거쳐 `main` 에 cherry-pick 했다 — UI 테스트는 합친 뒤 한 번에 돌린다
-- 추적 대상은 소스, `best.onnx`·`best.npu.onnx`·`best.fp16.onnx`, UI 테스트(`tests/ui/`, 합성 테스트 영상 `media/vfr60_nodur.webm` 포함), 도구(`tools/`), 실험 프로젝트 소스(`experiments/*/`), `README.md`(GitHub 첫 화면), `LICENSE`·`THIRD-PARTY-NOTICES.md` 다. `bin/`·`obj/`·`old/`·`publish/`·`graft/` 는 `.gitignore` 로 제외 — **`old/` 를 커밋하면 안 된다** (아래 graft 항목 참고)
