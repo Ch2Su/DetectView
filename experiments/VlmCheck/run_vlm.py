@@ -72,7 +72,16 @@ QUANT = [  # 양자화·크기 비교(11-08 — 사용자: 양자화 모델이 �
     # 35B 중 토큰마다 3B 만 쓴다 — 23 GB 라 GPU(8 GB)엔 일부만 올라간다
     {"name": "r4-qwen3.6-35b-a3b", "model": "qwen3.6:35b-a3b", "think": False, "r4": True, "variants": ["D2", "D3"]},
 ]
-STRATA = "http://127.0.0.1:8080"   # Strata 엔진(OpenAI 호환) — 사용자가 E:\Strata 에 설치, `strata launch` 로 띄운다
+DESK16 = [  # 16 GB 데스크탑 후보(11-22 — 사용자: 16 GB 에서 쓸 만한 VLM 을 재 보기): 4차 질문·장면 그대로. 기준(4B 4비트 — 지금 앱)도
+    # 이 PC(RTX 5060 Ti 16 GB)에서 다시 돌려 노트북의 결과 8 과 같은 답이 나오는지부터 본다. 9B 는 노트북에선 0.8 GiB 가 CPU 로 넘쳤다.
+    # Gemma 4 는 새 계열(앞 세대 gemma3:4b 는 '정상' 쏠림·'모름' 남발)이고 생각 모드를 받는 모델이라 think False 를 보낸다.
+    # 26B 는 25.2B 중 3.8B 만 쓰는 MoE 의 QAT 판(16 GB) — 이 GPU 에도 다 안 들어갈 수 있다. --desk16
+    {"name": "r4-qwen3.5-4b", "model": "qwen3.5:4b", "think": False, "r4": True, "variants": ["D2", "D3"]},
+    {"name": "r4-qwen3.5-9b", "model": "qwen3.5:9b", "think": False, "r4": True, "variants": ["D2", "D3"]},
+    {"name": "r4-gemma4-12b", "model": "gemma4:12b", "think": False, "r4": True, "variants": ["D2", "D3"]},
+    {"name": "r4-gemma4-26b-a4b", "model": "gemma4:26b-a4b-it-qat", "think": False, "r4": True, "variants": ["D2", "D3"]},
+]
+STRATA ="http://127.0.0.1:8080"   # Strata 엔진(OpenAI 호환) — 사용자가 E:\Strata 에 설치, `strata launch` 로 띄운다
 STRATA_POOL = [  # Strata(11-08 — 사용자 요청): Qwen3.6-35B-A3B(Unsloth UD-Q4_K_XL, 그림 읽는 부분은 24 GB 미만 카드면 CPU).
     # JSON 형식을 생성 중에 강제하지 않는다 — 질문(system) 끝에 영어 지시문과 스키마를 붙이고 답을 검사한다
     # (E:\Strata\control\serve\structured.py — prompt_and_validate). 그래서 Ollama 판과 '같은 질문'은 아니다. --strata
@@ -479,6 +488,7 @@ def run_config(cfg, cases, out_dir, round3=()):
                         rec.update(wall_s=round(time.time() - t0, 2), done_reason=r.get("done_reason"),
                                    prompt_tokens=r.get("prompt_eval_count"), out_tokens=r.get("eval_count"),
                                    total_s=round(r.get("total_duration", 0) / 1e9, 2), load_s=round(r.get("load_duration", 0) / 1e9, 2),
+                                   prompt_s=round(r.get("prompt_eval_duration", 0) / 1e9, 2), eval_s=round(r.get("eval_duration", 0) / 1e9, 2),
                                    content=r["message"].get("content", ""), thinking_chars=len(r["message"].get("thinking") or ""))
                     try:
                         parsed = json.loads(rec["content"])
@@ -497,6 +507,12 @@ def run_config(cfg, cases, out_dir, round3=()):
                     rec.update(wall_s=round(time.time() - t0, 2), error=f"{type(e).__name__}: {e}"[:400])
                 f.write(json.dumps(rec, ensure_ascii=False) + "\n")
                 f.flush()
+                if not cfg.get("api") and rec["error"] is None and "size_gib_after_first" not in meta:
+                    # 빈 요청으로 올린 직후의 /api/ps 는 다 올라간 크기가 아닐 수 있다 — gemma4:12b 는 1.24 GiB 만 보이고
+                    # 첫 그림 호출이 30초 걸렸다(11-22). 그림을 한 번 읽은 뒤 크기·GPU 메모리를 다시 잰다
+                    for m in [x for x in call("/api/ps").get("models", []) if x.get("name") == cfg["model"]][:1]:
+                        meta.update(size_gib_after_first=round(m["size"] / 2**30, 2),
+                                    size_vram_gib_after_first=round(m.get("size_vram", 0) / 2**30, 2), gpu_mib_after_first=gpu_mem_mib())
                 p = rec.get("parsed") or {}
                 print(f"{cfg['name']} {c['id']} {v}: {p.get('verdict', '-'):14} {p.get('object_type', p.get('vehicle_type', '-')):18} "
                       f"{rec['wall_s']:6.1f}초 출력 {rec.get('out_tokens')}토큰{' 생각 ' + str(rec.get('thinking_chars')) + '자' if cfg['think'] else ''}"
@@ -517,6 +533,7 @@ def main():
     ap.add_argument("--round3", action="store_true", help="3차(ROUND3)를 돈다")
     ap.add_argument("--round4", action="store_true", help="4차(ROUND4)를 돈다")
     ap.add_argument("--quant", action="store_true", help="4차 장면으로 양자화·크기 비교(QUANT)를 돈다")
+    ap.add_argument("--desk16", action="store_true", help="4차 장면으로 16 GB 데스크탑 후보(DESK16)를 돈다")
     ap.add_argument("--strata", action="store_true", help="4차 장면을 Strata 엔진(STRATA_POOL — 먼저 strata launch)으로 돈다")
     ap.add_argument("--claude", action="store_true", help="4차 장면을 Claude API(CLAUDE_POOL — 돈이 든다, 그림이 밖으로 나간다)로 돈다")
     a = ap.parse_args()
@@ -525,7 +542,7 @@ def main():
     cases, round3 = spec["cases"], spec.get("round3", {})
     if a.cases:
         cases = [c for c in cases if c["id"] in a.cases.split(",")]
-    pool = (CLAUDE_POOL if a.claude else STRATA_POOL if a.strata else QUANT if a.quant else ROUND4 if a.round4 else ROUND3 if a.round3
+    pool = (CLAUDE_POOL if a.claude else STRATA_POOL if a.strata else DESK16 if a.desk16 else QUANT if a.quant else ROUND4 if a.round4 else ROUND3 if a.round3
             else ROUND2 if a.round2 else PROBES if a.probe else CONFIGS)
     configs = [c for c in pool if not a.configs or c["name"] in a.configs]
     out_dir = HERE / "out" / a.results

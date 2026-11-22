@@ -42,12 +42,14 @@
 
 ```bash
 uv run --no-project --python 3.12 --with opencv-python-headless --with numpy --with onnxruntime experiments/VlmCheck/make_cases.py
+#   다른 PC 에서 장면 그림을 다시 만들 땐 11-07 의 7클래스 모델로 — 루트 best.onnx 는 11-08 부터 8클래스라 박스가 달라질 수 있다(결과 13): 위 명령 끝에 --model publish/best.yolo26m-1105.onnx
 uv run --no-project --python 3.12 experiments/VlmCheck/run_vlm.py
 uv run --no-project --python 3.12 experiments/VlmCheck/run_vlm.py --probe --results probe
 uv run --no-project --python 3.12 experiments/VlmCheck/run_vlm.py --round2 --results round2
 uv run --no-project --python 3.12 experiments/VlmCheck/run_vlm.py --round3 --results round3
 uv run --no-project --python 3.12 experiments/VlmCheck/run_vlm.py --round4 --results round4
 uv run --no-project --python 3.12 experiments/VlmCheck/run_vlm.py --quant --results round4_quant   # 결과 8·9 — 먼저 ollama pull qwen3.5:4b-q8_0 · qwen3.5:9b · qwen3.6:35b-a3b
+uv run --no-project --python 3.12 --with pillow experiments/VlmCheck/run_vlm.py --desk16 --results round4_desk16   # 결과 13 — 먼저 ollama pull qwen3.5:9b · gemma4:12b · gemma4:26b-a4b-it-qat
 uv run --no-project --python 3.12 experiments/VlmCheck/run_vlm.py --strata --results round4_quant  # 결과 9 — 먼저 strata launch(이 노트북에선 아직 못 띄움)
 uv run --no-project --python 3.12 --with anthropic experiments/VlmCheck/run_vlm.py --claude --results round4_quant   # 결과 10 — 돈이 든다(40번 약 $0.55), 그림이 밖으로 나간다
 uv run --no-project --python 3.12 experiments/VlmCheck/score.py round4
@@ -373,6 +375,42 @@ $env:XDG_CACHE_HOME='E:\Cactus\cache'; $env:CACTUS_TELEMETRY='0'; $env:DO_NOT_TR
 E:\Cactus\.venv\Scripts\python.exe -I -X utf8 experiments/VlmCheck/run_mirage.py --results round4_quant
 E:\Cactus\.venv\Scripts\python.exe -I -X utf8 experiments/VlmCheck/run_mirage.py --probe-nl
 ```
+
+## 결과 13 — 16 GB 데스크탑 후보: qwen3.5 9B · Gemma 4 12B · Gemma 4 26B-A4B (`--desk16`, 2026-11-22)
+
+사용자 질문: 16 GB VRAM 에서 쓸 만한 VLM 후보 → Ollama 공식 목록에서 셋을 골라 4차 질문·장면 20개 그대로 재 봄. 이 PC 는 데스크탑(RTX 5060 Ti 16 GB — 놀 때 1.2 GB 사용, RAM 64 GB, Ollama 0.40.17).
+`qwen3.5:9b`(노트북 결과 8 에선 0.8 GiB 가 CPU 로 넘쳤다) · `gemma4:12b`(Google 의 새 세대 — Q4_K_M 8.0 GB, 앞 세대 `gemma3:4b` 는 '정상' 쏠림·'모름' 남발) ·
+`gemma4:26b-a4b-it-qat`(25.2B 중 3.8B 만 쓰는 MoE 의 QAT 판, 15 GB). Gemma 4 는 생각 모드를 받는 모델이라 4B 처럼 `think false`. 기준인 4B 도 같은 폴더에서 다시 돌렸다(`out/round4_desk16`).
+`out/cases` 는 노트북에만 있어 이 PC 에서 다시 만들었다 — 11-07 장면을 만들 때의 7클래스 모델로(`make_cases.py --model publish/best.yolo26m-1105.onnx`, MD5 `94A26C12…` — 루트 `best.onnx` 는 11-08 부터 8클래스라 박스가 달라질 수 있다).
+
+| 판 | GPU 메모리 증가(nvidia-smi) | 한 번(중앙) | 생성 속도 | 미리 정한 규칙 D3 / D2 | 사후 1 D3 / D2 | '선명하지 않음' D3 / D2 | 4B 와 다른 답(240 중) D3 / D2 | 앱 칩 출동 차량 · 차로 위 사람(D3) | 앱 칩이 4B 와 같은 장면(D3) |
+|---|---|---|---|---|---|---|---|---|---|
+| qwen3.5:4b — 지금 앱 (이 PC) | 4.0 GiB | 1.8초 | 102 토큰/초 | 12 / 9 | 15 / 12 | 9 / 12 | — | 20/20 · 4/5 | — |
+| qwen3.5:9b | 6.5 GiB | 3.2초 | 60 | 15 / 15 | 16 / 17 | 5 / 6 | 61 / 100 | 20/20 · 4/5 | 15/20 |
+| **gemma4:12b** | 8.9 GiB | **1.9초** | 119 | **17 / 18** | 16 / 17 | **2 / 2** | 96 / 125 | 18/20 · 3/5 | 9/20 |
+| gemma4:26b-a4b QAT | 14.1 GiB + CPU 2.2 GiB (GPU 15,607 / 16,311 MiB) | 2.9초 | 75 | 16 / 15 | 15 / 15 | 2 / 3 | 76 / 103 | 19/20 · 3/5 | 8/20 |
+
+- **이 PC 의 4B 는 노트북 결과 8 과 조금 다르다** — 미리 정한 규칙 D3 13 → 12 · D2 6 → 9, '선명하지 않음' 8 → 9 · 14 → 12. 같은 PC 에서는 다시 돌려도 글자까지 같고(시험 실행 P7·N1),
+  P7 설명은 노트북 실험과 글자까지 같다. 원인은 가르지 못했다 — 장면 그림을 다시 만들었고(같은 검출 모델이지만 OpenCV 판이 다를 수 있다) GPU·드라이버·Ollama 판(0.40.15 → 0.40.17)도 다르다.
+  그래서 아래는 **같은 PC·같은 그림의 4B** 와 견준다. 결과 8~12 의 숫자(노트북)와는 그대로 견주지 말 것
+- **Gemma 4 는 거짓 '흐림'이 없다** — '선명하지 않음'을 회전 흐림(T1)·검은 화면(T3)에만 답했다(4B 는 3배 크롭에서 9번 — 그중 7번이 거짓: P1·P5·P8·P9·T2·S1·S2).
+  규칙 숫자가 오른 몫은 대부분 이것이다 — P8 화물차·T2 덤프트럭은 4B·9B 가 '흐림'으로 틀리고 두 Gemma 가 맞혔다. 나무 가짜 검출(S1)도 두 Gemma 가 '박스에 차 없음'으로 맞혔다
+  (규칙으로 맞힌 로컬 생성 모델은 처음 — 9B 도 '차 없음'이라 했지만 '흐림'이 먼저 걸렸다). 상서 글자 박스(S2)는 3배 크롭에선 넷 다 틀렸고 2배 크롭에선 9B·12B 가 맞혔다
+- **앱이 보여 주는 칩은 Gemma 가 오히려 못하다** — 앱은 '선명하지 않음'을 보여 주지 않아(`docs/vlm-annotation.md`) Gemma 가 가장 크게 나아진 곳이 화면엔 안 드러난다. 대신
+  12B 는 신호 대기 행렬(N1)에 '출동 차량'(빨간 칩), 길가 차(R3)에 '문·트렁크 열림'을 지어냈고, 차로 위 사람은 P2·P9 를 놓쳤으며(3/5) 사고 승용차 옆 사람(P5)·S2 의 출동 차량도 뺐다.
+  26B 는 견인차 현장(P4)의 출동 차량을 놓치고 '문 열림'을 띄웠고, 사람 3/5, test4 덤프트럭(P7)엔 '앞에 선 차'(규칙이 정상 정차로 틀림), 주차장(N3)의 주차·길가 차(R3)의 신호를 놓쳤다.
+  9B 칩은 4B 와 15/20 장면이 같다 — 더한 것 N4 신호 · S1 박스에 차 없음 · P2 앞에 선 차, 바꾼 것 P5 차로 위 사람 → 앞에 선 차(사고 승용차에 정상 맥락 칩), R1 앞에 선 차를 뺌
+- **설명은 크기·계열을 바꿔도 혼자 멈춘 차를 "주행 중·달리고"라 한다** — P5~P8·T2 다섯 가운데 4B 3(P7·P8·T2) · 9B 3(P5·P6·T2) · 12B 4(P5·P6·P7·T2) · 26B 3(P7·P8·T2).
+  신호 대기 줄의 트럭(R1)도 9B·12B·26B 는 "주행하고"(4B 만 "정차"). 26B 는 트렁크가 열린 P5 를 "트렁크는 닫혀 있습니다"라 했고, 정상 장면 여럿(N1·N3·R2 등)에
+  "문이나 트렁크는 닫혀 있고 특이사항은 보이지 않습니다" 꼴을 되풀이한다(질문 항목을 옮겨 적음). Gemma 의 설명은 거의 다 "빨간 박스 안에 …"로 시작한다. 9B 의 설명이 가장 자세하다(P9 "작업복을 입은 사람", R2 "신호등과 정지선")
+- 시간·메모리: 12B 는 4B 와 거의 같은 속도(생성 119 토큰/초 — 4B 102, 입력 처리는 4B 의 절반)지만 GPU 를 2.2배 쓴다. 9B 는 1.8배 느리다(노트북 5.8초 → 3.2초 — 다 올라감).
+  26B 는 GPU 를 거의 다 채워 앱의 YOLO 와 같이 두면 CPU 로 더 넘친다. 앱과 GPU 를 같이 쓰는 측정(결과 6)은 하지 않았다
+- 받은 직후 첫 실행은 느리다 — 12B 를 받은 바로 뒤 시험 실행에서 올리기 27초 + 첫 호출 31초(본 실행에선 올리기 5.8초 · 첫 호출 2.6초). 12B 는 Ollama `/api/ps` 가 크기를 1.24~1.35 GiB 로 보고해
+  실제(GPU 메모리 8.9 GiB 증가)와 맞지 않는다 — 표의 메모리는 nvidia-smi 로 잰 증가분이다(`run_vlm.py` 가 이제 첫 호출 뒤 크기·GPU 메모리를 다시 잰다 — `*.meta.json` 의 `*_after_first`)
+- **판단: 앱은 4B 그대로.** 판정 규칙 숫자는 Gemma 4 12B 가 로컬 최고이고 2초 안팎이지만(노트북의 35B MoE 18/20 과 비슷 — PC 가 달라 그대로 견주지는 못한다) 앱은 규칙 판정을 보여 주지 않고,
+  보여 주는 칩은 거짓 '출동 차량'·'트렁크 열림'이 생기고 사람을 놓쳐 4B 보다 못하다. 9B 는 칩이 거의 같고 설명이 조금 자세하지만 1.8배 느리고 멈춘 차 설명은 그대로다.
+  규칙 판정을 화면에 쓰게 되면(지금은 안 씀) 그때 Gemma 4 12B 를 **새 장면으로** 다시 잰다 — 20장면 · Claude 가 쓴 초안 정답이라 과적합일 수 있다
+- 받은 모델(`~\.ollama\models` — 이 PC 는 OLLAMA_MODELS 를 정하지 않았다, 약 30 GB)은 그대로 둔다 — 지우려면 `ollama rm qwen3.5:9b gemma4:12b gemma4:26b-a4b-it-qat`
 
 ## 판단 (4차까지)
 

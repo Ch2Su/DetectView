@@ -49,7 +49,8 @@ TITLES = {"results": "1차 — 모델 5가지 × 입력 A·B·C", "probe": "1차
           "round2": "2차 — 장면 30개, 설명 먼저 + 키운 그림만", "round3": "3차 — 추적기 사실을 주고 '왜 멈췄나'만",
           "round4": "4차 — 관찰만 묻고 판정은 코드 규칙",
           "round4_quant": "4차 장면 모델 비교 — qwen3.5 4B(4·8비트)·9B·qwen3.6 35B-A3B MoE·Claude Opus 5.5·Kanana 판정 모델·Mirage(22 MB)",
-          "round4_decide_ref": "Kanana 판정 모델 8비트 확인 — 같은 장면을 CPU BF16 으로"}
+          "round4_decide_ref": "Kanana 판정 모델 8비트 확인 — 같은 장면을 CPU BF16 으로",
+          "round4_desk16": "16 GB 데스크탑 후보 — qwen3.5 4B(기준)·9B·Gemma 4 12B·26B-A4B MoE"}
 VARIANT_KO = {"A": "화면 전체", "B": "화면 전체 + 키운 그림", "C": "B + 2초 전·뒤 화면", "D": "키운 그림만(박스의 3배)",
               "D3": "키운 그림만(박스의 3배)", "D2": "키운 그림만(박스의 2배)"}
 IMAGE_KO = {"full": "화면 전체", "crop": "키운 그림 — 박스의 3배", "crop2": "키운 그림 — 박스의 2배",
@@ -73,7 +74,7 @@ RULES4 = [("미리 정한 규칙", ("usable", "vehicle", "incident", "normal")),
           ("사후 1 · 단서 먼저", ("vehicle", "incident", "normal", "usable")),     # 결과를 보고 고른 규칙(README 결과 5)
           ("사후 2 · 선명도 안 봄", ("vehicle", "incident", "normal"))]
 ALL_CONFIGS = {c["name"]: c for pool in (run_vlm.CONFIGS, run_vlm.PROBES, run_vlm.ROUND2, run_vlm.ROUND3, run_vlm.ROUND4,
-                                          run_vlm.QUANT, run_vlm.STRATA_POOL, run_vlm.CLAUDE_POOL, run_vlm.DECIDE_POOL,
+                                          run_vlm.QUANT, run_vlm.DESK16, run_vlm.STRATA_POOL, run_vlm.CLAUDE_POOL, run_vlm.DECIDE_POOL,
                                           run_vlm.MIRAGE_POOL) for c in pool}
 
 
