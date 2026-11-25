@@ -81,6 +81,12 @@ DESK16 = [  # 16 GB 데스크탑 후보(11-22 — 사용자: 16 GB 에서 쓸 �
     {"name": "r4-gemma4-12b", "model": "gemma4:12b", "think": False, "r4": True, "variants": ["D2", "D3"]},
     {"name": "r4-gemma4-26b-a4b", "model": "gemma4:26b-a4b-it-qat", "think": False, "r4": True, "variants": ["D2", "D3"]},
 ]
+FACT = [  # 결과 14(11-26 — Gemini 조언 '추적기 사실을 프롬프트에 고정' 확인): 지금 앱 모델로, 4차 질문에 추적기의 '멈춤' 사실 한 줄만 더한다.
+    # 판정은 여전히 묻지 않는다(3차는 판정을 물어 근거를 지어냈다) — 설명이 멈춘 차를 "주행 중"이라 하지 않게 되는지, 단서 답이 흔들리는지 본다.
+    # 기준(4차 그대로)도 같은 폴더에서 다시 돌린다 — 같은 PC·같은 날의 답과 견준다. --fact
+    {"name": "r4-qwen3.5-4b", "model": "qwen3.5:4b", "think": False, "r4": True, "variants": ["D2", "D3"]},
+    {"name": "r4f-qwen3.5-4b", "model": "qwen3.5:4b", "think": False, "r4": True, "fact": True, "variants": ["D2", "D3"]},
+]
 STRATA ="http://127.0.0.1:8080"   # Strata 엔진(OpenAI 호환) — 사용자가 E:\Strata 에 설치, `strata launch` 로 띄운다
 STRATA_POOL = [  # Strata(11-08 — 사용자 요청): Qwen3.6-35B-A3B(Unsloth UD-Q4_K_XL, 그림 읽는 부분은 24 GB 미만 카드면 CPU).
     # JSON 형식을 생성 중에 강제하지 않는다 — 질문(system) 끝에 영어 지시문과 스키마를 붙이고 답을 검사한다
@@ -299,6 +305,8 @@ def question(cfg, info, variant):
                 "texts": ("description_ko",)}
     if cfg.get("r4"):
         ask = "보이는 것만 JSON 으로 답하라."
+        if cfg.get("fact"):   # 결과 14: 멈춤만 사실로 준다 — 3차 문장에서 '차로 구역 안'·검출 라벨·'왜 멈췄는지'는 뺐다(돌리기 전에 정한 글)
+            ask = f"추적기: 박스 안 차량은 {info['stopped_s']:.0f}초째 거의 움직이지 않았다(멈춤은 확인됨). " + ask
         system, schema, enums, texts = SYSTEM4, make_schema4(), ENUMS4, ("description_ko",)
     elif cfg.get("r3"):
         ask = (f"추적기: 박스 안 차량은 {info['stopped_s']:.0f}초째 거의 움직이지 않았고 차로 구역 안에 있다(멈춤·위치는 확인됨). "
@@ -431,7 +439,7 @@ def run_config(cfg, cases, out_dir, round3=()):
     else:
         warm = call("/api/generate", {"model": cfg["model"], "prompt": "", "keep_alive": "20m", "options": OPTIONS})
         meta = {"config": cfg, "load_s": round(time.time() - t0, 2), "load_duration_s": round(warm.get("load_duration", 0) / 1e9, 2),
-                "gpu_mib_before": before, "gpu_mib_after_load": gpu_mem_mib()}
+                "gpu_mib_before": before, "gpu_mib_after_load": gpu_mem_mib(), "options": dict(OPTIONS)}
         ps = call("/api/ps").get("models", [])
         # 같은 계열(qwen3.5:4b · 4b-q8_0 · 9b)을 잇달아 올리면 앞 모델이 잠깐 남아 있을 수 있다 — 이름이 똑같은 것을 먼저 본다
         hit = [m for m in ps if m.get("name") == cfg["model"]] or [m for m in ps if m.get("name", "").startswith(cfg["model"].split(":")[0])]
@@ -536,13 +544,17 @@ def main():
     ap.add_argument("--desk16", action="store_true", help="4차 장면으로 16 GB 데스크탑 후보(DESK16)를 돈다")
     ap.add_argument("--strata", action="store_true", help="4차 장면을 Strata 엔진(STRATA_POOL — 먼저 strata launch)으로 돈다")
     ap.add_argument("--claude", action="store_true", help="4차 장면을 Claude API(CLAUDE_POOL — 돈이 든다, 그림이 밖으로 나간다)로 돈다")
+    ap.add_argument("--fact", action="store_true", help="4차 질문에 추적기의 '멈춤' 사실 한 줄을 더한 것(FACT — 결과 14)을 기준과 함께 돈다")
+    ap.add_argument("--num-ctx", type=int, help="num_ctx 를 바꿔 돈다(기본 8192 — 결과 14: GPU 메모리와 답이 달라지는지)")
     a = ap.parse_args()
     sys.stdout.reconfigure(errors="replace")   # 콘솔이 cp949 면 설명의 '—' 같은 글자가 긴 실행을 멈추게 한다
     spec = json.loads((HERE / "cases.json").read_text(encoding="utf-8"))
     cases, round3 = spec["cases"], spec.get("round3", {})
     if a.cases:
         cases = [c for c in cases if c["id"] in a.cases.split(",")]
-    pool = (CLAUDE_POOL if a.claude else STRATA_POOL if a.strata else DESK16 if a.desk16 else QUANT if a.quant else ROUND4 if a.round4 else ROUND3 if a.round3
+    if a.num_ctx:
+        OPTIONS["num_ctx"] = a.num_ctx
+    pool = (CLAUDE_POOL if a.claude else STRATA_POOL if a.strata else FACT if a.fact else DESK16 if a.desk16 else QUANT if a.quant else ROUND4 if a.round4 else ROUND3 if a.round3
             else ROUND2 if a.round2 else PROBES if a.probe else CONFIGS)
     configs = [c for c in pool if not a.configs or c["name"] in a.configs]
     out_dir = HERE / "out" / a.results
