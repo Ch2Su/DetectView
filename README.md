@@ -131,7 +131,7 @@ pwsh tests/ui/Run-All.ps1
 
 ## 라이선스
 
-[GNU AGPL-3.0](LICENSE) — Copyright (C) 2026 chisu0208
+[GNU AGPL-3.0](LICENSE) — Copyright (C) 2026 Ch2Su
 
 - 저장소에 든 모델(`best.onnx` · `best.npu.onnx` · `best.fp16.onnx`)은 Ultralytics YOLO26m 을 파인튜닝한 것입니다. Ultralytics 는 YOLO 로 학습한 모델과
   그 모델을 쓰는 프로젝트에 AGPL-3.0 을 요구해서([Ultralytics Licensing](https://www.ultralytics.com/license)) 프로젝트 전체를 AGPL-3.0 으로 공개합니다.
