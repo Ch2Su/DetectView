@@ -151,7 +151,14 @@ pwsh tests/ui/Run-All.ps1
   잘못 알아본 방문의 평소 수준을 되돌려도 바로 다시 적히던 것 — 을 고쳤는데 그 빌드(`bin\\rev3g`)는 막혀 돌리지 못했다(두 고침의 효과는 검증 작업이 `rev3f` 에 리플렉션으로 같은 조작을 넣어 확인 —
   1500 · 1550초 보조 기준이 남음 · 수준이 되돌려진 채 남음. 셀프 테스트·재생 흉내가 지나는 길은 바뀌지 않는다).
   UI 테스트가 확인하는 앱 화면(배지 · 로그 · 구역)과 배포본은 이 고침 뒤로 확인하지 못했다 — 스마트 앱 컨트롤을 끄거나 그 빌드를 허용한 뒤 `Run-All` · `poseself` 로 본다
-- 마지막 전체 통과: 2026-11-21, 데스크탑 — **자세 지켜보기를 넣은 판**(`CameraPoseWatch` · 화면 고정 글자 `OverlayMask` · 보조 기준 화면 — docs/incident-detection.md '자세 지켜보기').
+- 마지막 전체 통과: 2026-11-25, 데스크탑 — **11-22 자세 지켜보기 고침 판**(`16f8d3d` — 위 두 항목, 그 뒤 앱 코드는 그대로). 이날은 스마트 앱 컨트롤이 Debug `DetectView.exe`(11-25 13:59 빌드)를
+  막지 않아 `Run-All`(Debug) 을 돌렸다: 11개 파일 **286 항목 모두 통과** — `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 · `Test-SceneChange` 21 · `Test-ZoneEvents` 21 · `Test-Incident` 16 ·
+  `Test-VlmAnnotation` 27 · `Test-ViewIdentity` 27 · `Test-VfrPlayback` 26 · `Test-ScreenHud` 39 · `Test-NpuSwitch` 36(NPU 쪽은 건너뜀).
+  `Test-ScreenHud` 가 11-21 보다 8 적은 것은 실패가 아니라 [INFO] — HUD 대상 모니터에 검출할 물체가 없어 일시정지·재개·정지·결함 주입 때 박스·범례·번호를 지우는지 확인하지 못했다(바탕화면 내용에 따른다).
+  `Test-CameraPose` 는 시작 검사에서 멈췄다 — `publish\test6.mp4.roi.json` 이 이미 있었다(판 2, 손으로 그린 차로 Z1 하나, 11-22 15:28 — 테스트가 쓰는 파일이 아니라 앱에서 그린 것으로 보여 지우지 않음).
+  그 파일을 잠시 옆으로 옮겨 `Test-CameraPose` 만 다시 돌려 **12 항목 모두 통과**한 뒤 제자리로 되돌렸다(해시 같음). 합쳐 **298 항목 통과**.
+  배포본은 다시 만들지 않았다(`publish` 는 11-21 `2f62426` 판). 11-22 최종 고침 빌드의 `TrackerCheck poseself`(`bin\rev3g` — 막혔던 것)는 이날도 돌리지 않았다
+- 그 전 전체 통과: 2026-11-21, 데스크탑 — **자세 지켜보기를 넣은 판**(`CameraPoseWatch` · 화면 고정 글자 `OverlayMask` · 보조 기준 화면 — docs/incident-detection.md '자세 지켜보기').
   `Run-All`(Debug) 한 번에 **306 항목 모두 통과**(4.2분): `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 · `Test-SceneChange` 21 · `Test-ZoneEvents` 21 · `Test-Incident` 16 ·
   `Test-VlmAnnotation` 27 · `Test-ViewIdentity` 27 · **`Test-CameraPose` 12(새로)** · `Test-VfrPlayback` 26 · `Test-ScreenHud` 47 · `Test-NpuSwitch` 36(NPU 쪽은 건너뜀).
   재생 속도 검사는 모두 0.99~1.01배속 — 합성 webm 이 한 번씩 움직임 판정(멈춘 뒤 SIFT 견주기 약 0.15초)을 거쳐도 그대로였다. 마지막 두 군데(전환 알림을 움직임 중에도 받기 · 화면 안 물체의
