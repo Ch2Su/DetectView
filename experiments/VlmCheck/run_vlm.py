@@ -86,6 +86,7 @@ FACT = [  # 결과 14(11-26 — Gemini 조언 '추적기 사실을 프롬프트�
     # 기준(4차 그대로)도 같은 폴더에서 다시 돌린다 — 같은 PC·같은 날의 답과 견준다. --fact
     {"name": "r4-qwen3.5-4b", "model": "qwen3.5:4b", "think": False, "r4": True, "variants": ["D2", "D3"]},
     {"name": "r4f-qwen3.5-4b", "model": "qwen3.5:4b", "think": False, "r4": True, "fact": True, "variants": ["D2", "D3"]},
+    {"name": "r4n-qwen3.5-4b", "model": "qwen3.5:4b", "think": False, "r4": True, "nomove": True, "variants": ["D2", "D3"]},   # 사실은 안 주고 설명에 움직임을 쓰지 말라고만
 ]
 STRATA ="http://127.0.0.1:8080"   # Strata 엔진(OpenAI 호환) — 사용자가 E:\Strata 에 설치, `strata launch` 로 띄운다
 STRATA_POOL = [  # Strata(11-08 — 사용자 요청): Qwen3.6-35B-A3B(Unsloth UD-Q4_K_XL, 그림 읽는 부분은 24 GB 미만 카드면 CPU).
@@ -225,6 +226,10 @@ SYSTEM4 = """너는 도로 CCTV 화면을 보고 사실만 적는 관찰자다. 
 - parking_area: 박스 안 차량이 주차장이나 주차 칸 안에 있는가
 description_ko 는 보이는 것을 한국어 한두 문장으로 쓴다."""
 
+# 결과 14: 설명에서 움직임을 빼라는 두 문장만 더한 것(돌리기 전에 정한 글). 그림 한 장으로는 멈춤·주행을 못 가르는데도 설명이 멈춘 차를 "주행 중"이라 쓴다 —
+# '멈췄다'는 사실을 주면(FACT 의 fact) 줄을 지어내는 쪽으로 쏠려서, 사실은 주지 않고 쓰지 말라고만 한다
+SYSTEM4_NOMOVE = SYSTEM4 + "\n그림 한 장으로는 차량이 달리는 중인지 멈춰 있는지 알 수 없다. description_ko 에 차량의 움직임(주행 중·정차·지나감 등)은 쓰지 않는다."
+
 INCIDENT_CUES = ("emergency_vehicle_near", "flashing_lights", "people_on_road", "visible_damage", "door_or_trunk_open")
 NORMAL_CUES = ("vehicles_stopped_ahead", "signal_or_stop_line", "parking_area")
 
@@ -307,7 +312,7 @@ def question(cfg, info, variant):
         ask = "보이는 것만 JSON 으로 답하라."
         if cfg.get("fact"):   # 결과 14: 멈춤만 사실로 준다 — 3차 문장에서 '차로 구역 안'·검출 라벨·'왜 멈췄는지'는 뺐다(돌리기 전에 정한 글)
             ask = f"추적기: 박스 안 차량은 {info['stopped_s']:.0f}초째 거의 움직이지 않았다(멈춤은 확인됨). " + ask
-        system, schema, enums, texts = SYSTEM4, make_schema4(), ENUMS4, ("description_ko",)
+        system, schema, enums, texts = SYSTEM4_NOMOVE if cfg.get("nomove") else SYSTEM4, make_schema4(), ENUMS4, ("description_ko",)
     elif cfg.get("r3"):
         ask = (f"추적기: 박스 안 차량은 {info['stopped_s']:.0f}초째 거의 움직이지 않았고 차로 구역 안에 있다(멈춤·위치는 확인됨). "
                f"검출기 라벨 '{info['label']}'(신뢰도 {info['score']:.2f}). 왜 멈췄는지 JSON 으로 답하라.")
