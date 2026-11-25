@@ -46,6 +46,9 @@ internal static class PoseCheck
 
     private static readonly Mat Logo = Textured(150, 80, 77, new Scalar(30, 30, 30));
     private static readonly Mat Truck = Textured(520, 260, 99, new Scalar(60, 140, 200));
+    // 무늬가 서로 다른 덧씌움 판 셋(자리) — 같은 로고 둘은 서로가 쌍둥이라 비율 검사에서 많이 빠진다. 판은 저마다 달라 그대로 맞는다(덧씌운 것만으로 인라이어가 넉넉한 test6 꼴)
+    private static readonly (Mat Img, Point At)[] Plates =
+        [(Textured(150, 80, 201, new Scalar(40, 30, 60)), new Point(330, 100)), (Textured(150, 80, 202, new Scalar(30, 60, 40)), new Point(520, 190)), (Textured(150, 80, 203, new Scalar(60, 40, 30)), new Point(300, 340))];
 
     /// <summary>화면 고정 글자 자리(SW×SH 화면 좌표) — 맞는 짝이 여기 있으면 글자를 배운 것</summary>
     private static readonly Rect[] TextBoxes = [new(30, 20, 260, 50), new(20, 330, 210, 60), new(700, 300, 240, 70), new(220, 470, 560, 55)];
@@ -54,10 +57,11 @@ internal static class PoseCheck
     /// 카메라: 세상 가운데 (cx, cy), 화면에 담는 세상 폭 fw(줌아웃 = 넓게). 차는 t(ms)에 따라 움직인다. smoke 면 가운데에 옅은 회색 띠(연기 같은 내용 변화).
     /// hazy 면 장면을 흐리고 대비를 낮춘다 — SD 를 키운 흐린 실제 CCTV 처럼 장면 특징점이 약하고 덧씌운 글자만 또렷하게(글자가 맞춤을 끌고 가는 test6 꼴).
     /// logo 면 무늬 있는 로고 둘을 글자와 함께 덧씌운다 — 글자만으로도 인라이어가 많이 맞는 test6 꼴(합성 글자는 같은 글자가 되풀이돼 비율 검사에서 많이 빠진다).
-    /// heavySmoke 면 화면 전체를 짙은 연기로 덮는다(결이 천천히 흐른다 — 카메라는 그대로, 장면 맞춤만 무너진다). truckX 면 세상 x 에 큰 무늬 차를 둔다
+    /// heavySmoke 면 화면 전체를 짙은 연기로 덮는다(결이 천천히 흐른다 — 카메라는 그대로, 장면 맞춤만 무너진다). truckX 면 세상 x 에 큰 무늬 차를 둔다.
+    /// plates 면 무늬가 서로 다른 판 셋을 더 덧씌운다 — 장면이 안 보여도(연기 낀 기준 화면) 덧씌운 것만으로 받아들여질 만큼
     /// </summary>
     private static Mat Render(Mat world, double cx, double cy, double fw, double t, bool overlay = true, bool smoke = false, bool hazy = false,
-                              bool logo = false, bool heavySmoke = false, Func<double, double>? truckX = null)
+                              bool logo = false, bool heavySmoke = false, Func<double, double>? truckX = null, bool plates = false)
     {
         double fh = fw * SH / SW;
         using var w = world.Clone();
@@ -117,6 +121,12 @@ internal static class PoseCheck
             foreach (var at in new[] { new Point(790, 18), new Point(18, 150) })
                 using (var dst = new Mat(img, new Rect(at.X, at.Y, Logo.Width, Logo.Height)))
                     Logo.CopyTo(dst);
+        }
+        if (plates)
+        {
+            foreach (var (p, at) in Plates)
+                using (var dst = new Mat(img, new Rect(at.X, at.Y, p.Width, p.Height)))
+                    p.CopyTo(dst);
         }
         return img;
     }
@@ -448,6 +458,69 @@ internal static class PoseCheck
             var back = ids.FirstOrDefault(l => l.Ms >= 20000);
             check(back.Id is { Outcome: ViewOutcome.Known, ViewId: 1 } && moved.What == "Moved" && moved.Step.Measured && moved.Ms <= 22000 && ids[^1].Id is { Outcome: ViewOutcome.New, ViewId: 3 },
                   $"다른 뷰를 들렀다 돌아온 직후의 줌: {Show(log)} · {Notes(log)}");
+        }
+
+        // ----- 2026-11-25 Gemini 리뷰(COLLAB.md 파트 6)에서 확인한 실패 -----
+
+        // 28) 범위 안의 팬(5.9%) 뒤 조금 더(0.57% — 가로 480 에서 2.7px) 밀려 범위(6%)를 넘음 — 기준 화면이 낡아(흐린 화면) 덧씌운 글자·로고·판만으로 화면을 받아들이는 test6 꼴:
+        //     움직이기 전 화면(5.9% 자세)과 견준 움직임은 2.7px 라 글자 짝(제자리)과 장면(2.7px)을 가르는 기준(3px)에 못 미친다 — 예전엔 그쪽에서만 글자 짝을 골라 하나도 못 배웠고,
+        //     '글자 짝 없음 = 덮였음'으로 쳐서 떠난 뷰의 기준 화면에 물었더니 덧씌운 것만으로 받아들여 범위 밖 자세가 다시 V1 이 됐다. 이제 처음 화면과 견준 쪽(31px)에서 글자 짝을 얻는다 —
+        //     이 합성 화면은 덧씌움이 화면 넓게 퍼져 그 자리에서 배우지는 않지만(OverlayMaxSpread), 덮이지 않은 글자가 있으니 떠난 뷰에 묻지 않고 빼서 새 뷰 V2 (글자는 두 기준 화면끼리에서 배운다)
+        using (var reg = new ViewRegistry())
+        {
+            using (var old = Render(world, CX, CY, FW, 0, hazy: true, logo: true, plates: true)) reg.Identify(old);
+            double Cx(double t) => CX + Smooth(0, 82, 20000, 20500, t) + Smooth(0, 8, 40000, 40500, t);
+            var log = Drive(reg, t => Render(world, Cx(t), CY, FW, t, logo: true, plates: true), 55000);
+            var moved = log.FirstOrDefault(l => l.What == "Moved");
+            var ids = log.Where(l => l.What == "identify").ToList();
+            using var later = Render(world, CX + 90, CY, FW, 54000, logo: true, plates: true);
+            var again = reg.Identify(later, atMs: 54000);
+            check(ids.Count >= 2 && ids[0].Id is { Outcome: ViewOutcome.Known, ViewId: 1 } && moved.What == "Moved" && moved.Step.Measured && moved.Ms is >= 40500 and <= 45000
+                  && (moved.Step.Overlay?.Count ?? 0) >= 20 && reg.Overlay.Cells > 0 && ids[^1].Id is { Outcome: ViewOutcome.New, ViewId: 2 } && again is { Outcome: ViewOutcome.Known, ViewId: 2 },
+                  $"범위 안의 팬 뒤 조금 더 밀려 범위를 넘음(낡은 기준 화면 + 글자·로고·판): {Show(log)} · 글자로 배운 짝 {(moved.Step.Overlay == null ? "모름" : moved.Step.Overlay.Count.ToString())}(칸 {reg.Overlay.Cells}) · 다시 식별 {again.Outcome} V{again.ViewId} · {Notes(log)}");
+        }
+
+        // 29) 기준 화면이 낡은 뷰의 자리로 돌아온 화면: V2(줌아웃 0.74배 — 기준 화면이 흐리고 연기 띠가 낀 때 등록됨)의 자리인데 V2 와는 인라이어 29 로 애매하고,
+        //     겹치는 V1 과는 범위 밖 자세(배율 0.73)로 33 맞는다. V1 의 넉넉한 맞춤은 V2 에 대해 말해 주는 게 없다(두 기준 화면을 이을 수 없다) → 애매한 채로 두고 나중에 다시 본다.
+        //     예전엔 V1 의 33 이 V2 의 애매함을 지워 같은 자리를 새 뷰 V3 으로 쪼개 등록했다
+        using (var reg = new ViewRegistry())
+        {
+            using (var a = Render(world, CX, CY, FW, 0)) reg.Identify(a);
+            using (var b = Render(world, CX, CY, FW / 0.74, 0, hazy: true, smoke: true)) reg.Identify(b, notView: 1);
+            using var back = Render(world, CX, CY, FW / 0.74, 5000);
+            var id = reg.Identify(back);
+            var m1 = reg.MatchReference(1, back);
+            var m2 = reg.MatchReference(2, back);
+            check(reg.Count == 2 && id.Outcome == ViewOutcome.Unknown && m1.Inliers >= 30 && !reg.Accepts(m1) && m2.Inliers is >= 15 and < 30,
+                  $"기준 화면이 낡은 뷰(V2)의 자리로 돌아온 화면: {id.Outcome} V{id.ViewId} (뷰 {reg.Count}개) — V1 과 인라이어 {m1.Inliers} · 배율 {m1.Scale:0.00}(범위 밖), V2 와 {m2.Inliers}(애매함) — 새 뷰로 쪼개지 않음");
+        }
+
+        // 30) 거꾸로 — 처음 보는 자세(40% 팬한 흐린 화면)가 다른 뷰의 애매한 짝에 묶이지 않는다: V1 과 이동 40% 로 넉넉히 맞고(범위 밖) V2(줌아웃)와는 덜 가려진 글자 둘레가
+        //     제자리로 15~29 맞아 애매하지만, 두 기준 화면이 넉넉히 맞아(배율 0.74) V1 을 거쳐 이어 붙인 자세가 V2 의 범위 밖 → 새 뷰 V3 (뷰마다 따로만 보면 알 수 없음에 묶인다)
+        using (var reg = new ViewRegistry())
+        {
+            using (var a = Render(world, CX, CY, FW, 0, hazy: true)) reg.Identify(a);
+            using (var b = Render(world, CX, CY, FW / 0.74, 0, hazy: true)) reg.Identify(b, notView: 1);
+            using var third = Render(world, CX + 0.4 * FW, CY, FW, 5000, hazy: true);
+            var id = reg.Identify(third);
+            var m1 = reg.MatchReference(1, third);
+            var m2 = reg.MatchReference(2, third);
+            check(reg.Count == 3 && id is { Outcome: ViewOutcome.New, ViewId: 3 } && m1.Inliers >= 30 && !reg.Accepts(m1) && m2.Inliers is >= 15 and < 30,
+                  $"처음 보는 자세(40% 팬 · 흐림)가 다른 뷰의 애매한 짝에 묶이지 않음: {id.Outcome} V{id.ViewId} (뷰 {reg.Count}개) — V1 과 인라이어 {m1.Inliers} · 이동 {m1.Shift * 100:0}%(범위 밖), V2 와 {m2.Inliers} · 이동 {m2.Shift * 100:0}%(애매함)");
+        }
+
+        // 31) 구역 파일의 뷰 기준 화면(JPEG)이 깨졌을 때: 그림으로 풀리지 않는 뷰를 읽을 때 가려낸다 — 그대로 두면 예외 없이 빈 그림이 돼 그 뷰가 영영 안 맞는다(같은 화면이 새 뷰로 등록된다)
+        using (var good = Render(world, CX, CY, FW, 0))
+        using (var g480 = ViewMatcher.PrepareGray(good))
+        {
+            Cv2.ImEncode(".jpg", g480, out byte[] jpeg);
+            byte[] junk = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+            using var reg = new ViewRegistry([new ViewInfo(1, junk)], 2);
+            var id = reg.Identify(good);
+            check(ViewRegistry.FirstUnreadable([new ViewInfo(1, jpeg), new ViewInfo(2, junk), new ViewInfo(3, jpeg[..300])]) == 2
+                  && ViewRegistry.FirstUnreadable([new ViewInfo(1, jpeg[..(jpeg.Length / 2)])]) == 1 && ViewRegistry.FirstUnreadable([new ViewInfo(1, jpeg)]) == 0
+                  && id is { Outcome: ViewOutcome.New, ViewId: 2 },
+                  $"깨진 기준 화면: 그림으로 안 풀리는 뷰를 가려냄(쓰레기 바이트 · 앞 300바이트 · 절반) — 걸러내지 않으면 같은 화면이 {id.Outcome} V{id.ViewId} 로 등록됨");
         }
     }
 

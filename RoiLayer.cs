@@ -491,6 +491,7 @@ namespace DetectView
 
         // ---------- 그리기 ----------
 
+        // 크기가 바뀌면(창 크기 · 이벤트 목록 펼침) WPF 가 다시 불러 준다 — 구역은 그때의 ActualWidth·ActualHeight 로 영상 자리에 다시 맞춰진다(BoxLayer 와 같다, 2026-11-25 실측)
         protected override void OnRender(DrawingContext dc)
         {
             // 편집 중엔 빈 곳도 마우스를 받게 투명한 바탕을 깐다 (OnRender 로 그린 것만 히트 테스트가 된다)

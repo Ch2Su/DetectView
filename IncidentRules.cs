@@ -48,7 +48,6 @@ namespace DetectView
         private readonly Dictionary<int, State> _tracks = [];
         private readonly HashSet<int> _seen = [];
         private bool _suspended;
-        private double _lastMs;
 
         public IncidentDetector(IncidentOptions? options = null) => _o = options ?? new IncidentOptions();
 
@@ -98,7 +97,6 @@ namespace DetectView
         {
             var events = new List<ZoneEvent>();
             if (_suspended) return events;
-            _lastMs = ms;
             if (zones.Count == 0 || frameW <= 0 || frameH <= 0)
             {
                 events.AddRange(EndAll("구역 없음"));

@@ -1,7 +1,7 @@
 ﻿<Project>
 
-  <!-- OpenCvSharp 판은 이 한 곳에서 정한다 (이슈 #9). 본 앱(DetectView.csproj)과 experiments/ 의 실험 프로젝트 넷
-       (NpuBench · TrackerCheck · RuntimeParity/Old · RuntimeParity/WinML)이 두 패키지 모두 이 값을 쓴다.
+  <!-- OpenCvSharp 판은 이 한 곳에서 정한다 (이슈 #9). 본 앱(DetectView.csproj)과 experiments/ 의 실험 프로젝트 다섯
+       (NpuBench · TrackerCheck · RfDetrBench · RuntimeParity/Old · RuntimeParity/WinML)이 두 패키지 모두 이 값을 쓴다.
        관리 패키지(OpenCvSharp4)와 네이티브 패키지(OpenCvSharp4.runtime.win)는 반드시 같은 날짜 판이어야 한다.
        예전 짝(관리 20260526 + 네이티브 20260302)은 관리 DLL 의 P/Invoke 진입점 2879개 중 117개(aruco·saliency·shape·ximgproc 등)가
        네이티브 DLL 에 없었고, 이름은 같은데 인자·반환형이 바뀐 함수도 10개(LineSegmentDetector·MergeDebevec·MergeMertens) 있었다.

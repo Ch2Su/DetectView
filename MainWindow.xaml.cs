@@ -19,8 +19,12 @@ namespace DetectView
     ///   MainWindow.Screen.cs    화면 HUD (캡처 루프 · 오버레이)
     ///   MainWindow.Playback.cs  파일/카메라 재생 루프 · 시크
     ///   MainWindow.Inference.cs 모델 로드 · GPU 선택 · 검출
-    ///   MainWindow.Npu.cs       추론 장치(GPU ↔ NPU) 바꿔 끼우기 · 툴바 "추론" 선택
+    ///   MainWindow.Npu.cs       추론 장치(GPU · TensorRT · NPU) 바꿔 끼우기 · 왼쪽 패널 "추론 장치" 선택 · NPU 준비
+    ///   MainWindow.Trt.cs       TensorRT 준비 (NVIDIA TensorRT for RTX — FP16 짝 모델)
     ///   MainWindow.Sahi.cs      SAHI 정밀 분석 (알고리즘은 Sahi.cs)
+    ///   MainWindow.Roi.cs       관심 구역 — 왼쪽 패널 '구역' 절 · 구역 파일 · 지금 뷰 (그리기는 RoiLayer.cs, 모델은 Roi.cs)
+    ///   MainWindow.Scene.cs     화면 전환 · 뷰 배지
+    ///   MainWindow.Events.cs    구역 이벤트·유고 후보 로그 패널 · CSV 저장
     ///   MainWindow.Vlm.cs       유고 후보 행의 VLM 설명 (로컬 Ollama — 질문·호출은 VlmAnnotator.cs, 그림은 VlmCrop.cs)
     /// </summary>
     public partial class MainWindow : Window

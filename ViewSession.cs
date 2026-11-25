@@ -299,9 +299,11 @@ namespace DetectView
             var pts = ps.Overlay ?? [];
             if (pts.Count > 0 && ViewMatcher.Spread(pts, w, h) <= _views.Options.OverlayMaxSpread && _views.LearnOverlay(pts, w, h))
                 note = $"글자 배움 (칸 {_views.Overlay.Cells})";
-            // 떠난 뷰의 기준 화면에 '정말 떠났나'를 물으려면 이 움직임의 글자 짝이 마스크로 덮여 있어야 한다 — 덮이지 않은 글자로는 기준 화면이 글자만으로 받아들인다
+            // 떠난 뷰의 기준 화면에 '정말 떠났나'를 물으려면 이 움직임의 글자 짝이 마스크로 덮여 있어야 한다 — 덮이지 않은 글자로는 기준 화면이 글자만으로 받아들인다.
+            // 글자 짝이 없었으면(빈 목록 — 글자 없는 영상) 가릴 것이 없으니 물을 수 있다. 가르지 못했으면(null — 잰 움직임이 작아 제자리 짝이 글자인지 모른다) 묻지 않는다:
+            // 예전엔 둘을 구분하지 않아, 배우지 못한 글자가 남은 채 물어 범위 밖 자세를 떠난 뷰가 글자만으로 다시 받아들일 수 있었다(2026-11-25 — CameraPoseWatch.PickOverlay)
             var overlay = _views.Overlay;
-            _leftMasked = pts.Count == 0 || pts.Count(p => overlay.Covers(new Point2f((float)p.X, (float)p.Y))) >= 0.8 * pts.Count;
+            _leftMasked = ps.Overlay != null && (pts.Count == 0 || pts.Count(p => overlay.Covers(new Point2f((float)p.X, (float)p.Y))) >= 0.8 * pts.Count);
             return note;
         }
 

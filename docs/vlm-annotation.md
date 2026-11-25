@@ -67,8 +67,8 @@
 3. **작업**(앱 수명 동안 하나): 일을 하나씩 꺼내 크롭을 만들고(`VlmCrop` — 아래) Ollama `/api/chat` 을 부른다. `HttpClient` + `System.Text.Json` 이라 **새 NuGet 이 없다**
    (ONNX Runtime 충돌과 무관 — CLAUDE.md 1번). 요청은 4차 실험과 같다: `qwen3.5:4b` · `stream false` · `think false` · `format` = 관찰 스키마 ·
    `options {temperature 0, seed 7, num_ctx 8192, num_predict 768}` · 시스템 글 `SYSTEM4` · 사용자 글 '그림 1장: 1) 후보 주변을 키운 그림 / 보이는 것만 JSON 으로 답하라.' + 그림 한 장
-4. **결과**: `message.content` 를 스키마대로 읽어 `Dispatcher.InvokeAsync` 로 그 행(같은 `ZoneEvent` 참조)에 붙인다. 소스를 바꿔 세대(`_loadGeneration`)가 달라졌으면 버리고,
-   [비우기]로 행이 없어졌으면 그냥 버린다. 시크는 상관없다(그림은 후보가 나온 순간의 것이다)
+4. **결과**: `message.content` 를 스키마대로 읽어 `Dispatcher.InvokeAsync` 로 그 행(같은 `ZoneEvent` 참조)에 붙인다. 끄기·[비우기]·소스 전환으로 세대(`_vlmEpoch` — `ForgetVlmWork` 가 올리고, 진행 중 요청은 `_vlmCallCts` 로 끊는다)가 달라졌으면 버린다
+   (2026-11-25 고침 — 예전 문구는 세대를 `_loadGeneration` 이라고 했다). 시크는 상관없다(그림은 후보가 나온 순간의 것이다)
 
 ### 크롭 — 실험과 같은 그림 (`VlmCrop` — OpenCvSharp, WPF 없음)
 

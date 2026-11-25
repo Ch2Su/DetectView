@@ -108,7 +108,7 @@ namespace DetectView
                     VideoSlider.Maximum = 1;
                     VideoSlider.Value = 0;
                     ApplyModeToUi();      // _durationMs==0 → 슬라이더 비활성
-                    Txt_Status.Text = $"분석 중(재생 가능): {shortName}";
+                    Txt_Status.Text = AnalyzingStatus(shortName);
 
                     _ = AnalyzeAsync(fileName, fps, frameCount, gen);
                 }
@@ -159,7 +159,7 @@ namespace DetectView
                 if (gen != _loadGeneration || _mode != SourceMode.File) return;
                 if (f <= 0 || d <= 0)
                 {
-                    Txt_Status.Text = $"파일: {shortName} (길이 분석 실패, 재생만 가능)";
+                    SetStatusAfterAnalysis(shortName, $"파일: {shortName} (길이 분석 실패, 재생만 가능)");
                     return;
                 }
                 frames = f;
@@ -175,7 +175,16 @@ namespace DetectView
 
             VideoSlider.Maximum = _durationMs;
             ApplyModeToUi();   // 슬라이더를 켠다 (SAHI 분석 중이면 끝날 때까지 꺼 둔다 — 직접 켜면 분석 중에 살아났다)
-            Txt_Status.Text = $"파일: {shortName}";
+            SetStatusAfterAnalysis(shortName, $"파일: {shortName}");
+        }
+
+        private static string AnalyzingStatus(string shortName) => $"분석 중(재생 가능): {shortName}";
+
+        // 길이 분석이 끝났을 때의 상태 문구 — 분석이 띄운 '분석 중…' 문구일 때만 바꾼다. 그사이 뜬 다른 알림은 그대로 둔다:
+        // 예전엔 늘 덮어써서, 메타데이터를 못 믿는 영상(VFR)을 열 때 구역 파일을 읽지 못한 사유(LoadRoi)가 분석이 끝나는 0.1초~수 초 뒤 사라졌다 (2026-11-25 Gemini 리뷰 6-6)
+        private void SetStatusAfterAnalysis(string shortName, string text)
+        {
+            if (Txt_Status.Text == AnalyzingStatus(shortName)) Txt_Status.Text = text;
         }
 
         // 보고된 frameCount의 중간 지점으로 프레임 seek 했을 때 타임스탬프가 일관적인지 확인.

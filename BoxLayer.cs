@@ -101,6 +101,20 @@ namespace DetectView
             InvalidateVisual();
         }
 
+        /// <summary>
+        /// 유고 후보 강조만 걷는다 (박스·번호는 그대로) — 새 프레임 없이 판정만 바뀌었을 때: 멈춘 채 구역을 고쳐 유고 후보가 풀렸거나, 시크한 곳에 프레임이 없을 때
+        /// (MainWindow.Playback.cs — 다음 프레임이 나올 때까지 빨간 박스가 남지 않게). 강조된 박스가 없으면 아무것도 하지 않는다
+        /// </summary>
+        public void ClearIncidents()
+        {
+            bool any = false;
+            foreach (var d in _dets) if (d.Incident) { any = true; break; }
+            if (!any) return;
+            var plain = new List<Det>(_dets.Count);
+            foreach (var d in _dets) plain.Add(d.Incident ? d with { Incident = false } : d);
+            Set(plain, _sx, _sy, _legendTitle);
+        }
+
         private void Set(IReadOnlyList<Det> dets, double sx, double sy, string legendTitle)
         {
             _dets = dets;
@@ -199,6 +213,10 @@ namespace DetectView
             base.OnDpiChanged(oldDpi, newDpi);
             InvalidateVisual();   // 선 굵기를 장치 픽셀에 맞춰 다시 잡는다
         }
+
+        // 크기가 바뀔 때(창 크기 · 이벤트 목록 펼침)는 따로 할 일이 없다 — WPF 는 배치 크기가 바뀌면 OnRender 를 다시 부르고(UIElement.Arrange), OnRender 가 그때의
+        // ActualWidth·ActualHeight 로 영상 자리를 다시 맞춘다. OnRenderSizeChanged 에서 InvalidateVisual 을 또 부르면 같은 그림을 두 번 그릴 뿐이다
+        // (2026-11-25 실측 — .NET 10.0.15: InvalidateVisual 없이 창 크기·아래 행 높이를 바꿀 때마다 OnRender 가 불렸고, 크기가 그대로인 재배치엔 안 불렸다. docs/testing.md)
 
         protected override void OnRender(DrawingContext dc)
         {

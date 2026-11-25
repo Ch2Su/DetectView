@@ -11,6 +11,8 @@
 #      2026-11-05 배포 모델(09-17)에 쌍선형 입력을 넣자 카메라가 돌기 시작하는 10.5초의 덤프트럭이 BUS 로 잡혀 'BUS #10 … 유고 해소' 가 됐다
 #   5) CSV: incident 행(Z1 · lane · 멈춤 5000ms 이상)과 incident_end 행
 #   6) 시크(2초): 그 위치에서 다시 세어 8초 안에 유고 후보가 다시 선언되고, 선언 중에 다시 시크하면 '유고 해소 (시크)' 행
+#   7) 멈춘 채 구역 편집(2026-11-25): 다시 선언된 뒤 일시정지하고 그 구역을 지우면 재개를 기다리지 않고 그 자리에서 풀린다 — 헤더 표시·박스 강조가 사라지고
+#      '유고 해소 (구역 변경)' 행이 남는다. 예전엔 다음 프레임이 나올 때까지 그대로 남아, 멈춘 채 [CSV 저장]하면 해소 행 없이 저장됐다
 #
 #   pwsh tests\ui\Test-Incident.ps1                              # bin\Debug 빌드
 #   pwsh tests\ui\Test-Incident.ps1 -ExeDir publish      # 배포본
@@ -134,6 +136,28 @@ try {
     $range.SetValue(2000)   # 선언돼 있는 중에 시크
     $ok = WaitFor { @(Get-LogItems $list | Where-Object { $_.Name -like '*유고 해소 (시크)*' }).Count -eq 1 } 5000
     Check '선언 중에 시크하면 유고 해소 (시크) 행이 남음' $ok "로그: $((Get-LogItems $list | ForEach-Object { $_.Name }) -join ' | ')"
+
+    # 7) 멈춘 채 구역을 지운다 — 위 시크(2초)에서 이어 재생해 약 7.2초에 다시 선언된 뒤(카메라가 도는 10.5초 전에) 멈춘다
+    $s3 = Sample-Playback $root $range $count 0 8300 20000
+    Click $play
+    $null = WaitFor { (NameOf $play) -eq '재생' } 3000
+    $ind = ById $root 'Txt_EventIncident'
+    $marks = Get-TrackMarks $count
+    $pausedAt = [int]$range.Current.Value
+    Check '다시 선언된 뒤 일시정지: 유고 표시·박스 강조가 남아 있음 (보이는 프레임의 상태)' ($null -ne $ind -and (NameOf $ind) -eq $INC -and $marks.Incidents.Count -eq 1 -and $pausedAt -lt 10300) "위치 $pausedAt ms · 표시='$(if ($ind) { NameOf $ind })' · 번호 '$($marks.Text)'"
+    $zoneItem = (ById $root 'ZoneList').FindFirst($Tree::Descendants, (New-Object $PC ($AE::NameProperty, 'Z1 차로')))
+    $zoneItem.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
+    $del = ById $root 'Btn_ZoneDelete'
+    $null = WaitFor { $del.Current.IsEnabled } 2000
+    Click $del
+    $ok = WaitFor {
+        $m = Get-TrackMarks $count
+        $null -eq (ById $root 'Txt_EventIncident') -and $null -ne $m -and $m.Incidents.Count -eq 0 -and
+            @(Get-LogItems $list | Where-Object { $_.Name -like '*유고 해소 (구역 변경)*' }).Count -eq 1
+    } 3000
+    $m = Get-TrackMarks $count
+    Check '멈춘 채 구역을 지우면 그 자리에서 유고가 풀림 (헤더 표시·박스 강조 사라짐 · 구역 변경 해소 행)' ($ok -and (NameOf $play) -eq '재생' -and [int]$range.Current.Value -eq $pausedAt) "재생 버튼='$(NameOf $play)' · 위치 $([int]$range.Current.Value) ms · 번호 '$(if ($m) { $m.Text })' · 유고 행: $(@(Get-LogItems $list | Where-Object { $_.Name -like '*유고*' } | ForEach-Object { $_.Name }) -join ' | ')"
+    Check '멈춘 트럭의 박스는 그대로 (번호·정지는 남고 유고만 빠짐)' ($null -ne $m -and $marks.Incidents.Count -eq 1 -and $m.Stationary -contains $marks.Incidents[0]) "지우기 전 '$($marks.Text)' → 뒤 '$(if ($m) { $m.Text })'"
 }
 catch { Check '예외' $false (Format-Error $_) }
 finally {

@@ -92,7 +92,8 @@ namespace DetectView
 
     /// <param name="Measured">Moved 일 때 움직임을 재서 뷰의 허용 범위 밖임을 확인했다 — 그때만 Overlay 를 글자로 배우고 떠난 뷰를 다음 식별 후보에서 뺀다(ViewSession).
     /// 재지 못한 Moved(앞 화면과 견줄 수 없을 만큼 바뀜)는 보통의 화면 전환처럼 다시 식별만 한다</param>
-    /// <param name="Overlay">Measured Moved 일 때 움직임 앞뒤에서 제자리로 맞은 짝(= 화면 고정 글자, 가로 480 좌표) — <see cref="ViewRegistry.LearnOverlay"/> 에 넘긴다</param>
+    /// <param name="Overlay">Measured Moved 일 때 움직임 앞뒤에서 제자리로 맞은 짝(= 화면 고정 글자, 가로 480 좌표) — <see cref="ViewRegistry.LearnOverlay"/> 에 넘긴다.
+    /// 빈 목록 = 글자 짝이 없었다(글자 없는 영상), null = 가르지 못했다 — 잰 움직임이 작아 제자리 짝이 글자인지 장면인지 알 수 없다(글자가 덮였다고 보면 안 된다 — ViewSession)</param>
     /// <param name="Reason">움직임으로 본 까닭 · 판정 (디버그·실험 도구 표시용)</param>
     internal readonly record struct PoseStep(PoseOutcome Outcome, int Inliers = 0, int Baseline = 0, double Shift = 0, double Scale = 1,
                                              bool Measured = false, IReadOnlyList<Point2d>? Overlay = null, string Reason = "");
@@ -496,9 +497,10 @@ namespace DetectView
                     return Resume(frame, probe, pose, ms, ref taken, Math.Max(mb.Explained, ma.Explained), shift, scale, seed,
                                   $"{_reason} → 멈춘 뒤 {how} 견줘 이동 {shift * 100:0.0}% · 배율 {scale:0.000} (허용 범위 안)");
                 }
-                var src = mb.Motion != null ? mb : ma.Motion != null ? ma : mh;   // 글자 짝은 카메라 움직임을 잰 쪽에서 (그 움직임으로도 제자리인 짝은 거른다)
+                // 글자 짝은 카메라 움직임을 잰 쪽에서 (그 움직임으로도 제자리인 짝은 거른다) — 움직이기 전 화면부터, 그 움직임이 작아 가르지 못하면 처음 화면 · 집 (PickOverlay)
+                var (src, overlay) = PickOverlay(mb, ma, mh);
                 using (var before = Gray(_beforeGray!, ViewMatcher.BaseWidth)) KeepMovedBefore(before);
-                return Moved(true, src.Explained, shift, scale, OverlayPoints(src), _beforeBaseline,
+                return Moved(true, src.Explained, shift, scale, overlay, _beforeBaseline,
                              $"{_reason} → 멈춘 뒤 {how} 견줘 이동 {shift * 100:0.0}% · 배율 {scale:0.000}");
             }
             // 움직임을 재지 못했다 — 앞 화면과 다시 평소만큼 맞으면 그 자리(연기·큰 차 같은 내용 변화)
@@ -634,6 +636,28 @@ namespace DetectView
             if (m.Motion == null) return [];
             var motion = m.Motion;
             return m.Pinned.Where(p => Displacement(motion, p) > 2 * _v.PinnedPx).ToList();
+        }
+
+        /// <summary>
+        /// 글자 짝을 고를 견줌을 정한다 — 앞에 준 것부터(움직이기 전 화면이 가장 최근이라 내용이 가장 비슷하다), 카메라 움직임을 쟀고 그 움직임이 제자리 짝의 절반 이상을
+        /// '글자'로 가를 수 있는 첫 견줌(<see cref="OverlayPoints"/> — 제자리 짝이 아예 없으면 글자 없는 영상이라 그대로 빈 목록).
+        /// 범위 안에서 한 번 옮긴 뒤(비교 기준이 그 자리로 새로 잡힌다) 조금 더 밀려 범위를 넘으면 움직이기 전 화면과의 움직임이 가로 480 에서 3px(제자리 한계의 2배)도 안 돼
+        /// 글자(제자리)와 장면을 가를 수 없다. 예전엔 늘 움직이기 전 화면 쪽만 봐서 그런 움직임에선 글자를 하나도 못 배웠고(셀프 테스트 28: 5.9% 팬 뒤 0.57% — 글자 짝 0),
+        /// 빈 목록을 '글자 짝이 없다'로 읽은 ViewSession 이 떠난 뷰의 기준 화면에 글자를 가리지 않은 채 '정말 떠났나'를 물었다(2026-11-25 Gemini 리뷰 6-2).
+        /// 어느 견줌으로도 가르지 못하면 Overlay = null(모름)
+        /// </summary>
+        private (MoveResult Src, List<Point2d>? Overlay) PickOverlay(params MoveResult[] moves)
+        {
+            MoveResult first = default;
+            bool any = false;
+            foreach (var m in moves)
+            {
+                if (m.Motion == null) continue;
+                if (!any) { first = m; any = true; }
+                var pts = OverlayPoints(m);
+                if (2 * pts.Count >= m.Pinned.Count) return (m, pts);
+            }
+            return (first, null);
         }
 
         /// <summary>

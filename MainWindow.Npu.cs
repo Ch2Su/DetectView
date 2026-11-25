@@ -159,9 +159,14 @@ namespace DetectView
             catch (Exception ex)
             {
                 Debug.WriteLine($"{DeviceLabel(target)} 전환 실패: {ex}");
-                _wantDevice = _onDevice;   // 지금 장치에 머문다
-                _deviceError = $"{DeviceLabel(target)} 로 바꾸지 못함: {ex.Message}";
-                _deviceErrorOf = target;
+                // 준비하는 사이 다른 장치를 골랐으면 그 의향을 건드리지 않는다 — 예전엔 무조건 지금 장치로 되돌려, 준비를 기다리던 다른 가속 장치가(아래 finally) 조용히 사라지고
+                // 사용자가 이미 물린 장치의 실패 문구만 상태바에 남았다 (2026-11-25 Gemini 리뷰 6-4)
+                if (_wantDevice == target)
+                {
+                    _wantDevice = _onDevice;   // 지금 장치에 머문다
+                    _deviceError = $"{DeviceLabel(target)} 로 바꾸지 못함: {ex.Message}";
+                    _deviceErrorOf = target;
+                }
             }
             finally
             {
@@ -234,9 +239,13 @@ namespace DetectView
             catch (Exception ex)
             {
                 Debug.WriteLine($"GPU 전환 실패: {ex}");
-                _wantDevice = _onDevice;   // 지금 장치(가속 장치)에 머문다
-                _deviceError = $"GPU 로 되돌리지 못함: {ex.Message}";
-                _deviceErrorOf = InferenceDevice.Gpu;
+                // 그새 가속 장치를 다시 골랐으면 그 의향(과 진행 중인 그 준비)을 건드리지 않는다 — 위 SwitchToAsync 의 catch 와 같다
+                if (_wantDevice == InferenceDevice.Gpu)
+                {
+                    _wantDevice = _onDevice;   // 지금 장치(가속 장치)에 머문다
+                    _deviceError = $"GPU 로 되돌리지 못함: {ex.Message}";
+                    _deviceErrorOf = InferenceDevice.Gpu;
+                }
             }
             finally
             {

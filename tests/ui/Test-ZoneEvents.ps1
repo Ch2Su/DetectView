@@ -72,7 +72,8 @@ try {
     $list = ById $root 'EventList'
     $items = Get-LogItems $list
     # 처음 1초 안에 '이미 안에 있음' 으로 잡힌 트랙 중 도는 구간(10.5초) 전까지 나가지 않은 것 = 멈춰 선 트럭 (같이 잡힌 지나가던 차는 곧 나간다)
-    $initial = @($items | Where-Object { $_.Name -match '^\d\d:\d\d\.\d (CAR|TRUCK) #(\d+) Z1 차로 이미 안에 있음$' -and $_.Ms -le 1000 })
+    # 차량 7종 — 로그 라벨은 그 순간의 클래스라 같은 트럭이 다른 차량 클래스로 잡힐 수 있다 (Test-Incident 머리말 4)
+    $initial = @($items | Where-Object { $_.Name -match '^\d\d:\d\d\.\d (CAR|TRUCK|BUS|MOTORCYCLE|SCOOTER|BICYCLE|PICKUP) #(\d+) Z1 차로 이미 안에 있음$' -and $_.Ms -le 1000 })
     $stays = @($initial | Where-Object { $id = [regex]::Match($_.Name, '#(\d+)').Groups[1].Value; @($items | Where-Object { $_.Name -match "#$id Z1 차로 나감" -and $_.Ms -lt 10500 }).Count -eq 0 })
     Check '멈춘 트럭이 Z1 차로 이미 안에 있음으로 기록되고 도는 구간까지 나가지 않음' ($initial.Count -ge 1 -and $stays.Count -ge 1) "처음 1초 안 '이미 안에 있음' $($initial.Count)건, 그중 남은 것 $($stays.Count)건: $((($items | Select-Object -Last 4).Name) -join ' | ')"
 
@@ -95,7 +96,7 @@ try {
     $lines = if ($ok) { @(Get-Content $csvFile -Encoding utf8) } else { @() }
     $ok2 = WaitFor { (NameOf $status) -like '이벤트 저장:*' } 3000
     Check 'CSV 저장: 영상 옆 events.csv, 헤더와 행 수' ($ok -and $lines.Count -ge 2 -and $lines[0] -eq 'ms,time,event,track,label,zone,zone_kind,dwell_ms,note,vlm,vlm_cues,vlm_desc' -and $lines.Count -eq $items.Count + 1) "줄 $($lines.Count) (항목 $($items.Count) + 헤더) · $((Split-Path $csvFile -Leaf))"
-    Check 'CSV 내용: initial 행(Z1 · lane)과 view_changed 행' (@($lines | Where-Object { $_ -match '^\d+,[\d:.]+,initial,\d+,(car|truck),Z1,lane,' }).Count -ge 1 -and @($lines | Where-Object { $_ -match ',view_changed,' }).Count -eq 1) "initial $(@($lines | Where-Object { $_ -match ',initial,' }).Count)행 · view_changed $(@($lines | Where-Object { $_ -match ',view_changed,' }).Count)행"
+    Check 'CSV 내용: initial 행(Z1 · lane)과 view_changed 행' (@($lines | Where-Object { $_ -match '^\d+,[\d:.]+,initial,\d+,(car|truck|bus|motorcycle|scooter|bicycle|pickup),Z1,lane,' }).Count -ge 1 -and @($lines | Where-Object { $_ -match ',view_changed,' }).Count -eq 1) "initial $(@($lines | Where-Object { $_ -match ',initial,' }).Count)행 · view_changed $(@($lines | Where-Object { $_ -match ',view_changed,' }).Count)행"
     Check '저장 뒤 상태바 문구' ($ok2 -and (NameOf $status) -match "^이벤트 저장: test4\.mp4\.events\.csv \(${expect}건\)$") "상태='$(NameOf $status)'"
 
     # 6) 시크하면 감지가 다시 시작한다 (멈췄던 것도 풀림)

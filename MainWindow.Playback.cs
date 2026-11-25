@@ -252,6 +252,21 @@ namespace DetectView
             var zoneEvents = new ZoneEventDetector();
             // 유고 규칙 (파일 전용 — IncidentRules.cs, 2026-11-03): 차로에 멈춘 차량이 정지로 5초 이어지면 유고 후보(박스 강조 + 로그 행). 구역 이벤트와 같은 자리에서 비우고·멈춘다
             var incidents = new IncidentDetector();
+            // 화면에 새 프레임을 내보내지 않고 선언된 유고 후보를 끝낸다 — 멈춘 채 구역을 고쳤을 때(편집은 멈춘 채일 때만 된다)와 시크한 곳에 프레임이 없을 때(파일 끝).
+            // 예전엔 다음 프레임이 나올 때에야(재개·다음 시크) 끝내서, 그때까지 화면의 빨간 박스·헤더의 '⚠ 유고 후보 N'·풀리지 않은 로그 행이 남았고 그대로 [CSV 저장]하면
+            // 해소 행 없이 저장됐다(2026-11-25 Gemini 리뷰 6-3). 감지기는 이 루프만 쓰므로 여기(루프)서 비우고 표시만 UI 로 보낸다
+            async Task EndIncidentsOffFrameAsync(string reason)
+            {
+                var ends = incidents.Reset(reason);
+                if (ends.Count == 0) return;
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    if (ct.IsCancellationRequested) return;
+                    AddZoneEvents(ends);
+                    ShowIncidentCount(0);
+                    FrameBoxes.ClearIncidents();   // 박스는 그대로, 빨간 강조·라벨의 '유고?'만 걷는다
+                });
+            }
 
             // 화면 식별 (파일 전용 — ViewIdentity.cs, 2026-11-03 2b): 안정된 화면이 어느 뷰인지 ORB 특징점으로 알아본다 — 영상을 연 직후·시크 뒤·화면 전환 뒤에.
             // 구역은 그린 뷰의 것이라 이벤트·유고 감지는 지금 뷰의 구역(viewZones)만 쓴다. 알아보지 못하면(애매·특징 부족) 구역 없이 1초 → 2초 → 4초마다 다시 본다.
@@ -277,7 +292,12 @@ namespace DetectView
                     try
                     {
                         while (!_playSignal.Wait(50, ct))
-                            if (!isCamera && Volatile.Read(ref _stepRequest) == 1)
+                        {
+                            if (isCamera) continue;
+                            // 멈춘 채 구역을 고쳤다 — 재개를 기다리지 않고 감지기를 비우고 선언된 유고 후보를 끝낸다 (EndIncidentsOffFrameAsync).
+                            // 한 장 보기보다 먼저 본다: 같이 와도 해소 사유가 '시크'가 아니라 '구역 변경'으로 남는다
+                            if (Interlocked.Exchange(ref _zoneEventsReset, 0) == 1) { zoneEvents.Reset(); await EndIncidentsOffFrameAsync("구역 변경"); }
+                            if (Volatile.Read(ref _stepRequest) == 1)
                             {
                                 // 처리 중 표시를 요청을 꺼내기 전에 세운다 — 꺼낸 뒤 세우면 그 틈에 SAHI 가 요청도 처리 중도 없는 것으로 보고
                                 // 한 장 보기 전의 프레임을 집었다 (꺼내는 쪽은 이 루프뿐이라 읽은 1 이 그대로 꺼내진다)
@@ -286,6 +306,7 @@ namespace DetectView
                                 step = true;
                                 break;
                             }
+                        }
                     }
                     catch (OperationCanceledException) { break; }
                     if (ct.IsCancellationRequested) break;
@@ -383,7 +404,10 @@ namespace DetectView
                         }
 
                         // 파일 EOF: 루프를 끝내지 않고 일시정지 상태로 전환
-                        // → 슬라이더로 seek 후 재생 버튼으로 재개 가능
+                        // → 슬라이더로 seek 후 재생 버튼으로 재개 가능.
+                        // 시크한 곳에 프레임이 없었으면(끝으로 시크) 화면엔 시크 전 프레임이 남는다 — 추적기·감지기는 다음에 나올 프레임에서 비우되(resetTracker 가 남아 있다)
+                        // 선언된 유고 후보는 지금 끝낸다: 예전엔 '재생 완료' 뒤에도 빨간 박스·헤더 표시·열린 로그 행이 남았다 (끝까지 재생해서 닿은 EOF 는 그대로 둔다 — 마지막 프레임의 상태다)
+                        if (resetTracker) await EndIncidentsOffFrameAsync("시크");
                         await Dispatcher.InvokeAsync(OnVideoEnded);
                         continue;
                     }
@@ -439,7 +463,15 @@ namespace DetectView
                         if (!_playSignal.IsSet && !seeked)
                         {
                             // 들고 있는 동안에도 한 장 보기(멈춘 채 시크) 요청을 본다 — 그냥 Wait(ct) 하면 SAHI 로 멈춘 뒤의 시크가 화면에 안 나온다
-                            try { while (!_playSignal.Wait(50, ct)) if (Volatile.Read(ref _stepRequest) == 1) break; }
+                            try
+                            {
+                                while (!_playSignal.Wait(50, ct))
+                                {
+                                    // 프레임을 든 채 멈춘 사이 구역을 고쳤으면 여기서도 곧바로 (루프 맨 위의 대기와 같다)
+                                    if (Interlocked.Exchange(ref _zoneEventsReset, 0) == 1) { zoneEvents.Reset(); await EndIncidentsOffFrameAsync("구역 변경"); }
+                                    if (Volatile.Read(ref _stepRequest) == 1) break;
+                                }
+                            }
                             catch (OperationCanceledException) { break; }
                             if (ct.IsCancellationRequested) break;
                             // 멈춘 사이 위치를 옮겼다 → 옛 위치의 이 프레임은 버린다 (한 장 보기는 위로 돌아가 새 위치에서 읽는다)

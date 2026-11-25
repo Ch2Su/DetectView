@@ -88,6 +88,9 @@
 - **장치 전환은 NPU 와 같은 상태 기계**(`MainWindow.Npu.cs`): 장치가 셋이 되며 `_onNpu`·`_wantNpu`·`_npuBusy` 를 `_onDevice`(지금)·`_wantDevice`(고른 것)·`_prepDevice`(준비 중인 가속 장치)로 일반화했다.
   **준비는 한 번에 하나** — 같은 장치를 다시 고르면 진행 중인 것을 기다리고, 다른 가속 장치를 고르면 상태바에 `<장치> 준비 대기 — <앞 장치> 준비가 끝나면 시작` 을 띄웠다가
   앞 준비가 끝난 뒤(결과는 버린다) 그쪽을 시작한다(창이 닫혔으면 시작하지 않는다 — 끝없이 되풀이되지 않게). 실패하면 지금 장치에 머문다(`_wantDevice = _onDevice`).
+  **실패한 준비가 그사이 바뀐 의향을 덮어쓰지 않는다**(2026-11-25 — Gemini 리뷰 6-4): `SwitchToAsync`·`SwitchToGpuAsync` 의 catch 는 고른 장치가 아직 그 준비의 장치일 때만(`_wantDevice == target`)
+  의향을 되돌리고 실패 문구를 남긴다. 예전엔 무조건 되돌려, 준비 도중 GPU 로 물렸는데도 물린 장치의 '추론 장치 전환 실패'가 상태바에 뜨고, 다른 가속 장치를 골라 '준비 대기' 중이었으면
+  그 준비가 시작도 못 하고 사라졌다(finally 의 다음 준비 조건이 거짓이 된다). 확인: `Test-NpuSwitch` 4)(Debug 결함 주입 `trt-prep-fail` — 고치기 전 코드에선 물린 뒤에도 실패 문구가 떴다)
   NPU 의 단계 문구·툴팁·사유 글자는 그대로 두었다(Test-NpuSwitch 가 기댄다). 콤보 툴팁은 `지금: …` 다음 `GPU: …` · `TensorRT: …` · `NPU: …` 순 — NPU 를 끝 줄에 둔다
 - TensorRT 쪽 코드는 `MainWindow.Trt.cs`: ① **FP16 짝 확인**(`CheckTrtModel` — `best.fp16.onnx` 있음 · 메타데이터 `fp16_source_md5` 있음(없으면 'FP16 짝 모델이 아님') ·
   그 값 = 지금 `best.onnx` MD5. 메타데이터는 CPU·최적화 끔 세션으로만 읽는다 — FP16 그래프도 CPU 로 열린다)

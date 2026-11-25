@@ -485,6 +485,20 @@ namespace DetectView
             lock (_gate) return _entries.Select(e => new ViewInfo(e.Id, e.Jpeg)).ToList();
         }
 
+        /// <summary>
+        /// 구역 파일에서 읽은 뷰 가운데 기준 화면(JPEG)을 그림으로 풀 수 없는 첫 뷰의 번호 (모두 풀리면 0). base64 는 맞는데 그림이 아닌 값은 예외 없이 빈 그림이 돼,
+        /// 그 뷰는 어느 화면과도 맞지 않고(특징점 0) 그 뷰에 그린 구역이 주인 없이 남는다 — 읽을 때 걸러 '구역 파일을 읽지 못함'으로 다룬다 (2026-11-25 Gemini 리뷰 6-6)
+        /// </summary>
+        public static int FirstUnreadable(IReadOnlyList<ViewInfo> views)
+        {
+            foreach (var v in views)
+            {
+                using var g = Cv2.ImDecode(v.RefJpeg, ImreadModes.Grayscale);
+                if (g.Empty()) return v.Id;
+            }
+            return 0;
+        }
+
         public bool Accepts(ViewMatch m) =>
             m.Inliers >= _o.MinInliers && m.Cells >= _o.MinCells && m.Shift <= _o.MaxShift
             && m.Scale >= _o.MinScale && m.Scale <= _o.MaxScale && m.Skew <= _o.MaxSkew;
@@ -741,7 +755,8 @@ namespace DetectView
             Entry? best = null;
             ViewMatch bestMatch = default;
             int bestInliers = -1;
-            ViewMatch unsure = default;   // 애매함 판정 — 기준 화면의 맞춤, 그리고 자세가 그 뷰의 범위 안이거나 인라이어가 넉넉한 보조 기준의 맞춤 가운데 가장 많이 맞은 것
+            // 받아들이지 않은 뷰마다 가장 많이 맞은 것 — 기준 화면의 맞춤, 그리고 자세가 그 뷰의 범위 안이거나 인라이어가 넉넉한 보조 기준의 맞춤 가운데 (애매함 판정 — 아래)
+            var rejected = new List<(Entry View, ViewMatch Top)>();
             // 단서 뷰를 먼저 — 그 뷰가 넉넉히 받아들이면 나머지는 보지 않는다 (OrderBy 는 안정 정렬이라 나머지는 번호 순 그대로)
             var order = hint != 0 ? entries.OrderBy(x => x.Id == hint ? 0 : 1).ToArray() : entries;
             foreach (var e in order)
@@ -749,7 +764,7 @@ namespace DetectView
                 if (e.Id == notView) continue;
                 EnsureSig(e, overlay);   // 처음 쓰거나 글자를 더 배웠다 — 기준 화면의 서명을 지금 글자를 빼고 다시 만든다
                 var m = _matcher.Compare(e.Sig!, probe, overlay);
-                if (m.Inliers > unsure.Inliers) unsure = m;
+                var top = m;
                 // 보조 기준: 영상 시각이 가까운 것부터 몇 장만, 처음 받아들여지는 것에서 멈춘다. 자세는 뷰 기준 화면에 대한 것으로 이어 붙여 같은 기준(이동·배율 한계)으로 판정한다.
                 // 기준 화면이 거의 안 맞아도 본다 — 낡은 기준 화면(연기 낀 0초)은 글자를 넓게 배운 뒤 인라이어 9 아래로 떨어져, 그런 뷰의 보조 기준을 건너뛰게 했더니(3차에 넣었다 뺌)
                 // test6 1200초가 1200초 근처 보조 기준을 두고 새 뷰가 됐다(3차 실측 — 2차까지는 그 보조 기준으로 V1, 인라이어 425)
@@ -764,9 +779,10 @@ namespace DetectView
                     // 받아들여지지 않은 보조 기준은 자세가 그 뷰의 범위 안이거나(인라이어만 모자람) 인라이어가 넉넉할 때(범위 밖의 다른 자세라는 확실한 증거 — 애매함이 아니다)만
                     // 애매함 판정에 넣는다 — 같은 때의 차·연기만 닮은 화면이 처음 보는 자세를 인라이어 15~29 의 '애매함'에 묶어 새 뷰 등록을 몇 초씩 막았다
                     // (test6 처음 보는 자세 64장 중 42장, 2026-11-22 검토)
-                    if ((Plausible(mx) || mx.Inliers >= _o.MinInliers) && mx.Inliers > unsure.Inliers) unsure = mx;
+                    if ((Plausible(mx) || mx.Inliers >= _o.MinInliers) && mx.Inliers > top.Inliers) top = mx;
                 }
-                if (Accepts(m) && m.Inliers > bestInliers) { best = e; bestMatch = m; bestInliers = m.Inliers; }
+                if (!Accepts(m)) rejected.Add((e, top));
+                else if (m.Inliers > bestInliers) { best = e; bestMatch = m; bestInliers = m.Inliers; }
                 // 글자를 뺀 장면이 화면에 퍼져 넉넉히 맞았다 — 다른 뷰가 더 잘 맞을 리 없다(뷰끼리는 허용 범위 밖의 다른 자세다)
                 if (best == e && !overlay.IsEmpty && m.Inliers >= _o.SureInliers && m.SpreadMax >= _o.SureSpread) break;
             }
@@ -776,11 +792,18 @@ namespace DetectView
                 return new ViewIdentification(ViewOutcome.Known, best.Id, bestMatch);
             }
 
-            // 맞는 뷰가 없다. 어느 뷰와 애매하게 닮았으면(인라이어가 모자랄 뿐) 새 뷰로 쪼개 등록하지 않고 나중에 다시 본다
-            if (unsure.Inliers >= _o.UnsureInliers && unsure.Inliers < _o.MinInliers)
+            // 맞는 뷰가 없다. 어느 뷰와 애매하게 닮았으면(그 뷰에서 가장 많이 맞은 것이 15~29 — 인라이어가 모자랄 뿐) 새 뷰로 쪼개 등록하지 않고 나중에 다시 본다.
+            // 애매함은 뷰마다 본다 — 다른 뷰가 넉넉히 맞았다고(범위 밖의 다른 자세) 이 뷰의 애매함이 지워지지는 않는다. 그 맞춤으로 이 뷰의 자세가 아님이 드러날 때만 뺀다(RuledOutByOthers)
+            ViewMatch most = default, unsure = default;
+            foreach (var (e, top) in rejected)
+            {
+                if (top.Inliers > most.Inliers) most = top;
+                if (top.Inliers >= _o.UnsureInliers && top.Inliers < _o.MinInliers && top.Inliers > unsure.Inliers && !RuledOutByOthers(e, rejected, overlay)) unsure = top;
+            }
+            if (unsure.Inliers > 0)
                 return new ViewIdentification(ViewOutcome.Unknown, 0, unsure);
             if (entries.Length >= _o.MaxViews)
-                return new ViewIdentification(ViewOutcome.Unknown, 0, unsure);
+                return new ViewIdentification(ViewOutcome.Unknown, 0, most);
 
             Cv2.ImEncode(".jpg", gray, out byte[] jpeg, new ImageEncodingParam(ImwriteFlags.JpegQuality, _o.JpegQuality));
             int id;
@@ -790,8 +813,39 @@ namespace DetectView
                 _entries.Add(new Entry(id, jpeg) { Sig = SignatureOf(jpeg, overlay), SigOverlay = overlay });
             }
             if (_firstViewId == 0) _firstViewId = id;
-            return new ViewIdentification(ViewOutcome.New, id, unsure);
+            return new ViewIdentification(ViewOutcome.New, id, most);
         }
+
+        /// <summary>
+        /// 애매한 뷰 e(가장 많이 맞은 것이 인라이어 15~29)가 다른 뷰의 넉넉한 맞춤으로 '이 자세가 아님'이 드러나나.
+        /// 다른 뷰 b 가 이 화면과 넉넉히 맞았고(<see cref="Solid"/> — 자세가 b 의 범위 밖이라 받아들이지 않았다) 두 기준 화면끼리도 그만큼 맞으면, e 의 기준 화면 → 이 화면의 자세를
+        /// b 를 거쳐 이어 붙일 수 있다. 그 자세가 e 의 범위 밖이면 e 가 아니다 — e 의 애매한 짝은 덜 가려진 글자 둘레나 겹친 장면이다. 범위 안이면 오히려 e 의 자리일 수 있으니 애매한 채로 두고,
+        /// 두 기준 화면을 이을 수 없으면(겹치지 않거나 한쪽이 낡았다) b 의 맞춤은 e 에 대해 말해 주는 것이 없으니 역시 그대로 둔다.
+        /// <para>
+        /// 예전엔 애매함을 '어느 뷰든 가장 많이 맞은 것' 하나로 봐서, 한 뷰가 범위 밖 자세로 30 이상 맞으면 다른 뷰의 15~29 가 묻혔다: 기준 화면이 낡은(흐리고 연기 낀) 줌아웃 뷰 V2 의
+        /// 자리로 돌아온 화면이 V2 와는 29 로 애매한데, 겹치는 V1 과 배율 0.73 으로 33 맞았다고 곧바로 새 뷰 V3 으로 쪼개졌다(2026-11-25 Gemini 리뷰 6-5 · 셀프 테스트 29).
+        /// 리뷰의 권장대로 뷰마다 따로만 보면 반대로, 처음 보는 자세가 다른 뷰의 글자 둘레 짝 15~29 에 묶여 새 뷰가 되지 못한다(셀프 테스트 8·22 의 장면 — 40% 팬한 흐린 화면이
+        /// V1 과 이동 40% 로 41 · V2 와 제자리 25: 두 기준 화면이 배율 0.74 로 57 맞아 이어 붙이면 V2 의 범위 밖 → 새 뷰 V3, 셀프 테스트 30)
+        /// </para>
+        /// </summary>
+        private bool RuledOutByOthers(Entry e, List<(Entry View, ViewMatch Top)> rejected, OverlayMask overlay)
+        {
+            bool ruledOut = false;
+            foreach (var (b, mb) in rejected)
+            {
+                if (ReferenceEquals(b, e) || !Solid(mb)) continue;
+                var between = _matcher.Compare(e.Sig!, b.Sig!, overlay);   // e 의 기준 화면 → b 의 기준 화면
+                if (!Solid(between)) continue;
+                var h = ViewMatcher.Chain(between.H!, mb.H!);               // → 이 화면
+                var (shift, scale, skew) = ViewMatcher.Geometry(h, e.Sig!.Width, e.Sig.Height);
+                if (shift <= _o.MaxShift && scale >= _o.MinScale && scale <= _o.MaxScale && skew <= _o.MaxSkew) return false;   // b 를 거쳐 재도 e 의 자리다 (NaN 이면 범위 밖)
+                ruledOut = true;
+            }
+            return ruledOut;
+        }
+
+        /// <summary>자세를 믿을 만한 맞춤 — 인라이어·칸이 같은 뷰로 받아들일 만큼이고 원근이 정상이다 (이동·배율은 보지 않는다 — 다른 자세여도 된다)</summary>
+        private bool Solid(ViewMatch m) => m.H != null && m.Inliers >= _o.MinInliers && m.Cells >= _o.MinCells && m.Skew <= _o.MaxSkew;
 
         /// <summary>식별에서 맞춰 볼 보조 기준 — 영상 시각이 가까운 것부터(모르면 최근에 넣은 것부터) <see cref="ViewIdentityOptions.ExtrasPerIdentify"/> 장</summary>
         private List<Extra> NearestFirst(List<Extra> extras, double atMs)

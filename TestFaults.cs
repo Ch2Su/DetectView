@@ -19,8 +19,10 @@ namespace DetectView
     ///   vlm-fake          VLM 설명이 진짜 Ollama 대신 0.6초 뒤 정해진 답을 낸다 — 단서 출동 차량·차로 위 사람·앞에 선 차, 설명에 받은 그림 크기
     ///   vlm-down          VLM 설명이 켜지기는 하지만 부를 때마다 0.1초 뒤 '연결 안 됨'으로 실패한다
     ///   vlm-absent        VLM 설명을 켤 때의 확인이 'Ollama 가 꺼져 있음'으로 실패한다
+    ///   trt-prep-fail     TensorRT 준비가 짝 모델 확인 2.5초 뒤 실패한다 — 그사이 다른 장치를 고른 뒤 앞 준비가 실패하는 길(Test-NpuSwitch)
     /// HUD 훅은 모두 [Conditional("DEBUG")] 라 Release 에선 부르는 코드째 컴파일되지 않는다 (환경 변수도 읽지 않음). HUD 훅은 HUD 캡처 루프 스레드에서만
-    /// 부른다 — 루프는 한 번에 하나라 락을 두지 않는다. 가짜 VLM(<see cref="VlmClient"/>)은 값을 돌려줘야 해서 #if DEBUG 로 감쌌다(부르는 쪽도 — MainWindow.Vlm.cs)
+    /// 부른다 — 루프는 한 번에 하나라 락을 두지 않는다. 가짜 VLM(<see cref="VlmClient"/>)과 TensorRT 준비 실패(<see cref="TrtPrepAsync"/>)는 값을 돌려줘야 해서
+    /// #if DEBUG 로 감쌌다(부르는 쪽도 — MainWindow.Vlm.cs · MainWindow.Trt.cs)
     /// </summary>
     internal static class TestFaults
     {
@@ -83,6 +85,15 @@ namespace DetectView
             : Has("vlm-down") ? new FakeVlm(FakeVlmMode.Down)
             : Has("vlm-absent") ? new FakeVlm(FakeVlmMode.Absent)
             : null;
+
+        /// <summary>[UI] TensorRT 준비의 짝 모델 확인 뒤 — trt-prep-fail 이면 2.5초 뒤 실패한다. 준비하는 사이 다른 장치를 고른 뒤 앞 준비가 실패하는 길을 돌려 본다
+        /// (MainWindow.Npu.cs SwitchToAsync 의 catch — 그 실패가 새로 고른 장치를 덮어쓰지 않는지)</summary>
+        public static async Task TrtPrepAsync()
+        {
+            if (!Has("trt-prep-fail")) return;
+            await Task.Delay(2500);
+            throw new InvalidOperationException($"시험용 결함: TensorRT 준비 실패 ({EnvVar}=trt-prep-fail)");
+        }
 
         private enum FakeVlmMode { Answer, Down, Absent }
 

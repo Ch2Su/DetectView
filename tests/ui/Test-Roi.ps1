@@ -11,7 +11,7 @@
 #   5) 그리다가 Esc · 재생하면 그리던 것을 버림
 #   6) 구역 지우기 → 목록·파일이 비고 파일이 지워짐
 #   7) 다시 그려 두고(번호는 Z2 — 지운 번호를 안 씀) 정지 → 패널이 비고 편집이 막힘 → 같은 영상을 다시 열면 구역이 돌아옴
-#   8) 깨진 구역 파일: 상태바에 사유, 빈 구역으로 시작, 옛 파일은 .bad 로 남김
+#   8) 깨진 구역 파일: 상태바에 사유, 빈 구역으로 시작, 옛 파일은 .bad 로 남김 — 8b) 형식은 맞는데 뷰의 기준 화면(ref)이 그림이 아닌 파일도 같다
 #
 #   pwsh tests\ui\Test-Roi.ps1                              # bin\Debug 빌드
 #   pwsh tests\ui\Test-Roi.ps1 -ExeDir publish      # 배포본
@@ -227,6 +227,16 @@ try {
     $null = WaitFor { (NameOf $zcount) -eq 'V1 · 0개' } 5000
     Check '깨진 구역 파일: 상태바에 사유, 빈 구역으로 시작' ($ok -and (Get-ZoneNames $list).Count -eq 0 -and (NameOf $zcount) -eq 'V1 · 0개') "상태='$(NameOf $status)' 목록 $((Get-ZoneNames $list).Count)개"
     Check '옛 파일은 .bad 로 복사해 둠' ((Test-Path "$roiFile.bad") -and (Get-Content -Raw "$roiFile.bad").Contains('깨진')) ''
+
+    # 8b) 형식은 맞는데 뷰의 기준 화면(ref)이 그림이 아닌 파일 (2026-11-25) — 예전엔 그대로 읽어 그 뷰가 영영 안 맞았다(구역이 주인 없이 남음). 깨진 파일과 같이 다룬다
+    Click $stop
+    $null = WaitFor { (NameOf $status) -eq '정지됨' } 5000
+    Remove-Item "$roiFile.bad" -ErrorAction SilentlyContinue
+    [IO.File]::WriteAllText($roiFile, '{ "version": 2, "nextId": 2, "nextView": 2, "views": [ { "id": 1, "ref": "QUJDREVGR0g=" } ], "zones": [ { "id": 1, "view": 1, "kind": "lane", "points": [[0.3, 0.45], [0.55, 0.45], [0.55, 0.62], [0.3, 0.62]] } ] }')
+    Open-VideoFile $root $Video
+    $ok = WaitFor { (NameOf $status) -like '구역 파일을 읽지 못했습니다*기준 화면*' } 10000
+    $null = WaitFor { (NameOf $zcount) -eq 'V1 · 0개' } 5000
+    Check '기준 화면이 그림이 아닌 구역 파일: 상태바에 사유, 빈 구역으로 시작, .bad 로 남김' ($ok -and (Get-ZoneNames $list).Count -eq 0 -and (NameOf $zcount) -eq 'V1 · 0개' -and (Test-Path "$roiFile.bad")) "상태='$(NameOf $status)' 목록 $((Get-ZoneNames $list).Count)개 · .bad $(Test-Path "$roiFile.bad")"
 }
 catch { Check '예외' $false (Format-Error $_) }
 finally {

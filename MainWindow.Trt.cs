@@ -88,6 +88,9 @@ namespace DetectView
                 SetTrtUnavailable(check.Message);   // 짝 모델 문제는 고치기 전까진 다시 해도 같다 → 항목을 닫는다
                 throw new InvalidOperationException(check.Message);
             }
+#if DEBUG
+            await TestFaults.TrtPrepAsync();   // 시험용: 준비가 2.5초 뒤 실패한다 (Debug 빌드 + DETECTVIEW_TEST_FAULTS=trt-prep-fail 일 때만)
+#endif
 
             // ② 는 NPU 와 같은 까닭으로 스레드 풀에서 (Progress 는 UI 스레드에서 만든다 — PrepareNpuYoloAsync 주석)
             var progress = new Progress<double>(p => SetPrepStage($"TensorRT 실행 공급자 내려받는 중 {p:F0}%", resetClock: false));

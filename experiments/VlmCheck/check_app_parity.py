@@ -29,7 +29,10 @@ OUT = HERE / "out" / "parity"
 
 
 def tracker_check():
-    exes = sorted((REPO / "experiments" / "TrackerCheck" / "bin").glob("*/*/TrackerCheck.exe"), key=lambda p: p.stat().st_mtime)
+    # 가장 새 빌드 — dotnet build 기본 출력(bin/<구성>/<TFM>/)과 -o 로 따로 둔 빌드(bin/<이름>/ — 스마트 앱 컨트롤이 켜져 있는 동안의 규칙, 루트 CLAUDE.md '개발 PC') 모두 본다.
+    # 예전엔 두 단계 아래만 찾아, -o 로 새로 만든 빌드를 두고 옛 Release 빌드로 견줬다(2026-11-25)
+    root = REPO / "experiments" / "TrackerCheck" / "bin"
+    exes = sorted([*root.glob("*/TrackerCheck.exe"), *root.glob("*/*/TrackerCheck.exe")], key=lambda p: p.stat().st_mtime)
     if not exes:
         sys.exit("TrackerCheck.exe 가 없다 — 먼저 dotnet build experiments/TrackerCheck -c Release")
     return exes[-1]

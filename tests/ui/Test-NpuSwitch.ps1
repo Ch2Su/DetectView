@@ -8,6 +8,8 @@
 #      재생 중 다시 TensorRT(캐시 — '엔진 만드는 중'이 없어야 한다)
 #   3) 실패 경로: 짝 모델 없음 · 다른 모델의 짝 · FP32 를 짝 이름으로 — NPU·TensorRT 각각. 항목이 막히고 사유가 툴팁에, GPU 에 머문다.
 #      exe 폴더를 하드 링크로 본뜬 옆 폴더(<exe 폴더>.npu-test)에서 파일을 바꾼다 — 원래 폴더(배포 폴더 포함)는 건드리지 않는다
+#   4) 준비하는 사이 다른 장치를 골랐는데 앞 준비가 실패 (2026-11-25 — Debug 빌드의 결함 주입 trt-prep-fail: TensorRT 준비가 2.5초 뒤 실패):
+#      GPU 로 물린 뒤엔 실패 문구가 뜨지 않고 선택이 GPU 그대로, 물리지 않은 준비의 실패는 그대로 알린다
 #   NPU(AMD Ryzen AI · VitisAI)가 없는 PC 거나 짝 모델이 없으면 2) 는, NVIDIA RTX 가 아니거나 FP16 짝이 없으면 2b) 는 [INFO] 로 건너뛴다
 #   (1)·3) 은 둘 없이도 돈다)
 #
@@ -580,6 +582,42 @@ try {
         $line = @($help -split "`n" | Where-Object { $_ -like "$($c.Device): *" -or $_ -like "$($c.Device) 를 쓸 수 없음*" -or $_ -like "*$($c.Device) 를 쓸 수 없음*" }) | Select-Object -Last 1
         Check "실패 경로: $($c.Name)" ((-not $enabled) -and $help -match $c.Expect -and $proc.MainWindowTitle -match '\(DirectML\)$') `
             "$($c.Device) 항목 열림=$enabled · 툴팁 줄='$(if ($line) { $line } else { ($help -split "`n")[-1] })'"
+        Stop-DetectView $proc; $proc = $null
+    }
+
+    # ---------- 4) 준비하는 사이 다른 장치를 골랐는데 앞 준비가 실패 ----------
+    # 예전엔 실패한 준비의 catch 가 무조건 '지금 장치'로 의향을 되돌리고 실패 문구를 남겼다: GPU 로 물렸는데도 상태바에 물린 장치의 '전환 실패'가 뜨고,
+    # 다른 가속 장치를 골라 '준비 대기' 중이었으면 그 준비가 시작도 못 하고 사라졌다 (가속 장치가 둘인 PC 에서만 — 여기선 GPU 로 물리는 쪽을 본다)
+    if ($ExeDir -notlike '*\bin\Debug\*') {
+        Note '준비 중 장치 바꿈 + 앞 준비 실패' "Debug 빌드가 아니라 건너뜀 — 결함 주입(TestFaults.cs)은 Release 에선 컴파일되지 않는다 ($ExeDir)"
+    }
+    else {
+        $origFaults = $env:DETECTVIEW_TEST_FAULTS
+        $env:DETECTVIEW_TEST_FAULTS = 'trt-prep-fail'
+        try { $proc = Start-DetectView $ExeDir }
+        finally { if ($origFaults) { $env:DETECTVIEW_TEST_FAULTS = $origFaults } else { Remove-Item Env:DETECTVIEW_TEST_FAULTS -ErrorAction SilentlyContinue } }
+        $root = $proc.Root
+        $null = Wait-DeviceCheck $root
+        if (-not (Select-Device $root 'TensorRT')) {
+            Note '준비 중 장치 바꿈 + 앞 준비 실패' '건너뜀 — TensorRT 항목이 막혀 있음 (NVIDIA RTX 가 아니거나 FP16 짝이 없음)'
+        }
+        else {
+            # (a) 실패가 오기 전에 GPU 로 물린다 → 실패가 지나가도 상태바에 실패 문구가 없고 선택은 GPU
+            $sawPrep = Get-DeviceStatus $root
+            $null = Select-Device $root 'GPU'
+            $early = Get-DeviceStatus $root
+            Start-Sleep -Milliseconds 3500
+            $st = Get-DeviceStatus $root
+            $proc.Refresh()
+            Check '준비 중 GPU 로 물린 뒤 앞 준비가 실패: 실패 문구 없음 · 선택 GPU' ($sawPrep -like 'TensorRT*' -and $early -ne '추론 장치 전환 실패 (툴팁)' -and $st -eq '' -and (Get-SelectedDevice $root) -eq 'GPU' -and $proc.MainWindowTitle -match '\(DirectML\)$') `
+                "고른 직후 '$sawPrep' · 물린 직후 '$early' · 3.5초 뒤 '$st' · 선택='$(Get-SelectedDevice $root)'"
+            # (b) 물리지 않으면 실패를 그대로 알린다 — 선택은 지금 장치(GPU)로 돌아온다
+            $null = Select-Device $root 'TensorRT'
+            $ok = WaitFor { (Get-DeviceStatus $root) -eq '추론 장치 전환 실패 (툴팁)' } 8000
+            $tip = (ById $root 'Txt_Device')
+            Check '물리지 않은 준비의 실패는 그대로 알림: 상태바 실패 문구 · 선택은 GPU 로' ($ok -and (Get-SelectedDevice $root) -eq 'GPU') `
+                "상태바='$(Get-DeviceStatus $root)' · 선택='$(Get-SelectedDevice $root)' · 툴팁 첫 줄='$(if ($tip) { ($tip.Current.HelpText -split "`n")[0] })'"
+        }
         Stop-DetectView $proc; $proc = $null
     }
 }

@@ -67,7 +67,13 @@ namespace DetectView
             _roiPath = RoiSet.PathFor(videoPath);
             RoiSet set;
             string? warn = null;
-            try { set = RoiSet.Load(_roiPath); }
+            try
+            {
+                set = RoiSet.Load(_roiPath);
+                // 뷰의 기준 화면이 그림으로 풀리지 않으면 그 뷰는 영영 알아보지 못한다 — 형식이 틀린 파일과 같이 다룬다(사유를 알리고 .bad 로 남긴 뒤 빈 구역으로)
+                if (ViewRegistry.FirstUnreadable(set.SavedViews) is var bad and > 0)
+                    throw new FormatException($"뷰 V{bad} 의 기준 화면(ref)을 그림으로 읽을 수 없음");
+            }
             catch (Exception ex)   // 구역은 부가 기능 — 어떤 이유로든 못 읽어도 영상 열기를 막지 않는다 (OpenVideoFile 의 catch 는 '영상 로드 실패' 로 소스를 내린다)
             {
                 set = new RoiSet();

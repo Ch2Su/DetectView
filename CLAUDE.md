@@ -114,7 +114,7 @@ CLAUDE.md 가 매 세션 컨텍스트를 너무 많이 차지해서(13만 자) 2
   그때의 교훈은 그대로다: 코드에서 쓰지도 않던 `YoloSharp` 6.1.0 이 `Microsoft.ML.OnnxRuntime >= 1.23.2` 를 끌어와 CPU판으로 되돌려놨었다. **ONNX 관련 패키지를 추가할 때 이 충돌을 먼저 의심할 것.**
 - 미사용 패키지(`Compunet.ScreenCapture`, `SixLabors.ImageSharp`, `OpenCvSharp4.Extensions`/`.WpfExtensions`/`.Windows`)는 2026-09-11 제거했다. `Vortice.Direct3D11` 은 DXGI 캡처용으로 추가(`Vortice.DXGI` 와 같은 3.8.3 으로 맞출 것).
 - OpenCvSharp 두 패키지(관리 `OpenCvSharp4`·네이티브 `OpenCvSharp4.runtime.win`)는 **같은 날짜 판**이어야 한다. 판은 저장소 루트 **`Directory.Build.props` 의 `OpenCvSharpVersion` 한 곳**이고,
-  본 앱과 실험 프로젝트 넷(NpuBench·TrackerCheck·RuntimeParity/Old·WinML)의 두 `PackageReference` 가 모두 그 값을 쓴다. 지금 판은 4.13.0.**20260302**(두 nuspec 이 같은 원본 커밋 shimat/opencvsharp `4f66185` 을 가리키는 짝).
+  본 앱과 실험 프로젝트 다섯(NpuBench·TrackerCheck·RfDetrBench·RuntimeParity/Old·WinML)의 두 `PackageReference` 가 모두 그 값을 쓴다. 지금 판은 4.13.0.**20260302**(두 nuspec 이 같은 원본 커밋 shimat/opencvsharp `4f66185` 을 가리키는 짝).
   (초기 커밋부터 두 판이 어긋나 있던 경과와 맞춘 뒤의 검증은 docs/runtime.md 'OpenCvSharp 판')
   **판은 `Directory.Build.props` 에서만 바꾼다** — `dotnet add package` 로 한쪽만 올리면 그 줄의 `$(OpenCvSharpVersion)` 이 숫자로 덮여 다시 어긋난다(속성이 비면 복원이 NU1015 로 멈춘다).
   바꿀 땐 ① NuGet 에 그 날짜의 runtime.win 이 있는지 먼저 보고 ② 네이티브가 바뀌면 아래 "파일 재생 · 시크"의 OpenCV 동작·검출 결과(RuntimeParity)·UI 테스트를 다시 본다.
@@ -216,7 +216,7 @@ SDK 기본 글롭이 `old/**` 의 소스와 생성 `.g.cs` 까지 끌어와 **72
 
 자세한 설명은 [docs/incident-detection.md](docs/incident-detection.md) '관심 구역'. 요점:
 - 구역 = 번호 `Z1`…(지운 번호는 다시 쓰지 않는다) + 유형(차로 `lane` · 갓길 `shoulder` · 정지선·대기 `stopline` · 무시 `ignore`) + 프레임 0~1 좌표 점 3개 이상(`Roi.cs` — WPF 없음)
-- 영상 옆 `<영상>.roi.json`(판 2 — 뷰 목록 포함)에 **바뀔 때마다 바로 저장**하고 구역이 없으면 파일을 지운다. 못 읽으면 상태바에 사유, 옛 파일은 `.bad` 로 복사하고 빈 구역으로 시작한다
+- 영상 옆 `<영상>.roi.json`(판 2 — 뷰 목록 포함)에 **바뀔 때마다 바로 저장**하고 구역이 없으면 파일을 지운다. 못 읽으면(뷰의 기준 화면이 그림으로 안 풀리는 것도 — 2026-11-25) 상태바에 사유, 옛 파일은 `.bad` 로 복사하고 빈 구역으로 시작한다
 - 편집은 **파일 재생을 멈춘 채일 때만**(`UpdateRoiUi` 한 곳 — 뷰를 모르거나 화면이 움직이는 중에도 막힌다). 구역 그림은 편집이 바뀔 때만 다시 그린다(HUD 고리 없음). HUD·카메라엔 구역이 없다
 
 ## 도메인 지식 — 화면 전환 감지 (유고 감지 2단계의 하나, 2026-11-03)
@@ -239,17 +239,22 @@ SDK 기본 글롭이 `old/**` 의 소스와 생성 `.g.cs` 까지 끌어와 **72
 - `IncidentDetector`: 차량의 발이 **차로 구역** 안이고 `Stationary` 가 5초 이어지면 유고 후보다. 정지선·대기·무시 구역과 정체(같은 차로 구역에 자신 말고 정지 차량 3대 이상)는 빼고,
   **이미 선언한 것은 정체로 풀지 않는다**. 판정이 1초 안에 돌아오면 이어진 것으로 본다
 - 해소(움직임·차로 이탈 1초 · 추적 끝 · 화면 전환 · 시크 · 구역 변경)에는 꼭 해소 행을 남긴다. 선언된 박스는 `Det.Incident` 로 빨갛게, 로그 헤더에 `⚠ 유고 후보 N`
+- 멈춘 채 구역을 고치면 재개를 기다리지 않고 그 자리에서 끝낸다(2026-11-25 — 루프의 일시정지 대기 두 곳이 `_zoneEventsReset` 을 꺼내 `EndIncidentsOffFrameAsync`. 감지기는 여전히 루프만 만진다).
+  끝으로 시크해 프레임이 없을 때도 같은 길 — 대기 루프·EOF 가지를 고칠 땐 이 둘을 빠뜨리지 말 것
 
 ## 도메인 지식 — 화면 식별 (뷰 식별, 유고 감지 2b, 2026-11-03)
 
 자세한 설명·실측은 [docs/incident-detection.md](docs/incident-detection.md) '화면 식별'. 요점:
 - `ViewMatcher`: ORB 800 + RANSAC 호모그래피 — 같은 뷰 = 인라이어 ≥ 30 · 칸 ≥ 4 · 이동 ≤ 6% · 배율 0.9~1.12. 애매하면 알 수 없음(새 뷰로 쪼개지 않음), 처음 보는 안정 화면은 새 뷰 V1… 로 등록한다.
   구역은 어긋남을 보정하지 않는다(호모그래피로 옮기지 않음)
+- 애매함(인라이어 15~29)은 **뷰마다** 본다(2026-11-25 — `RuledOutByOthers`): 다른 뷰가 넉넉히 맞았다고 지워지지 않고, 그 맞춤과 두 기준 화면 사이의 맞춤을 이어 붙인 자세가 이 뷰의 범위 밖일 때만 뺀다.
+  '가장 많이 맞은 것 하나'로도(같은 자리를 새 뷰로 쪼갠다 — 셀프 테스트 29), '뷰마다 따로만'으로도(처음 보는 자세가 알 수 없음에 묶인다 — 셀프 테스트 8·30) 되돌리지 말 것
 - 영상을 열 때·시크 뒤·전환이 안정된 뒤에만 식별한다. 첫 호출이 느려 **앱을 켤 때 `ViewMatcher.WarmUp`** 을 돌린다(빼면 세션 첫 재생이 0.8배속 안팎). 구역 파일은 구역을 편집할 때만 저장한다
 - 뷰로 돌아올 때마다 번호·유고 5초를 새로 센다(방문 사이 이어 붙이기는 미구현)
 - **자세 지켜보기**(2026-11-21, `CameraPoseWatch.cs` — docs/incident-detection.md '자세 지켜보기'): 뷰를 알아본 뒤 1초마다 ORB 로 자세를 보고, 천천히 하는 줌·팬이 허용 범위를 벗어나면
   화면 전환처럼 처리한다(멈춘 뒤 판정은 가로 960 SIFT — 지켜보기를 시작한 화면(닻) · 앞 움직임 전에 서 있던 화면(집) · 움직이기 전 화면과 견줘 **직접 잰 자세를 먼저** 쓴다 — 이어 붙이기만 하면 어긋남이 쌓였다).
   **움직이는 증거**(장면 — 또는 글자 짝을 뺀 나머지 — 가 화면에 퍼진 채 같이 옮겨짐)가 있는 동안만 추적기에 넣지 않는다 — 맞춤이 무너지기만 한 건(연기·큰 차) 증거가 아니다.
+  글자 짝은 그 움직임이 제자리 짝의 절반 이상을 가르는 견줌에서 고르고(`PickOverlay` — 움직이기 전 화면 → 닻 → 집), 못 가르면 `Overlay = null`(모름 — 빈 목록 '글자 없음'과 다르다: 떠난 뷰에 묻지 않는다, 2026-11-25).
   차·사람의 움직임도 SIFT 로 '믿을 만한 움직임'이 재지므로 카메라 움직임은 **움직임이 8×6 칸에 퍼졌을 때만** 믿는다(앞뒤 화면 중 큰 쪽으로 잰다 — 줌인은 앞 화면 쪽으론 몰려 보인다. ORB 쪽 기준은 그 장면이 서 있을 때의 퍼짐에 맞춘다).
   평소 수준(무너짐을 재는 비율의 바탕)은 **뷰마다 확인된 것**을 기억한다(`ViewSession`). 잰 움직임 뒤엔 1초 기다렸다 식별한다(줌 직후 초점이 흐림). 2026-11-22 검토 뒤 — 실측은 그 문서 '퍼짐'
 - **'장면만으로 이 뷰인가'를 기준 화면에 물을 땐 글자 마스크를 넓혀 뺀다**(`ViewRegistry.MatchReferenceStrict` — 2026-11-22): 글자 바로 옆 특징점은 기술자에 글자가 섞여 카메라가 움직여도 제자리로 맞아,
@@ -281,7 +286,8 @@ SDK 기본 글롭이 `old/**` 의 소스와 생성 `.g.cs` 까지 끌어와 **72
   **FP32 를 NPU 에 넣지 말 것**(EP 의 BF16 변환이 실패하고 1.5시간 뒤 프로세스가 끝난다). **FP16 짝은 DirectML 로 못 연다**(그래프 융합 실패 — `best.onnx` 자리에 두면 앱이 안 뜬다)
 - 장치 전환은 `MainWindow.Npu.cs` 의 상태 기계 하나(`_onDevice`·`_wantDevice`·`_prepDevice` — 2026-11-08 장치가 셋이 되며 `_onNpu`·`_wantNpu`·`_npuBusy` 를 일반화). 확인 · EP 준비 · 컴파일·엔진 만들기는
   모두 스레드 풀에서(UI 스레드에서 EP 카탈로그를 조회하면 창이 수 초 멈췄다), 진행은 상태바 `Txt_Device`. **준비는 한 번에 하나** — 진행 중 같은 장치를 다시 고르면 기다리고,
-  다른 가속 장치를 고르면 '… 준비 대기'를 띄웠다가 앞 준비가 끝난 뒤 시작한다. EP 는 장치마다 `EnsureReadyAsync`(카탈로그 전체 `EnsureAndRegisterCertifiedAsync` 는 8분 걸렸다)
+  다른 가속 장치를 고르면 '… 준비 대기'를 띄웠다가 앞 준비가 끝난 뒤 시작한다. 실패한 준비의 catch 는 고른 장치가 아직 그 장치일 때만 의향을 되돌린다
+  (`_wantDevice == target` — 무조건 되돌리면 그사이 고른 장치가 덮인다, 2026-11-25). EP 는 장치마다 `EnsureReadyAsync`(카탈로그 전체 `EnsureAndRegisterCertifiedAsync` 는 8분 걸렸다)
 - 캐시 키 = 짝 모델 MD5 `_` EP 패키지 버전 `_` ONNX Runtime 파일 버전 (`CacheKeyFor`) — VitisAI 기본 키는 다른 모델에도 옛 컴파일 결과를 재사용했다(틀린 결과·크래시 실측).
   NPU 는 `%LOCALAPPDATA%\DetectView\npu_cache`(VitisAI `cache_key`), TensorRT 는 `…\trt_cache\<키>`(`nv_runtime_cache_path` — JIT 커널, 엔진마다 파일 하나 6~7 MB). Claude 도구로 띄우면 패키지 폴더로 돌려질 수 있다
 - TensorRT(NVIDIA TensorRT for RTX — Windows ML 카탈로그의 `NvTensorRTRTXExecutionProvider`, 새 NuGet 없음): FP16 짝으로 `session.Run` 약 2.8 ms(DirectML FP32 10.0 · 검출 99.6% / 99.9% 같음 · 같은 입력이면 비트까지 같다).
@@ -295,6 +301,8 @@ SDK 기본 글롭이 `old/**` 의 소스와 생성 `.g.cs` 까지 끌어와 **72
 - 박스·라벨·클래스별 개수 범례는 모두 `BoxLayer`(앱 안 영상 `FrameBoxes`와 HUD 오버레이 공용). 범례 글자는 검출 수 칸의 UIA `ItemStatus`, 추적 번호는 `ItemType` 으로 나간다
 - 테스트가 기대는 것(바꾸면 테스트도): x:Name 들, 버튼 `Content` 문자열(아이콘은 `Ui.Glyph`), 문자열 툴팁(UIA HelpText), 콤보 항목 `GPU`/`TensorRT`/`NPU`, 슬라이더 템플릿의 `PART_Track`, 오버레이 창 제목 `DetectView Overlay`
 - 자주 바뀌는 표시는 `StatusBarPanel`(HUD 캡처 무시 영역) 안에만 두고, 그 밖엔 계속 도는 애니메이션을 두지 않는다
+- `BoxLayer`·`RoiLayer` 는 크기가 바뀌면 WPF 가 `OnRender` 를 다시 불러 영상 자리에 다시 맞춘다 — `OnRenderSizeChanged` 에서 `InvalidateVisual` 을 더하지 말 것
+  (2026-11-25 실측: .NET 10.0.15 — 창 크기·이벤트 목록 펼침마다 다시 그려진다. '안 그려진다'는 리뷰 지적은 틀렸다 — docs/testing.md)
 
 ## 동시성 규칙
 
@@ -358,8 +366,9 @@ pwsh tests/ui/Run-All.ps1
 - UIA 루트는 **`Start-DetectView` 가 돌려준 프로세스의 `.Root`** 를 쓴다 — WPF 트리가 붙을 때까지 기다려 확인한 바로 그 루트다(`Wait-AppRoot`). `$AE::FromHandle` 로 다시 잡지 말 것:
   창이 뜬 직후에 잡은 루트는 WPF 요소가 안 보이는 Win32 프록시일 수 있고 그 루트로는 끝까지 못 찾는다(2026-11-17 데스크탑 — docs/testing.md).
   꼭 있어야 하는 요소는 `Need`(없으면 이름을 담아 그 자리에서 던진다 — `ById` 는 조용히 `$null`), 예외 줄은 `Format-Error`(난 곳을 붙인다)
-- 마지막 전체 통과: 2026-11-25, 데스크탑 — 11-22 자세 지켜보기 고침(`16f8d3d`) 뒤 Debug `Run-All` 298 항목 모두 통과(`Test-CameraPose` 는 test6 옆에 남아 있던 구역 파일을
-  잠시 치우고 따로 — `Test-ScreenHud` 는 화면에 물체가 없어 8개가 [INFO]). 같은 날 새로 만든 배포본 `publish`(`d52de03`) 271 항목 모두 통과. 자세한 기록과 그 전 기록(노트북 포함)은 docs/testing.md
+- 마지막 전체 통과: 2026-11-25 밤, 데스크탑 — Gemini 전체 리뷰를 확인해 고친 판(느린 다단계 팬의 글자 짝 · 뷰 사이 애매함 · 멈춘 채 구역 편집의 유고 해소 · 준비 실패가 고른 장치를 덮던 것 등) Debug `Run-All` 307 항목 모두 통과
+  (`Test-ScreenHud` 는 화면에 물체가 없어 8개가 [INFO]), `TrackerCheck selftest` 모두 통과(⑬ 31개). **배포본 `publish` 는 그 전 판(`d52de03` — 11-25 낮 271 항목 통과) 그대로다.**
+  `Test-Roi`·`Test-ViewIdentity` 는 실제 마우스를 써서 실행 중 포인터·포커스가 바뀌면 한 단계가 안 먹을 수 있다(그날 한 번 — 다시 돌리면 통과). 자세한 기록과 그 전 기록(노트북 포함)은 docs/testing.md
 
 - 테스트 영상 내용(유고 감지 기준 사례)은 docs/testing.md 끝 '테스트 영상 내용' — `test4.mp4` 는 방향이 바뀌는 CCTV(0~10.5초 차로에 정차한 덤프트럭 = 양성, 21.2초~ 신호대기 행렬 = 음성),
   `test5.mp4` 는 터널 출구 갓길에 정차한 화물차(양성, 1280×854 60fps — 29.63~29.98초에 스트림이 검게 끊긴다),
@@ -405,6 +414,9 @@ LLM 개념 맵(`graft build --deep`)은 API 키가 필요해서 돌리지 않았
 - **Windows 경로의 백슬래시가 이스케이프로 풀려 제어 문자가 들어간 적이 있다** — 2026-11-05~06 `publish` 뒤 백슬래시 + `best…` 가 백스페이스(0x08) 한 글자로 바뀌어
   문서 셋·메모 하나에 들어갔다(화면엔 `publishest.onnx` 로 보인다 — 11-06 고침). Bash 도구는 명령을 큰따옴표로 한 번 더 감싸 heredoc 안에서도 백슬래시 둘을 하나로 줄인다.
   경로가 든 글을 도구로 쓴 뒤엔 제어 문자가 없는지 본다: `git grep -lP "\x08"`
+  2026-11-25 에도 heredoc 으로 넘긴 `'\\n'` 이 `'\n'` 으로 줄어 파이썬이 줄바꿈으로 풀었다 — 백슬래시가 든 글(정규식·경로)은 자리표시 글자로 쓰고 스크립트 안에서 `chr(92)` 로 바꾼다.
+  같은 날: **Bash 도구의 명령이 약 8천 자를 넘으면 뒤가 잘린 채 실행된다**(heredoc 이 중간에 끊겨 `unexpected EOF while looking for matching` 으로 통째로 실패) — 긴 편집은 여러 명령으로 나눈다.
+  MSYS `grep` 에 CR 한 글자 패턴을 주면 빈 패턴이 돼 모든 줄이 맞는다(작업 트리가 CRLF 로 보였다 — 실제론 LF) — 줄 끝은 바이트로 센다
 - **git 저장소다** (2026-09-21 `git init`, 브랜치 `main`). 되돌리기 안전망이 생겼으니 백업 폴더를 따로 쌓지 않는다. git 이전 기록이 든 옛 `old/`(공개 전 기록 bundle 포함 — 아래 원격 항목)는
   2026-11-06 사용자가 클라우드에 백업하고 이 PC 에서 지웠다
 - **원격은 `origin` 하나 = 공개 저장소 GitHub `Ch2Su/DetectView`** (2026-11-02 공개 — 사용자 결정: 옛 기록은 공개하지 않는다).

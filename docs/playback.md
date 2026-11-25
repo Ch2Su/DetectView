@@ -51,7 +51,8 @@ fps 를 루프 시작 때 한 번만 읽어 분석 전 임시값(30fps)으로 �
 
 **멈춘 채 시크하면 그 위치 한 장만 보인다** (2026-10-25, 예전엔 슬라이더만 옮겨지고 화면·SAHI 대상이 옛 프레임 그대로였다).
 `ValueChanged`(드래그 중이 아닐 때)·드래그 끝(`EndSliderDrag`)이 `RequestStepFrame` 으로 `_stepRequest` 를 세우면, 루프가 `_playSignal` 을 기다리는 곳
-(루프 맨 위, 위의 "들고 있기" 둘 다)에서 50 ms 마다 보고 한 장을 읽어 기다림 없이 보인 뒤 다시 멈춘다. `_playSignal` 을 `Set/Reset` 하지 않는 별도 깃발이라
+(루프 맨 위, 위의 "들고 있기" 둘 다)에서 50 ms 마다 보고 한 장을 읽어 기다림 없이 보인 뒤 다시 멈춘다.
+같은 두 곳이 구역 편집 깃발(`_zoneEventsReset`)도 본다(2026-11-25 — 멈춘 채 구역을 고치면 재개를 기다리지 않고 유고 후보를 끝낸다, docs/incident-detection.md '유고 규칙'의 '프레임 없이 끝내기'. 한 장 보기보다 먼저 본다). `_playSignal` 을 `Set/Reset` 하지 않는 별도 깃발이라
 그 사이 사용자가 재생·일시정지를 눌러도 상태가 꼬이지 않는다.
 '끄는 중'(`_isUserDraggingSlider`)은 썸의 `Thumb.DragStarted`/`DragCompleted` 로 세우고 내린다 (2026-10-31, 이슈 #8). 썸은 놓을 때뿐 아니라 버튼을 누른 채 캡처를 잃어도
 (Alt+Tab·캡처를 가져가는 창·슬라이더가 꺼짐) 스스로 `CancelDrag` 해 `DragCompleted(Canceled)` 를 올린다. 예전엔 `PreviewMouseLeftButtonUp`·`LostMouseCapture`(버튼이 떼어졌을 때만)로
