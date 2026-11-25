@@ -157,7 +157,8 @@ pwsh tests/ui/Run-All.ps1
   `Test-ScreenHud` 가 11-21 보다 8 적은 것은 실패가 아니라 [INFO] — HUD 대상 모니터에 검출할 물체가 없어 일시정지·재개·정지·결함 주입 때 박스·범례·번호를 지우는지 확인하지 못했다(바탕화면 내용에 따른다).
   `Test-CameraPose` 는 시작 검사에서 멈췄다 — `publish\test6.mp4.roi.json` 이 이미 있었다(판 2, 손으로 그린 차로 Z1 하나, 11-22 15:28 — 테스트가 쓰는 파일이 아니라 앱에서 그린 것으로 보여 지우지 않음).
   그 파일을 잠시 옆으로 옮겨 `Test-CameraPose` 만 다시 돌려 **12 항목 모두 통과**한 뒤 제자리로 되돌렸다(해시 같음). 합쳐 **298 항목 통과**.
-  배포본은 다시 만들지 않았다(`publish` 는 11-21 `2f62426` 판). 11-22 최종 고침 빌드의 `TrackerCheck poseself`(`bin\rev3g` — 막혔던 것)는 이날도 돌리지 않았다
+  같은 날 사용자 요청으로 **배포본을 새로 만들어**(`d52de03` — 132,724,932 바이트, 임시 폴더로 만들고 exe 만 옮김, docs/build-deploy.md 배포 이력) `Run-All -ExeDir publish` 한 번에
+  **271 항목 모두 통과**: Debug 와 같고 Release 라 `Test-VlmAnnotation` 6 · `Test-ScreenHud` 33(이번엔 화면에 물체가 있어 건너뛴 항목 없음 — 11-21 배포본 25), `Test-CameraPose` 12. 11-22 최종 고침 빌드의 `TrackerCheck poseself`(`bin\rev3g` — 막혔던 것)는 이날도 돌리지 않았다
 - 그 전 전체 통과: 2026-11-21, 데스크탑 — **자세 지켜보기를 넣은 판**(`CameraPoseWatch` · 화면 고정 글자 `OverlayMask` · 보조 기준 화면 — docs/incident-detection.md '자세 지켜보기').
   `Run-All`(Debug) 한 번에 **306 항목 모두 통과**(4.2분): `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 · `Test-SceneChange` 21 · `Test-ZoneEvents` 21 · `Test-Incident` 16 ·
   `Test-VlmAnnotation` 27 · `Test-ViewIdentity` 27 · **`Test-CameraPose` 12(새로)** · `Test-VfrPlayback` 26 · `Test-ScreenHud` 47 · `Test-NpuSwitch` 36(NPU 쪽은 건너뜀).
