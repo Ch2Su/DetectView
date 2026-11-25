@@ -172,7 +172,7 @@ pwsh tests/ui/Run-All.ps1
   `Run-All`(Debug, 11-25 22시대 빌드) 한 번에 **307 항목 모두 통과**(4.8분): `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 33(+3) · `Test-SceneChange` 21 · `Test-ZoneEvents` 21 · `Test-Incident` 19(+3) ·
   `Test-VlmAnnotation` 27 · `Test-ViewIdentity` 27 · `Test-CameraPose` 12 · `Test-VfrPlayback` 26 · `Test-ScreenHud` 39(화면에 물체 없음 — 8개 [INFO]) · `Test-NpuSwitch` 39(+3, NPU 쪽은 건너뜀).
   그 앞 두 번의 `Run-All`: 첫 번은 `Test-ViewIdentity` 의 '멈춘 채 B 에 구역 그리기'(실제 마우스)가 한 번 안 먹어 3건 실패 — 그 파일만 다시 돌리면 통과, 다음 `Run-All` 은 304 항목 모두 통과(기준 화면 검사를 더하기 전).
-  실제 마우스를 쓰는 테스트라 실행 중 포인터·포커스가 바뀌면 흔들릴 수 있다(코드 쪽 원인은 찾지 못했다). **배포본(`publish`)은 고치기 전 판(`d52de03`) 그대로다** — 다시 배포하지 않았다
+  실제 마우스를 쓰는 테스트라 실행 중 포인터·포커스가 바뀌면 흔들릴 수 있다(코드 쪽 원인은 찾지 못했다). 배포본(`publish`)은 다음 날(11-26) 이 판으로 새로 만들었다 — `Run-All -ExeDir publish` 269 항목 통과(첫 실행에서 `Test-Roi` 의 실제 마우스 끌기 3건 실패, 그 파일만 다시 돌려 통과 — docs/build-deploy.md)
 - 그 전 전체 통과: 2026-11-25 낮, 데스크탑 — **11-22 자세 지켜보기 고침 판**(`16f8d3d` — 위 두 항목, 그 뒤 앱 코드는 그대로). 이날은 스마트 앱 컨트롤이 Debug `DetectView.exe`(11-25 13:59 빌드)를
   막지 않아 `Run-All`(Debug) 을 돌렸다: 11개 파일 **286 항목 모두 통과** — `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 30 · `Test-SceneChange` 21 · `Test-ZoneEvents` 21 · `Test-Incident` 16 ·
   `Test-VlmAnnotation` 27 · `Test-ViewIdentity` 27 · `Test-VfrPlayback` 26 · `Test-ScreenHud` 39 · `Test-NpuSwitch` 36(NPU 쪽은 건너뜀).
