@@ -88,6 +88,30 @@ FACT = [  # 결과 14(11-26 — Gemini 조언 '추적기 사실을 프롬프트�
     {"name": "r4f-qwen3.5-4b", "model": "qwen3.5:4b", "think": False, "r4": True, "fact": True, "variants": ["D2", "D3"]},
     {"name": "r4n-qwen3.5-4b", "model": "qwen3.5:4b", "think": False, "r4": True, "nomove": True, "variants": ["D2", "D3"]},   # 사실은 안 주고 설명에 움직임을 쓰지 말라고만
 ]
+CAND = [  # 결과 15(11-26 — 사용자: "셋 다 받아서 재 보기"): 결과 14 ⑥ 의 안 재 본 후보 셋을 4차 질문·장면 그대로. 기준(4B — 지금 앱)도 같은 폴더에서 다시.
+    # MiniCPM-V 4.5(Qwen3-8B + SigLIP2)·Gemma 4 E4B 는 생각 모드를 받는 모델이라 think False, Ministral 3 는 생각 모드가 없어 think 를 보내지 않는다. --cand
+    # MiniCPM-V 4.5 는 우리 옵션(temperature 0) 그대로면 설명이 같은 문장을 되풀이하다 출력 한도에 걸린다(시험 실행 4/4) — Ollama 판에 반복 억제 값이
+    # 없다(서버 기록 repeat_penalty 1.000 · presence_penalty 0 — qwen3.5 는 모델 기본값에 presence_penalty 1.5 가 있다). 모델 코드의 기본값
+    # (modeling_minicpmv.py — 샘플링 repetition_penalty 1.03 · 빔 탐색 1.2) 중 작은 쪽 1.03 을 준 판(-rp)을 따로 둔다(1.03~1.2 모두 되풀이가 풀림을 세 장면으로 확인).
+    # 1.03 으로도 40번 중 13번이 되풀이로 깨져 큰 쪽 1.2 도 돌렸다(-rp12)
+    {"name": "r4-qwen3.5-4b", "model": "qwen3.5:4b", "think": False, "r4": True, "variants": ["D2", "D3"]},
+    {"name": "r4-minicpm-v4.5-8b", "model": "minicpm-v4.5:8b", "think": False, "r4": True, "variants": ["D2", "D3"]},
+    {"name": "r4-minicpm-v4.5-8b-rp", "model": "minicpm-v4.5:8b", "think": False, "r4": True, "variants": ["D2", "D3"], "options": {"repeat_penalty": 1.03}},
+    {"name": "r4-minicpm-v4.5-8b-rp12", "model": "minicpm-v4.5:8b", "think": False, "r4": True, "variants": ["D2", "D3"], "options": {"repeat_penalty": 1.2}},
+    {"name": "r4-ministral-3-8b", "model": "ministral-3:8b", "think": None, "r4": True, "variants": ["D2", "D3"]},
+    {"name": "r4-gemma4-e4b", "model": "gemma4:e4b", "think": False, "r4": True, "variants": ["D2", "D3"]},
+]
+SEQ = [  # 결과 15: 시간순 그림 — 같은 자리를 키운 그림 셋(3초 전 · 1.5초 전 · 지금)을 한 장으로 이어 붙이거나(S3) 석 장으로(M3) 주고,
+    # 4차 질문에 '자리를 옮겼나'(box_vehicle_moved) 한 항목을 더한다(SYSTEM4_SEQ). 장면은 make_seq.py 가 움직임을 잰 차량 후보 —
+    # 멈춘 차(4차 장면)와 움직인 차(4차에서 빠진 C1~C8 등)를 함께 줘야 그림을 견줘 답하는지 늘 '멈춤'이라 하는지 가른다. --seq
+    {"name": "r4s-qwen3.5-4b", "model": "qwen3.5:4b", "think": False, "r4": True, "seq": True, "variants": ["S3", "M3"]},
+    {"name": "r4s-minicpm-v4.5-8b-rp", "model": "minicpm-v4.5:8b", "think": False, "r4": True, "seq": True, "variants": ["S3", "M3"],
+     "options": {"repeat_penalty": 1.03}},   # 반복 억제 없이는 되풀이로 깨진다(CAND 의 설명) — 억제 값을 준 판만 돈다
+    {"name": "r4s-minicpm-v4.5-8b-rp12", "model": "minicpm-v4.5:8b", "think": False, "r4": True, "seq": True, "variants": ["S3", "M3"],
+     "options": {"repeat_penalty": 1.2}},
+    {"name": "r4s-ministral-3-8b", "model": "ministral-3:8b", "think": None, "r4": True, "seq": True, "variants": ["S3", "M3"]},
+    {"name": "r4s-gemma4-e4b", "model": "gemma4:e4b", "think": False, "r4": True, "seq": True, "variants": ["S3", "M3"]},
+]
 STRATA ="http://127.0.0.1:8080"   # Strata 엔진(OpenAI 호환) — 사용자가 E:\Strata 에 설치, `strata launch` 로 띄운다
 STRATA_POOL = [  # Strata(11-08 — 사용자 요청): Qwen3.6-35B-A3B(Unsloth UD-Q4_K_XL, 그림 읽는 부분은 24 GB 미만 카드면 CPU).
     # JSON 형식을 생성 중에 강제하지 않는다 — 질문(system) 끝에 영어 지시문과 스키마를 붙이고 답을 검사한다
@@ -120,7 +144,8 @@ MIRAGE_POOL = [  # Mirage(11-09 — 사용자 요청): Cactus Compute 의 22 MB 
     {"name": "r4-mirage-describe", "model": "mirage (cactus 4.1.0)", "think": None, "r4": True, "variants": ["D2", "D3"], "api": "mirage", "mode": "describe"},
 ]
 OPTIONS ={"temperature": 0, "seed": 7, "num_ctx": 8192}   # 올릴 때도 같은 값 — 다르면 첫 호출에서 모델을 다시 올린다
-VARIANTS = {"A": ["full"], "B": ["full", "crop"], "C": ["full", "crop", "prev", "next"], "D": ["crop"], "D3": ["crop"], "D2": ["crop2"]}
+VARIANTS = {"A": ["full"], "B": ["full", "crop"], "C": ["full", "crop", "prev", "next"], "D": ["crop"], "D3": ["crop"], "D2": ["crop2"],
+            "S3": ["seq"], "M3": ["seq1", "seq2", "seq3"]}   # 결과 15 — 시간순 그림을 한 장으로 이어 붙임 · 석 장으로
 
 ENUMS = {
     "object_type": ["car", "truck", "bus", "motorcycle", "bicycle", "person", "emergency_vehicle", "tow_truck", "work_vehicle", "none", "unknown"],
@@ -163,7 +188,9 @@ SYSTEM_PROBE = SYSTEM.replace(
 assert SYSTEM_PROBE != SYSTEM
 
 IMAGE_TEXT = {"full": "CCTV 화면 전체(빨간 박스 = 후보)", "crop": "후보 주변을 키운 그림", "crop2": "후보 주변을 키운 그림",
-              "prev": "2초 전 화면", "next": "2초 뒤 화면"}
+              "prev": "2초 전 화면", "next": "2초 뒤 화면",
+              "seq": "같은 자리를 키운 그림 세 장을 왼쪽부터 3초 전 · 1.5초 전 · 지금 순서로 이어 붙인 것",
+              "seq1": "3초 전", "seq2": "1.5초 전", "seq3": "지금"}
 
 # ── 3차: 추적기 사실을 주고 '왜 멈췄나'만 묻는다. 판정 이름도 바꿨다(2차에서 detection_error 를 '아무 일 없음' 뜻으로 썼다)
 ENUMS3 = {
@@ -230,6 +257,29 @@ description_ko 는 보이는 것을 한국어 한두 문장으로 쓴다."""
 # '멈췄다'는 사실을 주면(FACT 의 fact) 줄을 지어내는 쪽으로 쏠려서, 사실은 주지 않고 쓰지 말라고만 한다
 SYSTEM4_NOMOVE = SYSTEM4 + "\n그림 한 장으로는 차량이 달리는 중인지 멈춰 있는지 알 수 없다. description_ko 에 차량의 움직임(주행 중·정차·지나감 등)은 쓰지 않는다."
 
+# ── 결과 15: 시간순 그림(11-26). 4차 질문에서 그림을 설명하는 문장과 설명 지시만 바꾸고 항목 하나(box_vehicle_moved)를 맨 앞에 더한다 — 돌리기 전에 정한 글.
+#    그림은 같은 자리(박스의 3배)를 SEQ_OFFSETS 초 전·지금에 키운 것(make_seq.py). 4차 장면이 멈춘 지 3초 이상이라 3초 전부터 —
+#    4초 전이면 test4 신호 대기 줄(N1·R2 — 멈춘 지 3.5초)이 아직 서기 전이다. 추적기의 '멈춤' 사실은 주지 않는다(결과 14 ④)
+SEQ_OFFSETS = (-3.0, -1.5, 0.0)
+SYSTEM4_SEQ = SYSTEM4.replace(
+    "그림은 CCTV 화면의 일부를 키운 것이고 빨간 박스가 확인할 대상이다.",
+    "그림은 CCTV 화면의 같은 자리를 키운 것 세 장이고 시간순이다 — 3초 전 · 1.5초 전 · 지금(한 장으로 이어 붙였으면 왼쪽부터). "
+    "빨간 박스는 '지금' 그림에서 확인할 대상의 자리이고 세 장 모두 같은 자리에 그려져 있다.").replace(
+    "항목:\n",
+    "항목('지금' 그림을 보고 답한다 — box_vehicle_moved 만 세 장을 견준다):\n"
+    "- box_vehicle_moved: '지금' 박스 안에 있는 차량이 세 그림 사이에 자리를 옮겼는가"
+    "(앞의 두 그림에서 그 차량이 다른 자리에 있거나 보이지 않으면 yes, 세 그림 모두 박스 안 같은 자리에 있으면 no)\n").replace(
+    "description_ko 는 보이는 것을 한국어 한두 문장으로 쓴다.",
+    "description_ko 는 보이는 것을 한국어 한두 문장으로 쓴다. 박스 안 차량이 세 그림에서 같은 자리에 있는지 자리를 옮겼는지도 쓴다.")
+assert SYSTEM4_SEQ.count("box_vehicle_moved") == 2 and "세 장이고 시간순" in SYSTEM4_SEQ and "자리를 옮겼는지도 쓴다" in SYSTEM4_SEQ
+ENUMS4_SEQ = {"box_vehicle_moved": YN, **ENUMS4}   # 설명 다음, 다른 항목보다 먼저 답한다
+
+
+def make_schema4_seq():
+    props = {"description_ko": {"type": "string"}, **{k: {"type": "string", "enum": v} for k, v in ENUMS4_SEQ.items()}}
+    return {"type": "object", "properties": props, "required": list(props)}
+
+
 INCIDENT_CUES = ("emergency_vehicle_near", "flashing_lights", "people_on_road", "visible_damage", "door_or_trunk_open")
 NORMAL_CUES = ("vehicles_stopped_ahead", "signal_or_stop_line", "parking_area")
 
@@ -256,6 +306,7 @@ FIELD_KO = {
     "image_usable": "선명함", "vehicle_in_box": "박스 안 차량", "vehicle_type": "차종", "emergency_vehicle_near": "출동 차량",
     "flashing_lights": "경광등", "visible_damage": "손상", "door_or_trunk_open": "문·트렁크 열림", "cones_or_triangle": "라바콘·삼각대",
     "vehicles_stopped_ahead": "앞에 선 차", "signal_or_stop_line": "신호·정지선", "description_ko": "설명", "verdict": "판정",
+    "box_vehicle_moved": "자리 옮김",
 }
 
 
@@ -288,7 +339,8 @@ def cue_text(p):
     """4차 답 한 줄 — '예'라고 한 단서와, 판정을 가르는 '아니오'(선명하지 않음·박스에 차 없음)"""
     yes = [FIELD_KO[k] for k in (*INCIDENT_CUES, *NORMAL_CUES, "cones_or_triangle") if p.get(k) == "yes"]
     flags = [t for k, t in (("image_usable", "선명하지 않음"), ("vehicle_in_box", "박스에 차 없음")) if p.get(k) == "no"]
-    return "단서 " + ("·".join(yes) or "없음") + (f" ({', '.join(flags)})" if flags else "")
+    moved = f"자리 옮김 {p['box_vehicle_moved']} · " if "box_vehicle_moved" in p else ""   # 결과 15(시간순 그림)
+    return moved + "단서 " + ("·".join(yes) or "없음") + (f" ({', '.join(flags)})" if flags else "")
 
 
 def question(cfg, info, variant):
@@ -313,6 +365,8 @@ def question(cfg, info, variant):
         if cfg.get("fact"):   # 결과 14: 멈춤만 사실로 준다 — 3차 문장에서 '차로 구역 안'·검출 라벨·'왜 멈췄는지'는 뺐다(돌리기 전에 정한 글)
             ask = f"추적기: 박스 안 차량은 {info['stopped_s']:.0f}초째 거의 움직이지 않았다(멈춤은 확인됨). " + ask
         system, schema, enums, texts = SYSTEM4_NOMOVE if cfg.get("nomove") else SYSTEM4, make_schema4(), ENUMS4, ("description_ko",)
+        if cfg.get("seq"):   # 결과 15: 시간순 그림 — 그림 설명을 바꾸고 '자리를 옮겼나' 한 항목을 더한 질문
+            system, schema, enums = SYSTEM4_SEQ, make_schema4_seq(), ENUMS4_SEQ
     elif cfg.get("r3"):
         ask = (f"추적기: 박스 안 차량은 {info['stopped_s']:.0f}초째 거의 움직이지 않았고 차로 구역 안에 있다(멈춤·위치는 확인됨). "
                f"검출기 라벨 '{info['label']}'(신뢰도 {info['score']:.2f}). 왜 멈췄는지 JSON 으로 답하라.")
@@ -442,9 +496,10 @@ def run_config(cfg, cases, out_dir, round3=()):
                 "server": {k: status.get(k) for k in ("service", "model", "engine", "structured_output", "vision", "context", "concurrency")}}
         print(f"== {cfg['name']} 서버 {status.get('model')} · 엔진 {status.get('engine')} · GPU 메모리 {meta['gpu_mib_after_load']} MiB", flush=True)
     else:
-        warm = call("/api/generate", {"model": cfg["model"], "prompt": "", "keep_alive": "20m", "options": OPTIONS})
+        opts = {**OPTIONS, **cfg.get("options", {})}   # 설정마다 더한 옵션(결과 15 — MiniCPM-V 의 repeat_penalty)
+        warm = call("/api/generate", {"model": cfg["model"], "prompt": "", "keep_alive": "20m", "options": opts})
         meta = {"config": cfg, "load_s": round(time.time() - t0, 2), "load_duration_s": round(warm.get("load_duration", 0) / 1e9, 2),
-                "gpu_mib_before": before, "gpu_mib_after_load": gpu_mem_mib(), "options": dict(OPTIONS)}
+                "gpu_mib_before": before, "gpu_mib_after_load": gpu_mem_mib(), "options": opts}
         ps = call("/api/ps").get("models", [])
         # 같은 계열(qwen3.5:4b · 4b-q8_0 · 9b)을 잇달아 올리면 앞 모델이 잠깐 남아 있을 수 있다 — 이름이 똑같은 것을 먼저 본다
         hit = [m for m in ps if m.get("name") == cfg["model"]] or [m for m in ps if m.get("name", "").startswith(cfg["model"].split(":")[0])]
@@ -456,7 +511,10 @@ def run_config(cfg, cases, out_dir, round3=()):
         for c in cases:
             d = HERE / "out" / "cases" / c["id"]
             info = json.loads((d / "case.json").read_text(encoding="utf-8"))
-            if (cfg.get("r3") or cfg.get("r4")) and not stopped_scene(c["id"], info, round3):
+            if cfg.get("seq"):
+                if not (d / "seq.json").exists():
+                    continue   # 시간순 그림은 make_seq.py 가 움직임을 잰 차량 후보만(멈춘 차 + 움직인 차)
+            elif (cfg.get("r3") or cfg.get("r4")) and not stopped_scene(c["id"], info, round3):
                 continue   # 3·4차는 규칙이 고를 '멈춘 차'만
             for v in VARIANTS:
                 if (c["id"], v) in done or v not in cfg.get("variants", ["A", "B", "C"]):
@@ -470,7 +528,7 @@ def run_config(cfg, cases, out_dir, round3=()):
                     body = {"model": cfg["model"], "stream": False, "keep_alive": "20m", "format": q["schema"],
                             "messages": [{"role": "system", "content": q["system"]},
                                          {"role": "user", "content": q["text"], "images": images}],
-                            "options": {**OPTIONS, "num_predict": cfg.get("num_predict", 768)}}
+                            "options": {**OPTIONS, **cfg.get("options", {}), "num_predict": cfg.get("num_predict", 768)}}
                     if cfg["think"] is not None:
                         body["think"] = cfg["think"]
                 rec = {"config": cfg["name"], "case": c["id"], "variant": v, "error": None}
@@ -550,6 +608,8 @@ def main():
     ap.add_argument("--strata", action="store_true", help="4차 장면을 Strata 엔진(STRATA_POOL — 먼저 strata launch)으로 돈다")
     ap.add_argument("--claude", action="store_true", help="4차 장면을 Claude API(CLAUDE_POOL — 돈이 든다, 그림이 밖으로 나간다)로 돈다")
     ap.add_argument("--fact", action="store_true", help="4차 질문에 추적기의 '멈춤' 사실 한 줄을 더한 것(FACT — 결과 14)을 기준과 함께 돈다")
+    ap.add_argument("--cand", action="store_true", help="4차 장면으로 안 재 본 후보 셋(CAND — 결과 15)을 기준과 함께 돈다")
+    ap.add_argument("--seq", action="store_true", help="시간순 그림(SEQ — 결과 15: 먼저 make_seq.py)을 돈다")
     ap.add_argument("--num-ctx", type=int, help="num_ctx 를 바꿔 돈다(기본 8192 — 결과 14: GPU 메모리와 답이 달라지는지)")
     a = ap.parse_args()
     sys.stdout.reconfigure(errors="replace")   # 콘솔이 cp949 면 설명의 '—' 같은 글자가 긴 실행을 멈추게 한다
@@ -559,7 +619,7 @@ def main():
         cases = [c for c in cases if c["id"] in a.cases.split(",")]
     if a.num_ctx:
         OPTIONS["num_ctx"] = a.num_ctx
-    pool = (CLAUDE_POOL if a.claude else STRATA_POOL if a.strata else FACT if a.fact else DESK16 if a.desk16 else QUANT if a.quant else ROUND4 if a.round4 else ROUND3 if a.round3
+    pool = (CLAUDE_POOL if a.claude else STRATA_POOL if a.strata else SEQ if a.seq else CAND if a.cand else FACT if a.fact else DESK16 if a.desk16 else QUANT if a.quant else ROUND4 if a.round4 else ROUND3 if a.round3
             else ROUND2 if a.round2 else PROBES if a.probe else CONFIGS)
     configs = [c for c in pool if not a.configs or c["name"] in a.configs]
     out_dir = HERE / "out" / a.results

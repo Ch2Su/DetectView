@@ -50,18 +50,24 @@ TITLES = {"results": "1차 — 모델 5가지 × 입력 A·B·C", "probe": "1차
           "round4": "4차 — 관찰만 묻고 판정은 코드 규칙",
           "round4_quant": "4차 장면 모델 비교 — qwen3.5 4B(4·8비트)·9B·qwen3.6 35B-A3B MoE·Claude Opus 5.5·Kanana 판정 모델·Mirage(22 MB)",
           "round4_decide_ref": "Kanana 판정 모델 8비트 확인 — 같은 장면을 CPU BF16 으로",
-          "round4_desk16": "16 GB 데스크탑 후보 — qwen3.5 4B(기준)·9B·Gemma 4 12B·26B-A4B MoE"}
+          "round4_desk16": "16 GB 데스크탑 후보 — qwen3.5 4B(기준)·9B·Gemma 4 12B·26B-A4B MoE",
+          "round4_fact": "4차 질문 변형 — 추적기의 '멈춤' 사실 한 줄 · 설명에 움직임을 쓰지 말라",
+          "round4_cand": "안 재 본 후보 — qwen3.5 4B(기준)·MiniCPM-V 4.5 8B·Ministral 3 8B·Gemma 4 E4B",
+          "round4_seq": "시간순 그림 — 3초 전 · 1.5초 전 · 지금을 주고 '자리를 옮겼나'를 더 묻는다"}
 VARIANT_KO = {"A": "화면 전체", "B": "화면 전체 + 키운 그림", "C": "B + 2초 전·뒤 화면", "D": "키운 그림만(박스의 3배)",
-              "D3": "키운 그림만(박스의 3배)", "D2": "키운 그림만(박스의 2배)"}
+              "D3": "키운 그림만(박스의 3배)", "D2": "키운 그림만(박스의 2배)",
+              "S3": "시간순 세 칸을 한 장으로 이어 붙임", "M3": "시간순 석 장을 따로"}
 IMAGE_KO = {"full": "화면 전체", "crop": "키운 그림 — 박스의 3배", "crop2": "키운 그림 — 박스의 2배",
-            "prev": "2초 전 화면", "next": "2초 뒤 화면"}
-IMAGE_ORDER = ["crop", "crop2", "full", "prev", "next"]
+            "prev": "2초 전 화면", "next": "2초 뒤 화면", "seq": "같은 자리(박스의 3배)를 3초 전 · 1.5초 전 · 지금 순서로 이어 붙인 그림"}
+IMAGE_ORDER = ["seq", "crop", "crop2", "full", "prev", "next"]
 GROUPS = {1: ["유고", "정상", "사고 화면 속 정상", "함정", "가짜 검출"],
-          3: ["출동 차량 보임", "혼자 멈춘 차", "정상 정차", "화면 불량", "차량 아님"]}
+          3: ["출동 차량 보임", "혼자 멈춘 차", "정상 정차", "화면 불량", "차량 아님"],
+          5: ["멈춘 차", "움직인 차"]}   # 결과 15(시간순 그림) — 판정 = '자리를 옮겼나' 답
 FIELDS = {1: ["object_type", "object_state", "location", "people_on_road", "emergency_vehicles", "cones_or_signs",
               "damage_visible", "smoke_or_fire", "congestion"],
           3: ["object_type", "emergency_vehicles", "people_on_road", "damage_visible", "queue_or_signal", "parking_area"],
           4: ["image_usable", "vehicle_in_box", "vehicle_type", *run_vlm.INCIDENT_CUES, *run_vlm.NORMAL_CUES, "cones_or_triangle"]}
+FIELDS[5] = ["box_vehicle_moved", *FIELDS[4]]
 INC = set(run_vlm.INCIDENT_CUES) | {"emergency_vehicles", "damage_visible", "smoke_or_fire"}
 CTX = set(run_vlm.NORMAL_CUES) | {"queue_or_signal"}
 CATEGORICAL = {"object_type", "vehicle_type", "object_state", "location", "congestion"}
@@ -74,8 +80,8 @@ RULES4 = [("미리 정한 규칙", ("usable", "vehicle", "incident", "normal")),
           ("사후 1 · 단서 먼저", ("vehicle", "incident", "normal", "usable")),     # 결과를 보고 고른 규칙(README 결과 5)
           ("사후 2 · 선명도 안 봄", ("vehicle", "incident", "normal"))]
 ALL_CONFIGS = {c["name"]: c for pool in (run_vlm.CONFIGS, run_vlm.PROBES, run_vlm.ROUND2, run_vlm.ROUND3, run_vlm.ROUND4,
-                                          run_vlm.QUANT, run_vlm.DESK16, run_vlm.STRATA_POOL, run_vlm.CLAUDE_POOL, run_vlm.DECIDE_POOL,
-                                          run_vlm.MIRAGE_POOL) for c in pool}
+                                          run_vlm.QUANT, run_vlm.DESK16, run_vlm.FACT, run_vlm.CAND, run_vlm.SEQ, run_vlm.STRATA_POOL,
+                                          run_vlm.CLAUDE_POOL, run_vlm.DECIDE_POOL, run_vlm.MIRAGE_POOL) for c in pool}
 
 
 def ko(v):
@@ -87,16 +93,18 @@ def vko(v):
 
 
 def kind_of(cfg):
-    """질문 종류 — 1(1·2차: 판정을 묻는다) · 3(3차: 왜 멈췄나) · 4(4차: 관찰만, 판정은 규칙)"""
-    return 4 if cfg.get("r4") else 3 if cfg.get("r3") else 1
+    """질문 종류 — 1(1·2차: 판정을 묻는다) · 3(3차: 왜 멈췄나) · 4(4차: 관찰만, 판정은 규칙) · 5(결과 15: 4차 + 시간순 그림 — '자리를 옮겼나'를 채점)"""
+    return 5 if cfg.get("seq") else 4 if cfg.get("r4") else 3 if cfg.get("r3") else 1
 
 
 def short_name(name):
-    return re.sub(r"^r\d-", "", name)
+    return re.sub(r"^r\ds?-", "", name)
 
 
 def cfg_tags(cfg):
-    tags = [t for k, t in (("think", "생각 모드"), ("desc_first", "설명 먼저"), ("no_label", "라벨 없이")) if cfg.get(k)]
+    tags = [t for k, t in (("think", "생각 모드"), ("desc_first", "설명 먼저"), ("no_label", "라벨 없이"), ("fact", "멈춤 사실 한 줄"),
+                           ("nomove", "움직임을 쓰지 말라")) if cfg.get(k)]
+    tags += [f"{k} {v}" for k, v in (cfg.get("options") or {}).items()]   # 설정마다 더한 옵션(MiniCPM-V 의 repeat_penalty)
     api = {"openai": "Strata 엔진", "anthropic": "Claude API", "decide": "판정 모델", "mirage": "Mirage · CPU"}.get(cfg.get("api"))
     return tags + ([api] if api else [])
 
@@ -314,16 +322,23 @@ def _build(res_dir):
         raise SystemExit(f"{res_dir.name}: 한 폴더에 질문 종류가 섞였다 {sorted(kinds)}")
     kind = kinds.pop()
     confirm = "accident_or_breakdown" if kind >= 3 else "incident"
-    groups = GROUPS[3 if kind >= 3 else 1]
+    groups = GROUPS[5 if kind == 5 else 3 if kind >= 3 else 1]
+    truth = score.seq_truth(spec) if kind == 5 else {}   # 결과 15: 장면 → (seq.json, 4차 규칙 판정도 채점할 장면인가)
+
+    def gtt(cid):   # 정답 글 — 결과 15 는 '자리를 옮겼나'의 맞는 답
+        return "자리 옮김 " + "·".join(ko(x) for x in gts[cid]["verdict"]) if kind == 5 else gt_text(gts[cid]["verdict"])
 
     # 장면마다 정답·묶음, (장면, 설정)마다 답·채점
     gts, group, infos = {}, {}, {}
     for cid in {k[2] for k in [*recs, *errs]}:
-        if cid not in cases or (kind >= 3 and cid not in round3):
+        if cid not in cases or (kind in (3, 4) and cid not in round3) or (kind == 5 and cid not in truth):
             continue
         c = cases[cid]
-        gts[cid] = dict(c["gt"], verdict=round3[cid]) if kind >= 3 else c["gt"]
-        if kind >= 3:
+        gts[cid] = dict(c["gt"], verdict=round3[cid]) if kind in (3, 4) else c["gt"]
+        if kind == 5:   # 판정 = '자리를 옮겼나' 답, 정답 = make_seq.py 가 잰 움직임
+            gts[cid] = dict(c["gt"], verdict=[score.MOTION_WANT[truth[cid][0]["motion"]]])
+            group[cid] = "멈춘 차" if truth[cid][0]["motion"] == "stationary" else "움직인 차"
+        elif kind >= 3:
             v0 = round3[cid][0]
             group[cid] = ("출동 차량 보임" if c["gt"].get("emergency") else "혼자 멈춘 차") if v0 == confirm else vko(v0)
         else:
@@ -340,14 +355,16 @@ def _build(res_dir):
             a = {"key": key, "rec": rec, "err": err, "q": run_vlm.question(cfgs[key[0]], infos[cid], key[1]),
                  "gtv": score.gt_verdicts(gts[cid], key[1]), "p": None}
             if rec is not None:
-                a["s"] = s = score.score(rec, gts[cid], confirm)
+                a["s"] = s = score.score(rec, gts[cid], None, "box_vehicle_moved") if kind == 5 else score.score(rec, gts[cid], confirm)
                 a["p"] = p = rec.get("parsed") if s["valid"] else None
-                if kind == 4 and p:
+                # 4차 규칙 판정의 정답 — 결과 15 는 4차 장면(멈춘 지 3초 이상)만 3차 정답으로, 나머지 장면엔 규칙을 적지 않는다
+                a["rgt"] = rgt = a["gtv"] if kind == 4 else round3[cid] if kind == 5 and truth[cid][1] else None
+                if rgt and p:
                     a["rules"] = []
                     for title, steps in RULES4:
                         verdict, why = rule4(p, steps)
-                        a["rules"].append({"title": title, "verdict": verdict, "why": why, "ok": verdict in a["gtv"],
-                                           "conf": (verdict == confirm) == (confirm in a["gtv"])})
+                        a["rules"].append({"title": title, "verdict": verdict, "why": why, "ok": verdict in rgt,
+                                           "conf": (verdict == confirm) == (confirm in rgt)})
                     if a["rules"][0]["verdict"] != p.get("verdict"):   # 저장된 판정(run_vlm.decide)과 같아야 한다
                         raise SystemExit(f"{res_dir.name} {key} {cid}: 규칙 판정이 저장된 것과 다르다")
             ans[(cid, key)] = a
@@ -371,11 +388,15 @@ def _build(res_dir):
               "out_tok": [a["rec"]["out_tokens"] for _, a in done if a["rec"].get("out_tokens") is not None],
               "think": [a["rec"].get("thinking_chars") or 0 for _, a in done],
               "cost": sum(a["rec"].get("cost_usd") or 0 for _, a in done)}   # Claude API 만 (달러)
-        if kind == 4:
-            st["rules"] = [([a["rules"][i]["ok"] if a.get("rules") else False for _, a in done],
-                            [a["rules"][i]["conf"] if a.get("rules") else confirm not in a["gtv"] for _, a in done])
+        if kind >= 4:
+            ruled = [a for _, a in done if a["rgt"]]   # 4차는 모든 장면, 결과 15 는 4차 장면만
+            st["rules"] = [([a["rules"][i]["ok"] if a.get("rules") else False for a in ruled],
+                            [a["rules"][i]["conf"] if a.get("rules") else confirm not in a["rgt"] for a in ruled])
                            for i in range(len(RULES4))]
             st["usable_no"] = sum(a["p"]["image_usable"] == "no" for _, a in done if a["p"])
+        if kind == 5:
+            st["moved"] = [a["p"]["box_vehicle_moved"] if a["p"] else None for _, a in done]
+            st["measured"] = [a["s"]["verdict"] for cid, a in done if not truth[cid][0]["by_eye"]]
         stats.append(st)
     best = max((sum(st["ok"]) for st in stats), default=0)
 
@@ -406,7 +427,13 @@ def _build(res_dir):
                f'만든 때 {time.strftime("%Y-%m-%d %H:%M")}</p>')
     notes = ["정답은 Claude 가 화면을 보고 쓴 <b>초안</b>이다(사용자 확인 전). <span class=\"tag warn\">정답 확인 필요</span> 는 따로 여쭌 장면.",
              "채점은 <code>score.py</code> 와 같다. '앱 기준'은 VLM 이 유고를 확인했는지만 본 것(정답이 섞인 장면은 뺌)."]
-    if kind == 4:
+    if kind == 5:
+        notes[1] = ("시간순 그림: 같은 자리(박스의 3배)를 <b>3초 전 · 1.5초 전 · 지금</b>에 키운 그림 셋을 한 장으로 이어 붙이거나(S3) 석 장으로 따로(M3) 주고, "
+                    "4차 질문에 <b>자리를 옮겼나</b>(<code>box_vehicle_moved</code>) 한 항목을 더했다. 추적기의 '멈춤' 사실은 주지 않았다.")
+        notes.append("판정 칸은 그 답을 <code>make_seq.py</code> 가 검출기로 잰 움직임과 견준 것이다 — 멈춘 차는 '아니오', 움직인 차는 '예'가 맞다(모름은 틀림). "
+                     "잰 값이 모호한 장면은 Claude 가 이어 붙인 그림을 보고 정했다(장면에 표시 — '잰 장면만' 칸은 그 장면을 뺀 것). "
+                     "4차 규칙 판정은 4차 장면(멈춘 지 3초 이상)에만 따로 적는다.")
+    elif kind == 4:
         notes.append("4차 판정은 모델이 아니라 <b>미리 정한 규칙</b>(<code>run_vlm.decide</code>)이 모델의 관찰 답으로 낸 것이다: "
                      "선명하지 않음 → 화면 불량 · 박스에 차 없음 → 차량 아님 · 사고 단서(출동 차량·경광등·차로 위 사람·손상·문·트렁크 열림) 하나라도 → 사고·고장 · "
                      "정상 맥락(앞에 선 차·신호·정지선·주차 구역) → 정상 정차 · 아무 단서도 없음 → 사고·고장(규칙 후보 그대로). "
@@ -431,7 +458,9 @@ def _build(res_dir):
     gcols = [g for g in groups if any(st["groups"][g] for st in stats)]
     show_invalid, show_err = any(st["invalid"] for st in stats), any(st["err"] for st in stats)   # 모두 0 이면 칸을 뺀다(좁은 창)
     head = ["설정", "입력", "판정 맞음", "앱 기준", *gcols]
-    if kind == 4:
+    if kind == 5:   # 판정 = 움직임 답 — '앱 기준'(유고 확인) 칸이 없다
+        head = ["설정", "입력", "움직임 맞음", *gcols, "잰 장면만", "답 예 · 아니오 · 모름", "4차 규칙(4차 장면만)", *[t for t, _ in RULES4[1:]], "'선명하지 않음' 답"]
+    elif kind == 4:
         head += [t for t, _ in RULES4[1:]] + ["'선명하지 않음' 답"]
     else:
         head += ["물체 종류", "사람", "출동 차량"] + (["연기·불 지어냄"] if kind == 1 else [])
@@ -445,7 +474,13 @@ def _build(res_dir):
                  f'{E(v)}<br><span class="sub small">{E(VARIANT_KO.get(v, ""))}</span>',
                  f'<td class="num{" best" if ok == best else ""}">{ok}/{st["n"]}', f'<td class="num">{frac(st["conf"])}']
         cells += [f'<td class="num">{frac(st["groups"][g])}' for g in gcols]
-        if kind == 4:
+        if kind == 5:
+            del cells[3]   # '앱 기준' 칸
+            mv = st["moved"]
+            cells += [f'<td class="num">{frac(st["measured"])}', f'<td class="num">{mv.count("yes")} · {mv.count("no")} · {mv.count("unknown")}']
+            cells += [f'<td class="num">{sum(o)}/{len(o)} <span class="sub small">(앱 {sum(c)})</span>' for o, c in st["rules"]]
+            cells.append(f'<td class="num">{st["usable_no"]}/{st["n"]}')
+        elif kind == 4:
             cells += [f'<td class="num">{sum(o)}/{len(o)} <span class="sub small">(앱 {sum(c)})</span>' for o, c in st["rules"][1:]]
             cells.append(f'<td class="num">{st["usable_no"]}/{st["n"]}')
         else:
@@ -492,17 +527,18 @@ def _build(res_dir):
                 cells.append(f'<td class="c kc k{i} na"><a href="#s-{cid}">형식 어긋남</a></td>')
             else:
                 ok = a["s"]["verdict"]
-                extra = f"<small>{E(cue_abbr(a['p']))}</small>" if kind == 4 and cue_abbr(a["p"]) else ""
+                extra = f"<small>{E(cue_abbr(a['p']))}</small>" if kind >= 4 and cue_abbr(a["p"]) else ""
+                shown = "옮김 " + ko(a["p"]["box_vehicle_moved"]) if kind == 5 else vko(a["p"]["verdict"])
                 cells.append(f'<td class="c kc k{i} {"ok" if ok else "bad"}" title="{E(a["p"].get("description_ko", ""))}">'
-                             f'<a href="#s-{cid}">{E(vko(a["p"]["verdict"]))} {"✓" if ok else "✗"}</a>{extra}</td>')
+                             f'<a href="#s-{cid}">{E(shown)} {"✓" if ok else "✗"}</a>{extra}</td>')
         if not cls:
             cls.append("allright")
         warn = ' <span class="tag warn">확인 필요</span>' if cid in unsure else ""
         rows.append(f'<tr class="srow {" ".join(cls)}"><td class="scene"><a href="#s-{cid}"><b>{cid}</b> {E(cases[cid]["name"])}</a>{warn}</td>'
-                    f'<td class="gt">{E(gt_text(gts[cid]["verdict"]))}</td>{"".join(cells)}</tr>')
+                    f'<td class="gt">{E(gtt(cid))}</td>{"".join(cells)}</tr>')
     hdr = "".join(f'<th class="kc k{i}">{E(short_name(n))}<br><span class="sub small">{E(v)}</span></th>' for i, (n, v) in enumerate(keys))
     out.append('<h2 id="mx">장면 × 설정 판정표</h2>'
-               + ('<p class="sub small">칸 아래 작은 글자는 모델이 \'예\'라고 한 단서(출동·경광·사람·손상·열림 / 앞차·신호·주차 / 콘)와 판정을 가르는 \'아니오\'(흐림·차 없음).</p>' if kind == 4 else "")
+               + ('<p class="sub small">칸 아래 작은 글자는 모델이 \'예\'라고 한 단서(출동·경광·사람·손상·열림 / 앞차·신호·주차 / 콘)와 판정을 가르는 \'아니오\'(흐림·차 없음).</p>' if kind >= 4 else "")
                + f'<div class="scroll mx"><table><tr><th>장면</th><th>정답</th>{hdr}</tr>{"".join(rows)}</table></div>')
 
     # 장면 카드
@@ -517,8 +553,14 @@ def _build(res_dir):
                 f'후보 {info["label"]} {info["score"]:.2f} ({"직접 준 박스" if info.get("manual") else "앱 모델 검출"}) · 박스 {x2 - x1:.0f}×{y2 - y1:.0f} px']
         if info.get("stopped_s") is not None:
             meta.append(f'멈춘 지 {info["stopped_s"]:g}초(앞 프레임과 박스를 맞춰 잼{" — 직접 준 값" if cid in spec.get("round3_stopped_s", {}) else ""})')
+        if kind == 5:
+            seq = truth[cid][0]
+            meta.append(f'잰 움직임: 3초 전 같은 자리 차량 검출 IoU {seq["iou"][0]:.2f} · 1.5초 전 {seq["iou"][1]:.2f} · 멈춘 지 {seq["stopped_s"]:g}초 → '
+                        + ("모호 — Claude 가 이어 붙인 그림을 보고 정함" if seq["by_eye"] else "멈춤" if seq["motion"] == "stationary" else "움직임"))
         items = [f"{t} {x}" for t, x in (("물체", gt_item(gt, "object")), ("차로 위 사람", gt_item(gt, "people")), ("출동 차량", gt_item(gt, "emergency"))) if x]
-        tags = [f'<span class="tag">{E(group[cid])}</span>', f'<span class="tag gt">정답 {E(gt_text(gt["verdict"]))}</span>']
+        tags = [f'<span class="tag">{E(group[cid])}</span>', f'<span class="tag gt">정답 {E(gtt(cid))}</span>']
+        if kind == 5 and truth[cid][1]:
+            tags.append(f'<span class="tag">4차 정답 {E(gt_text(round3[cid]))}</span>')
         if items:
             tags.append(f'<span class="tag long">정답 항목: {E(" · ".join(items))}</span>')
         if cid in unsure:
@@ -534,10 +576,13 @@ def _build(res_dir):
         figs = []
         for im in IMAGE_ORDER:
             path = HERE / "out" / "cases" / cid / f"{im}.jpg"
-            if not path.exists() or (im not in used and im != "full"):
+            split = im == "seq" and "seq1" in used   # 결과 15 의 M3 — 이어 붙인 그림의 세 칸을 석 장으로 따로 보냈다(같은 그림이라 한 번만 보인다)
+            if not path.exists() or (im not in used and im != "full" and not split):
                 continue
             uri, size, shrunk = embed(path, shrink=im in ("full", "prev", "next"))
             seen = f'모델에 보냄: {", ".join(sorted(used[im]))}' if im in used else "참고 — 모델에 보내지 않음"
+            if split:
+                seen = (seen + " · " if im in used else "") + "M3 은 이 세 칸을 석 장으로 따로 보냄"
             dims = f" · {size[0]}×{size[1]}" if size else ""
             figs.append(f'<figure class="{"" if im in used else "ctx"}"><img src="{uri}" alt="{cid} {E(IMAGE_KO[im])}" loading="lazy">'
                         f'<figcaption>{E(IMAGE_KO[im])}{dims} · {seen}{" · 표시용으로 줄임" if shrunk else ""}</figcaption></figure>')
@@ -568,7 +613,8 @@ def _build(res_dir):
                 else:
                     ok = a["s"]["verdict"]
                     state = "ok" if ok else "bad"
-                    verdict = f'<span class="v {state}">{"규칙 판정" if kind == 4 else "판정"} {E(vko(p["verdict"]))} {"✓" if ok else "✗"}</span>'
+                    verdict = (f'<span class="v {state}">자리 옮김 {E(ko(p["box_vehicle_moved"]))} {"✓" if ok else "✗"}</span>' if kind == 5 else
+                               f'<span class="v {state}">{"규칙 판정" if kind == 4 else "판정"} {E(vko(p["verdict"]))} {"✓" if ok else "✗"}</span>')
                     if "confirm" in a["s"]:
                         verdict += f' <span class="sub small">앱 기준 {"✓" if a["s"]["confirm"] else "✗"}</span>'
             blk = [f'<article class="ans k{i} {state}"><div class="ans-head"><b>{E(short_name(n))}</b>{tags}<span class="var">{E(v)}</span>{verdict}'
@@ -601,12 +647,18 @@ def _build(res_dir):
                     miss = gt_item(gt, what) if what and a["s"].get(what) is False else None
                     if k == "smoke_or_fire" and a["s"].get("smoke"):
                         miss = "어느 장면에도 없다 — 지어냄"
+                    if k == "box_vehicle_moved" and not a["s"]["verdict"]:
+                        miss = ko(a["gtv"][0])
                     chips.append(chip(k, p[k], miss))
                 blk.append(f'<div class="chips">{"".join(chips)}</div>')
                 if kind == 4:
                     blk.append('<div class="rules">' + "".join(
                         f'<span>{E(r["title"])}: <b class="{"ok" if r["ok"] else "bad"}">{E(vko(r["verdict"]))} {"✓" if r["ok"] else "✗"}</b>'
                         f'{"" if r["why"] == a["rules"][0]["why"] else " — " + E(r["why"])}</span>' for r in a["rules"][1:]) + "</div>")
+                elif a.get("rules"):   # 결과 15 의 4차 장면 — 4차 규칙 판정 셋을 까닭과 함께
+                    blk.append('<div class="rules">' + "".join(
+                        f'<span>{E("4차 규칙" if j == 0 else r["title"])}: <b class="{"ok" if r["ok"] else "bad"}">{E(vko(r["verdict"]))} {"✓" if r["ok"] else "✗"}</b>'
+                        f'{" — " + E(r["why"]) if j == 0 or r["why"] != a["rules"][0]["why"] else ""}</span>' for j, r in enumerate(a["rules"])) + "</div>")
             raw = [f'<pre>{E(a["q"]["text"])}</pre>', f'<p class="sub">보낸 그림: {E(", ".join(f"{im}.jpg" for im in a["q"]["images"]))}</p>']
             if rec is not None:
                 raw.append(f'<pre>{E(rec.get("content") or "(빈 응답)")}</pre>')
@@ -635,7 +687,10 @@ def _build(res_dir):
     print(f"{folder}: 장면 {len(scene_ids)} · 설정 {len(keys)} -> {path} ({path.stat().st_size / 2**20:.1f} MB)")
     for (n, v), st in zip(keys, stats):
         line = f"  {short_name(n)} {v}: 판정 {sum(st['ok'])}/{st['n']} · 앱 {frac(st['conf'])}"
-        if kind == 4:
+        if kind == 5:
+            line = (f"  {short_name(n)} {v}: 움직임 {sum(st['ok'])}/{st['n']} · " + " · ".join(f"{g} {frac(st['groups'][g])}" for g in groups)
+                    + f" · 4차 규칙 {sum(st['rules'][0][0])}/{len(st['rules'][0][0])}")
+        elif kind == 4:
             line += "".join(f" · {t.split(' · ')[0]} {sum(o)}/{len(o)}(앱 {sum(c)})" for (t, _), (o, c) in zip(RULES4[1:], st["rules"][1:]))
         print(line)
     return path, info

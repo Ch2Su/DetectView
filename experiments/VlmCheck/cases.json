@@ -19,6 +19,8 @@
   "P6": "충훈대교의 트렁크 열린 차를 사고 차량으로 봐도 되는지",
   "T3": "검은 화면에 '오검출'이라고 답해도 맞은 것으로 칠지"
  },
+ "_seq": "결과 15(시간순 그림): make_seq.py 가 검출기로 잰 움직임이 모호한 장면에 Claude 가 이어 붙인 그림(seq.jpg)을 보고 적은 답 — 모델을 돌리기 전에 적었다. P1 구조 차량·P3 경광등 켠 경찰차는 세 그림 모두 같은 자리에 있다(검출 박스만 흔들리거나 한 번 빠짐), C2 는 세 그림의 박스 자리에 서로 다른 차가 있다(검은 SUV → 흰 경차 → 검은 승용차 — 지나가는 흐름)",
+ "seq_by_eye": {"P1": "stationary", "P3": "stationary", "C2": "moved"},
  "cases": [
   {"id": "P1", "name": "관설3교_1 갓길 출동 차량(아래에 구조대·작업자)", "video": "incidents/20261107_gwanseol3_1.mp4", "t": 12.0, "hint": [416, 259],
    "gt": {"verdict": ["incident"], "object_type": ["car", "emergency_vehicle", "tow_truck", "work_vehicle", "truck"], "people": true, "emergency": true}},

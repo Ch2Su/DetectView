@@ -7,6 +7,7 @@
 - emergency: 출동·작업 차량이 있는지(yes/no, unknown = 틀림)
 - 연기·불: 어느 장면에도 없다 — yes 라고 하면 '지어냄'으로 센다
 JSON 이 형식대로 오지 않은 호출은 모든 항목에서 틀림으로 센다(형식 어긋남 칸에 따로).
+결과 폴더 이름이 round4_seq 로 시작하면(결과 15 — 시간순 그림) '자리를 옮겼나' 답을 make_seq.py 가 잰 정답(out/cases/<id>/seq.json)과 견준다.
 
     uv run --no-project --python 3.12 experiments/VlmCheck/score.py [결과 폴더 이름]
 """
@@ -28,10 +29,26 @@ def gt_verdicts(gt, variant):
     return v.get(variant, v["B"]) if isinstance(v, dict) else v   # D(키운 그림만)는 B 와 같은 답을 기대
 
 
-def score(rec, gt, confirm="incident"):
+MOTION_WANT = {"moved": "yes", "stationary": "no"}   # 결과 15: seq.json 의 motion → box_vehicle_moved 에 맞다고 볼 답(unknown 은 틀림)
+
+
+def seq_truth(spec):
+    """결과 15(시간순 그림)의 장면 → (seq.json, 4차 규칙 판정을 채점할 장면인가 — 3차 정답이 있고 멈춘 지 3초 이상).
+    report.py 도 이걸 쓴다(따로 고르면 장면 집합이 어긋난다)"""
+    out = {}
+    for p in sorted((HERE / "out" / "cases").glob("*/seq.json")):
+        seq = json.loads(p.read_text(encoding="utf-8"))
+        info = json.loads((p.parent / "case.json").read_text(encoding="utf-8"))
+        if seq["motion"] in MOTION_WANT:
+            out[p.parent.name] = (seq, p.parent.name in spec["round3"] and info.get("stopped_s", 0) >= 3)
+    return out
+
+
+def score(rec, gt, confirm="incident", key="verdict"):
+    """key = 판정으로 채점할 답 항목 — 결과 15 는 box_vehicle_moved(confirm 은 None — '유고 확인'을 보지 않는다)"""
     p = rec.get("parsed") if not rec.get("invalid") else None
     out = {"valid": p is not None}
-    out["verdict"] = p is not None and p["verdict"] in gt_verdicts(gt, rec["variant"])
+    out["verdict"] = p is not None and p.get(key) in gt_verdicts(gt, rec["variant"])
     # 4차는 항목 이름·값이 조금 다르다(vehicle_type, people_on_road yes/no, emergency_vehicle_near)
     if gt.get("object_type") is not None:
         out["object"] = p is not None and p.get("object_type", p.get("vehicle_type")) in gt["object_type"]
@@ -43,7 +60,7 @@ def score(rec, gt, confirm="incident"):
     # 앱에서 쓰는 꼴: VLM 이 유고를 '확인'(1·2차 incident, 3차 accident_or_breakdown)했나 안 했나. 정답 목록이 그것뿐이면
     # 확인해야 맞고, 없으면 확인하지 않아야 맞다. 섞여 있으면(T2·흐림·검은 화면의 C) 빼고 센다
     want = gt_verdicts(gt, rec["variant"])
-    if all(v == confirm for v in want) or confirm not in want:
+    if confirm is not None and (all(v == confirm for v in want) or confirm not in want):
         out["confirm"] = (p is not None and p["verdict"] == confirm) == (confirm in want)
     return out
 
@@ -52,9 +69,52 @@ def pct(xs):
     return f"{100 * sum(xs) / len(xs):.0f}% ({sum(xs)}/{len(xs)})" if xs else "-"
 
 
+def main_seq(res_dir, spec):
+    """결과 15(시간순 그림): 움직임 답을 잰 정답과 견준다. 4차 규칙 판정(run_vlm.decide — 저장된 verdict)은 4차 장면만 3차 정답으로"""
+    truth = seq_truth(spec)
+    last = {}
+    for f in sorted(res_dir.glob("*.jsonl")):
+        for line in f.read_text(encoding="utf-8").splitlines():
+            r = json.loads(line)
+            if r.get("error") is None and r["case"] in truth:
+                last[(r["config"], r["variant"], r["case"])] = r
+    metas = [json.loads(m.read_text(encoding="utf-8"))["config"]["name"] for m in sorted(res_dir.glob("*.meta.json"))]
+    keys = sorted({k[:2] for k in last}, key=lambda k: (metas.index(k[0]) if k[0] in metas else 99, k))
+
+    def answer(r):
+        return (r.get("parsed") or {}).get("box_vehicle_moved") if not r.get("invalid") else None
+
+    def right(r):
+        return answer(r) == MOTION_WANT[truth[r["case"]][0]["motion"]]
+
+    lines = ["| 설정 | 입력 | 움직임 맞음 | 멈춘 차 | 움직인 차 | 잰 장면만 | 답 예 · 아니오 · 모름 | 4차 규칙(4차 장면만) | 형식 어긋남 | 시간 중앙값 |",
+             "|---|---|---|---|---|---|---|---|---|---|"]
+    for key in keys:
+        rs = [r for k, r in last.items() if k[:2] == key]
+        by = lambda m: [right(r) for r in rs if truth[r["case"]][0]["motion"] == m]
+        rule = [(r.get("parsed") or {}).get("verdict") in spec["round3"][r["case"]] for r in rs if truth[r["case"]][1]]
+        ans = [answer(r) for r in rs]
+        lines.append(f"| {key[0]} | {key[1]} | **{pct([right(r) for r in rs])}** | {pct(by('stationary'))} | {pct(by('moved'))} | "
+                     f"{pct([right(r) for r in rs if not truth[r['case']][0]['by_eye']])} | {ans.count('yes')} · {ans.count('no')} · {ans.count('unknown')} | "
+                     f"{pct(rule)} | {ans.count(None)} | {statistics.median(r['wall_s'] for r in rs):.1f}초 |")
+    lines += ["", "장면별 '자리를 옮겼나' 답(✗ = 틀림):", "", "| 장면 | 정답 | " + " | ".join(f"{c} {v}" for c, v in keys) + " |", "|---|---|" + "---|" * len(keys)]
+    names = {c["id"]: c["name"] for c in spec["cases"]}
+    for cid, (seq, _) in sorted(truth.items(), key=lambda kv: (kv[1][0]["motion"] != "stationary", kv[0][0], int(kv[0][1:]))):
+        cells = []
+        for key in keys:
+            r = last.get((*key, cid))
+            cells.append("" if r is None else f"{answer(r) or '×'}{'' if right(r) else '✗'}")
+        lines.append(f"| {cid} {names[cid]} | {MOTION_WANT[seq['motion']]}{' (눈)' if seq['by_eye'] else ''} | " + " | ".join(cells) + " |")
+    text = chr(10).join(lines)
+    (res_dir.parent / "summary.md").write_text(text + chr(10), encoding="utf-8")
+    print(text)
+
+
 def main():
     res_dir = HERE / "out" / (sys.argv[1] if len(sys.argv) > 1 else "results")
     spec = json.loads((HERE / "cases.json").read_text(encoding="utf-8"))
+    if res_dir.name.startswith("round4_seq"):
+        return main_seq(res_dir, spec)
     cases = {c["id"]: c for c in spec["cases"]}
     # 3차 결과 폴더(round3*)는 판정 이름이 다르다 — cases.json 의 round3 정답으로 바꿔 채점
     confirm = "incident"
