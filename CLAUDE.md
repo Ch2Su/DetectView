@@ -39,7 +39,7 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
 ```
 
 - 프로젝트 파일(`DetectView.csproj`)을 꼭 지정한다. 생략하면 폴더의 `.slnx` 가 잡혀 `NETSDK1194`(솔루션 + `--output`) 경고가 난다
-- 결과: `DetectView.exe` 한 파일 126.6 MB(132,726,391 바이트 — 11-26 Gemini 리뷰 반영판 `81e6348`. 판별 배포 이력은 docs/build-deploy.md). 테스트 영상(`test*.mp4`)은 같은 폴더에 있어도 덮어쓰지 않는다
+- 결과: `DetectView.exe` 한 파일 126.6 MB(132,727,819 바이트 — 11-28 ChatGPT 리뷰 반영판 `74a0810`. 판별 배포 이력은 docs/build-deploy.md). 테스트 영상(`test*.mp4`)은 같은 폴더에 있어도 덮어쓰지 않는다
 - publish 뒤에는 배포본으로 UI 테스트를 돌린다: `pwsh tests\ui\Run-All.ps1 -ExeDir publish`
 - **`publish\best.onnx` 는 루트의 것과 다를 수 있고, 사용자가 수시로 바꾼다. 건드리지 말 것** (바꾼 경과와 옆에 보관한 옛 모델 이름은 docs/build-deploy.md — 11-08 부터는 루트와 같은 8클래스 YOLO26m 이다).
   **성능을 재거나 비교하기 전엔 그 순간 어떤 모델인지 확인한다** — 앱이 떠 있으면 창 제목에 보이고, 아니면 파일 끝의 Ultralytics 메타데이터를 읽는다(한 줄 명령은 docs/build-deploy.md)
@@ -379,7 +379,7 @@ pwsh tests/ui/Run-All.ps1
   창이 뜬 직후에 잡은 루트는 WPF 요소가 안 보이는 Win32 프록시일 수 있고 그 루트로는 끝까지 못 찾는다(2026-11-17 데스크탑 — docs/testing.md).
   꼭 있어야 하는 요소는 `Need`(없으면 이름을 담아 그 자리에서 던진다 — `ById` 는 조용히 `$null`), 예외 줄은 `Format-Error`(난 곳을 붙인다)
 - 마지막 전체 통과: 2026-11-28 밤, 데스크탑 — ChatGPT 리뷰를 확인해 고친 판(테스트의 영상 격리 · 짝 모델 도구의 원본 보호 · '이미 안에 있음' 판정 · 평균 fps 는 정상인 VFR 의 PTS 위치 · 검출 연속 실패 알림) Debug `Run-All` 327 항목 모두 통과
-  (`Test-ScreenHud` 는 화면에 물체가 없어 몇 개가 [INFO]), `TrackerCheck selftest` 모두 통과(139). 배포본 `publish` 는 11-26 판(`81e6348` — `Run-All -ExeDir publish` 269 항목 통과, docs/build-deploy.md) 그대로다.
+  (`Test-ScreenHud` 는 화면에 물체가 없어 몇 개가 [INFO]), `TrackerCheck selftest` 모두 통과(139). 배포본 `publish` 도 이 판으로 새로 만들었다(`Run-All -ExeDir publish` 279 항목 통과, docs/build-deploy.md).
   `Test-Roi`·`Test-ViewIdentity` 는 실제 마우스를 써서 실행 중 포인터·포커스가 바뀌면 한 단계가 안 먹을 수 있다(그날 한 번 — 다시 돌리면 통과). 자세한 기록과 그 전 기록(노트북 포함)은 docs/testing.md
 
 - 테스트 영상 내용(유고 감지 기준 사례)은 docs/testing.md 끝 '테스트 영상 내용' — `test4.mp4` 는 방향이 바뀌는 CCTV(0~10.5초 차로에 정차한 덤프트럭 = 양성, 21.2초~ 신호대기 행렬 = 음성),

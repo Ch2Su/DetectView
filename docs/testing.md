@@ -181,7 +181,9 @@ pwsh tests/ui/Run-All.ps1
   - 3(인접 차로 사이 체류 합산)은 의도라 고치지 않고 셀프 테스트 ⑪ 8·9 로 못 박았다(docs/incident-detection.md '유고 규칙')
   `Run-All`(Debug) 한 번에 **327 항목 모두 통과**: `Test-FilePlayback` 34 · `Test-Tracking` 9 · `Test-Roi` 33 · `Test-SceneChange` 21 · `Test-ZoneEvents` 21 · `Test-Incident` 19 · `Test-VlmAnnotation` 27 ·
   `Test-ViewIdentity` 27 · `Test-CameraPose` 12 · **`Test-VfrPlayback` 36(+10)** · **`Test-FileDetectFault` 10(새 파일)** · `Test-ScreenHud` 39(화면에 물체가 없어 [INFO] 여럿) · `Test-NpuSwitch` 39(NPU 쪽은 건너뜀).
-  `TrackerCheck selftest` 모두 통과(139 — ⑩ 11 · ⑪ 11, 빌드 `experiments\TrackerCheck\bin\rev1128c`). Debug 빌드 경고 0. 배포본 `publish` 는 다시 만들지 않았다
+  `TrackerCheck selftest` 모두 통과(139 — ⑩ 11 · ⑪ 11, 빌드 `experiments\TrackerCheck\bin\rev1128c`). Debug 빌드 경고 0.
+  같은 날 배포본 `publish` 도 이 판(`74a0810`)으로 새로 만들었다 — `Run-All -ExeDir publish` **279 항목 모두 통과**(4.5분 — `Test-VfrPlayback` 36 · `Test-FileDetectFault` 는 Release 라 [INFO] ·
+  `Test-VlmAnnotation` 6 · `Test-ScreenHud` 25 · `Test-NpuSwitch` 36, 나머지는 위와 같음. docs/build-deploy.md)
 - 그 전: 2026-11-25 밤, 데스크탑 — **Gemini 전체 리뷰(`9d440ce` 기준, 로컬 `COLLAB.md` 파트 6)를 확인해 고친 판**(`6c67588`). 리뷰의 주장을 코드·재현으로 가려 확인된 것만 고쳤다:
   - **6-1(창 크기·이벤트 목록을 바꾸면 박스·구역이 어긋난다 — `OnRenderSizeChanged` 누락)은 틀렸다**: 작은 WPF 프로젝트(.NET 10.0.15 · PresentationCore 10.0.0.0)로 재 보니 `InvalidateVisual` 을 한 번도 부르지 않은
     `FrameworkElement` 의 `OnRender` 가 창 크기를 바꿀 때(1 → 3회) · 아래 행(112)을 펼칠 때(4) · 접을 때(5) · 최대화(6)마다 다시 불렸고, 크기가 그대로인 재배치엔 안 불렸다(6 → 6).
