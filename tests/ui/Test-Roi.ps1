@@ -37,6 +37,7 @@ $In = [DetectViewTest.Input]
 $ExeDir = Resolve-ExeDir $ExeDir
 if (-not $Video) { $Video = Join-Path $RepoRoot 'publish\test4.mp4' }
 if (-not (Test-Path $Video)) { throw "테스트 영상이 없습니다: $Video" }
+$Video = New-TestVideo $Video   # 임시 폴더의 하드 링크 — 구역 파일·CSV 를 원본 영상 옆이 아니라 거기에 쓰고 지운다 (Common.ps1 New-TestVideo)
 $roiFile = "$Video.roi.json"
 
 # ---- 마우스·키보드 도우미 ----
@@ -90,7 +91,6 @@ function Get-FrameMap($Layer) {
 function To-Screen($Map, [double]$Nx, [double]$Ny) { , @(($Map.Ox + $Nx * $Map.W), ($Map.Oy + $Ny * $Map.H)) }
 function Near($P, [double]$Nx, [double]$Ny, [double]$Tol = 0.012) { [Math]::Abs($P[0] - $Nx) -le $Tol -and [Math]::Abs($P[1] - $Ny) -le $Tol }
 
-Remove-Item $roiFile, "$roiFile.bad", "$roiFile.tmp" -ErrorAction SilentlyContinue
 $proc = $null
 try {
     $proc = Start-DetectView $ExeDir
@@ -241,7 +241,7 @@ try {
 catch { Check '예외' $false (Format-Error $_) }
 finally {
     Stop-DetectView $proc
-    Remove-Item $roiFile, "$roiFile.bad", "$roiFile.tmp" -ErrorAction SilentlyContinue   # 영상 옆에 파일을 남기지 않는다
+    Remove-TestVideos
 }
 
 Complete-Test

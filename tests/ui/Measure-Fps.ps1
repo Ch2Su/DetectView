@@ -16,6 +16,7 @@ param(
 $ExeDir = Resolve-ExeDir $ExeDir
 if (-not $Video) { $Video = Join-Path $RepoRoot 'publish\test1.mp4' }
 if (-not (Test-Path $Video)) { throw "테스트 영상이 없습니다: $Video" }
+$Video = New-TestVideo $Video   # 임시 폴더의 하드 링크 — 원본 영상 옆의 파일을 읽거나 건드리지 않는다 (Common.ps1)
 
 $medians = @()
 for ($run = 1; $run -le $Runs; $run++) {
@@ -45,5 +46,6 @@ for ($run = 1; $run -le $Runs; $run++) {
     Start-Sleep -Seconds 2   # 앞 프로세스의 GPU 자원이 풀리게
 }
 $all = $medians | Sort-Object
+Remove-TestVideos
 Note '요약' ("실행별 중앙값 {0} → 중앙 {1:F1} FPS" -f (($medians | ForEach-Object { $_.ToString('F1') }) -join ' / '), $all[[math]::Floor($all.Count / 2)])
 Complete-Test

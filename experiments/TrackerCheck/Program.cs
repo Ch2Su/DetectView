@@ -923,6 +923,19 @@ int SelfTest()
         var removed = ZeRun(i => [Car(1, 0.5, 0.7)], 60, zones: [zs[1], zs[2], zs[3]], det: det9, from: 60);   // Z1 이 지워짐
         var noZones = ZeRun(i => [Car(1, 0.5, 0.7)], 30, zones: [], det: det9, from: 120);
         Check(removed.Count(e => e.ZoneId == 1) == 0 && noZones.Count == 0, $"구역을 지움: Z1 이벤트 {removed.Count(e => e.ZoneId == 1)}건 · 구역 없음 {noZones.Count}건");
+
+        // 10) '이미 안에 있음'은 처음 봤을 때 이미 안에 있던 물체만 (2026-11-28 ChatGPT 리뷰 4번): 감지를 시작한 직후(0.5초 안)라도 밖에서 처음 보이고
+        //     0.3초에 들어온 물체는 '진입'이다 — 예전엔 진입 후보 시각이 0.5초 안인지만 봐서 '이미 안에 있음'으로 적었다.
+        //     처음 봤을 때 안이었으면 한 프레임 경계 밖으로 튀었다 돌아와도 '이미 안에 있음' 그대로, 0.4초에 처음 보였는데 이미 안이면 '이미 안에 있음'
+        var early = ZeRun(i => [Car(1, i < 9 ? 0.2 : 0.5, 0.7), Car(2, 0.5, 0.65), Car(3, i == 2 ? 0.25 : 0.55, 0.6)], 30);
+        var late = ZeRun(i => i < 12 ? [] : [Car(4, 0.45, 0.75)], 30);
+        var e1 = early.FirstOrDefault(e => e.TrackId == 1);
+        var e2 = early.FirstOrDefault(e => e.TrackId == 2);
+        var e3 = early.FirstOrDefault(e => e.TrackId == 3);
+        var e4 = late.FirstOrDefault(e => e.TrackId == 4);
+        Check(e1 is { CsvEvent: "enter" } && Math.Abs(e1.Ms - 300) <= 40 && e2 is { CsvEvent: "initial" } && e3 is { CsvEvent: "initial" } && e4 is { CsvEvent: "initial" },
+              $"감지 시작 직후: 밖에서 처음 보여 0.3초에 들어옴 → {(e1 == null ? "없음" : Ev(e1))} · 처음부터 안 → {(e2 == null ? "없음" : Ev(e2))} · " +
+              $"처음부터 안인데 한 프레임 밖으로 튐 → {(e3 == null ? "없음" : Ev(e3))} · 0.4초에 처음 보였는데 안 → {(e4 == null ? "없음" : Ev(e4))} (enter · initial · initial · initial 이어야)");
     }
 
     // ⑪ 유고 규칙 (2026-11-03): IncidentRules.cs — 차로에 멈춘 차량이 정지로 5초 이어지면 유고 후보. 정지(Det.Stationary)는 추적기가 정하므로 여기선 값으로 준다
@@ -1002,6 +1015,18 @@ int SelfTest()
         IncRun(i => [V(1, 0.5, 0.7)], 200, d7);
         var cleared = IncRun(i => [V(1, 0.5, 0.7)], 10, d7, zones: [], from: 200);
         Check(cleared.Count == 1 && cleared[0] is { Kind: ZoneEventKind.IncidentEnd, Note: "구역 없음" } && d7.ActiveCount == 0, $"구역이 없어짐: {string.Join(" · ", cleared.Select(Ie))}");
+
+        // 8) 차로를 둘로 나눈 구역 사이(2026-11-28 ChatGPT 리뷰 3번 — 고치지 않고 동작을 못 박는다): 멈춘 차의 발이 경계를 넘어가도(박스 떨림·가림으로 발 위치가 옮겨짐 —
+        //    '정지'는 그대로) 차로에 멈춘 시간은 이어서 세어 5초에 선언하고, 구역 번호는 멈추기 시작한 차로다. 규칙은 '차로 구역 안에서 정지 5초'(사용자가 고름)라
+        //    인접 차로마다 따로 세면 경계에 걸쳐 멈춘 차의 선언이 늦어지거나 끝없이 미뤄진다. 정말 차로를 바꾼 차는 움직이는 동안 '정지'가 1초 넘게 끊겨 새로 센다(아래 9)
+        ZoneShape[] lanes2 = [Rc(1, RoiKind.Lane, 0.30, 0.40, 0.50, 0.90), Rc(2, RoiKind.Lane, 0.50, 0.40, 0.70, 0.90)];
+        var straddle = IncRun(i => [V(1, i < 120 ? 0.48 : 0.52, 0.7)], 200, new IncidentDetector(), zones: lanes2);
+        Check(straddle.Count == 1 && straddle[0] is { Kind: ZoneEventKind.Incident, ZoneId: 1 } && Near(straddle[0].Ms, 5000, 40),
+              $"멈춘 차의 발이 4초에 옆 차로 구역으로 넘어감 → {string.Join(" · ", straddle.Select(Ie))} (5000ms · Z1 이어야 — 차로에 멈춘 시간은 이어진다)");
+        // 9) 정말 차로를 바꿈: Z1 에 4초 서 있다 1.5초 동안 움직여(정지 아님) Z2 에 섬 → Z1 은 선언 전에 끊기고, Z2 에서 다시 5초를 세어 10.5초에 Z2 로 선언
+        var change = IncRun(i => [V(1, i < 120 ? 0.40 : i < 165 ? 0.40 + 0.2 * (i - 120) / 45.0 : 0.60, 0.7, still: i is < 120 or >= 165)], 360, new IncidentDetector(), zones: lanes2);
+        Check(change.Count == 1 && change[0] is { Kind: ZoneEventKind.Incident, ZoneId: 2 } && Near(change[0].Ms, 165 * 1000 / 30.0 + 5000, 40),
+              $"차로를 바꿔 다시 멈춤 → {string.Join(" · ", change.Select(Ie))} (10500ms · Z2 이어야)");
     }
 
     // 한계 (통과·실패 없이 보이기만): 박스만으로는 움직임을 잴 수 없거나 나가는 차와 구분되지 않는 경우

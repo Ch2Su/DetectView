@@ -17,6 +17,7 @@
 #   npu_source_md5 = 원본 모델 파일의 MD5 · npu_quant = 방식 · npu_calib = 보정 데이터 요약 · npu_resize = 보정 입력의 축소 방식(linear)
 import argparse
 import hashlib
+import os
 import pathlib
 import re
 import sys
@@ -184,8 +185,9 @@ def main():
 
     src = pathlib.Path(a.model).resolve()
     dst = pathlib.Path(a.out).resolve() if a.out else src.with_name(src.stem + ".npu.onnx")
-    if src == dst:
-        sys.exit("결과 경로가 원본과 같습니다")
+    # 경로가 달라도 같은 파일(하드 링크 등)이면 쓰는 순간 원본이 사라진다 — 경로 비교만 하던 것을 넓혔다 (2026-11-28, FP16 도구와 같은 리뷰)
+    if src == dst or (dst.exists() and os.path.samefile(src, dst)):
+        sys.exit("결과 경로가 원본과 같은 파일입니다 — 원본을 덮어쓰지 않습니다")
     calib = a.calib or [str(repo / "publish" / v) for v in VIDEOS if (repo / "publish" / v).exists()]
     if not calib:
         sys.exit("보정 데이터가 없습니다 — --calib 로 영상이나 이미지 폴더를 주세요 (publish/test1~5.mp4 도 없음)")
@@ -206,8 +208,10 @@ def main():
             sys.exit("보정 프레임을 하나도 못 읽었습니다")
         print(f"보정: {len(frames)}장 ({calib_summary}) · 입력 {width}×{height} · 방식 {a.mode}")
 
+        # 결과는 임시 폴더에 쓰고 메타데이터까지 붙인 뒤에야 목적지로 옮긴다 — 중간에 실패하면 옛 짝(있으면)이 그대로 남는다
+        built = pathlib.Path(tmp) / "npu.onnx"
         quantize_static(
-            str(pre), str(dst), Reader(model.graph.input[0].name, frames),
+            str(pre), str(built), Reader(model.graph.input[0].name, frames),
             quant_format=QuantFormat.QDQ,
             activation_type=act,
             weight_type=QuantType.QInt8,
@@ -218,18 +222,24 @@ def main():
                            "UseQDQContribOps": act == QuantType.QInt16},
         )
 
-    # 짝 확인용 메타데이터 (원본의 Ultralytics 메타데이터 description·names·task 등은 양자화기가 그대로 옮긴다)
-    out = onnx.load(str(dst))
-    # npu_resize = 보정 입력의 축소 방식 (2026-11-05 부터. 이 키가 없는 짝은 Nearest 로 보정한 옛 짝이다 — 앱은 그래도 쓴다)
-    tags = {"npu_source_md5": source_md5, "npu_quant": a.mode,
-            "npu_calib": f"{len(frames)}장: {calib_summary}", "npu_resize": "linear",
-            "npu_quantizer": f"onnxruntime {onnxruntime.__version__}"}
-    keep = [p for p in out.metadata_props if p.key not in tags]
-    del out.metadata_props[:]
-    out.metadata_props.extend(keep)
-    for k, v in tags.items():
-        out.metadata_props.add(key=k, value=v)
-    onnx.save(out, str(dst))
+        # 짝 확인용 메타데이터 (원본의 Ultralytics 메타데이터 description·names·task 등은 양자화기가 그대로 옮긴다)
+        out = onnx.load(str(built))
+        # npu_resize = 보정 입력의 축소 방식 (2026-11-05 부터. 이 키가 없는 짝은 Nearest 로 보정한 옛 짝이다 — 앱은 그래도 쓴다)
+        tags = {"npu_source_md5": source_md5, "npu_quant": a.mode,
+                "npu_calib": f"{len(frames)}장: {calib_summary}", "npu_resize": "linear",
+                "npu_quantizer": f"onnxruntime {onnxruntime.__version__}"}
+        keep = [p for p in out.metadata_props if p.key not in tags]
+        del out.metadata_props[:]
+        out.metadata_props.extend(keep)
+        for k, v in tags.items():
+            out.metadata_props.add(key=k, value=v)
+        # 목적지와 같은 폴더의 임시 파일에 다 쓴 뒤 바꿔 넣는다(os.replace — 임시 폴더는 다른 드라이브일 수 있어 거기서 바로 옮기지 않는다)
+        part = dst.with_name(f"{dst.name}.tmp{os.getpid()}")
+        try:
+            onnx.save(out, str(part))
+            os.replace(part, dst)
+        finally:
+            part.unlink(missing_ok=True)
     print(f"저장: {dst} ({dst.stat().st_size / 1e6:.1f} MB)")
 
 

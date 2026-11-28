@@ -25,8 +25,38 @@ param([string]$ExeDir)
 . (Join-Path $PSScriptRoot 'Common.ps1')
 
 $ExeDir = Resolve-ExeDir $ExeDir
-$video = Join-Path $PSScriptRoot 'media\vfr60_nodur.webm'
+$video = New-TestVideo (Join-Path $PSScriptRoot 'media\vfr60_nodur.webm')   # 임시 폴더의 하드 링크 (Common.ps1)
 $name = Split-Path $video -Leaf
+
+# 화면에 보인 프레임의 실제 시각(ms) — vfr_cfrmeta.mp4 맨 위 띠(프레임 640x360 의 y 0~47)의 16칸 막대 부호를 화면에서 읽는다(make_vfr_cfrmeta.py).
+# 0번 칸(늘 흰색)이 흰색이 아니면 -1. 영상은 구역 편집 층(ZoneLayer)의 UIA 영역 안에 Uniform 으로 가운데 놓인다 (Test-Roi 의 Get-FrameMap 과 같은 식).
+# 화면을 그대로 찍으므로 앱 창이 가려지면 못 읽는다
+Add-Type -AssemblyName System.Drawing
+function Get-ShownFrameMs($Layer) {
+    $r = $Layer.Current.BoundingRectangle
+    if ($r.IsEmpty -or $r.Width -le 0) { return -1 }
+    $s = [Math]::Min($r.Width / 640, $r.Height / 360)
+    $ox = $r.X + ($r.Width - 640 * $s) / 2; $oy = $r.Y + ($r.Height - 360 * $s) / 2
+    $bw = [int][Math]::Ceiling(640 * $s); $bh = [int][Math]::Ceiling(48 * $s)
+    $bmp = [System.Drawing.Bitmap]::new($bw, $bh)
+    try {
+        $g = [System.Drawing.Graphics]::FromImage($bmp)
+        try { $g.CopyFromScreen([int][Math]::Floor($ox), [int][Math]::Floor($oy), 0, 0, [System.Drawing.Size]::new($bw, $bh)) } finally { $g.Dispose() }
+        $bits = foreach ($c in 0..15) {
+            $sum = 0.0; $n = 0
+            foreach ($dx in -3..3) { foreach ($dy in -3..3) {
+                $p = $bmp.GetPixel([int](($c * 40 + 20) * $s) + $dx, [int](24 * $s) + $dy)
+                $sum += ($p.R + $p.G + $p.B) / 3; $n++
+            } }
+            [int]($sum / $n -gt 128)
+        }
+    }
+    finally { $bmp.Dispose() }
+    if ($bits[0] -ne 1) { return -1 }
+    $ms = 0
+    foreach ($c in 1..15) { $ms = $ms * 2 + $bits[$c] }
+    $ms
+}
 
 $proc = $null
 try {
@@ -102,7 +132,7 @@ try {
     # 예전엔 분석 뒤 실측 평균 fps(22.9)로 Set(PosFrames) 해 OpenCV 가 '처음부터 N번째 프레임'에 섰다 — 6~12초 정지 구간 뒤의 목표는
     # 2~3.5초 지나쳤고 정밀화는 앞으로만 가서 되돌아오지 못했다 (콘솔로 같은 흐름을 재 보니(10-31) 16초 → 18.06, 13초 → 15.76,
     # 9초 → 12.51, 멈춘 채 13.5초 → 16.23). 지금은 길이 없는 파일처럼 grab·다시 열기로 간다 (16.009 · 13.024 · 9.015 · 13.521)
-    $video2 = Join-Path $PSScriptRoot 'media\vfr_fps1000_dur.webm'
+    $video2 = New-TestVideo (Join-Path $PSScriptRoot 'media\vfr_fps1000_dur.webm')
     $name2 = Split-Path $video2 -Leaf
     Open-VideoFile $root $video2
     $ok = WaitFor { (NameOf $status) -eq "파일: $name2" } 20000
@@ -157,8 +187,49 @@ try {
     Start-Sleep -Milliseconds 1000
     Check 'fps1000 EOF 후 재생 → 처음부터 계속 재생' ($ok -and (NameOf $play) -eq '일시정지' -and $range.Current.Value -lt 5000) `
         ('위치={0:N0} ms 버튼={1} 상태={2}' -f $range.Current.Value, (NameOf $play), (& $status0))
+
+    # ---- 평균 fps·프레임 수는 정상으로 보이는 VFR MP4 (2026-11-28 ChatGPT 리뷰 5번) ----
+    # OpenCV 가 FPS=23·FRAME_COUNT=552 로 읽어 메타데이터를 믿는(CFR) 경로로 열린다. 예전엔 위치를 프레임 번호/23 으로 세어 12초 프레임을 8.35초로 보이는 등
+    # 최대 3.65초 어긋났고(이벤트·CSV 시각도 그 값), 프레임 시크는 엉뚱한 곳에 섰다(9.2초로 시크하면 12.67초 프레임을 보이며 9.2초라 했다).
+    # 지금은 위치가 프레임의 PTS 이고, PTS 가 번호로 센 시각과 이어서 어긋나면 VFR 경로(시크 grab)로 넘어가 길이도 다시 잰다(마지막 프레임 23,967 — 메타데이터로는 24,000).
+    # 화면에 보인 프레임의 실제 시각은 표본 맨 위 띠의 막대 부호(make_vfr_cfrmeta.py)로 앱과 무관하게 읽어 슬라이더(앱이 아는 위치)와 견준다
+    $video3 = New-TestVideo (Join-Path $PSScriptRoot 'media\vfr_cfrmeta.mp4')
+    $name3 = Split-Path $video3 -Leaf
+    $zone = Need $root 'ZoneLayer'
+    Open-VideoFile $root $video3
+    $ok = WaitFor { [Math]::Abs($range.Current.Maximum - 23967) -lt 5 -and (NameOf $status) -eq "파일: $name3" } 10000
+    Check 'VFR(평균 fps 정상) 알아봄 → 길이 다시 잼' $ok ('길이 {0:N0} ms (메타데이터 24,000 · 마지막 프레임 23,967), 상태={1}' -f $range.Current.Maximum, (NameOf $status))
+    Click $play   # 일시정지 — 멈춘 채 시크하면 그 위치 한 장을 보인다
+    $null = WaitFor { (NameOf $play) -eq '재생' } 2000
+    foreach ($t in @(@{ Target = 9200; Want = 9500; Label = '드문 구간으로 (9,000 · 9,500 프레임 사이)' },
+                     @{ Target = 15000; Want = 15000; Label = '드문 구간 뒤로' },
+                     @{ Target = 3000; Want = 3000; Label = '앞쪽으로 되감기' })) {
+        $range.SetValue($t.Target)
+        $seen = @{ Ms = -1 }
+        $ok = WaitFor { $seen.Ms = Get-ShownFrameMs $zone; $seen.Ms -eq $t.Want -and [Math]::Abs($range.Current.Value - $seen.Ms) -le 1 } 5000 150
+        Check "VFR(평균 fps 정상) 멈춘 채 시크 $($t.Label)" $ok ('목표 {0:N0} → 보인 프레임 {1:N0} ms (막대 부호, 기대 {2:N0}) · 슬라이더 {3:N0} ms' -f $t.Target, $seen.Ms, $t.Want, $range.Current.Value)
+    }
+    # 이어서 재생해도 위치가 보인 프레임의 시각과 같은가 (30fps 구간 3초 → 4초쯤)
+    Click $play
+    Start-Sleep -Milliseconds 1000
+    Click $play
+    $null = WaitFor { (NameOf $play) -eq '재생' } 2000
+    Start-Sleep -Milliseconds 300
+    $s = Get-ShownFrameMs $zone
+    $v = $range.Current.Value
+    Check 'VFR(평균 fps 정상) 재생 뒤 위치 = 보인 프레임의 시각' ($s -ge 3500 -and [Math]::Abs($v - $s) -le 1) ('보인 프레임 {0:N0} ms (막대 부호) · 슬라이더 {1:N0} ms' -f $s, $v)
+
+    # 열자마자 멈추고 시크 — VFR 을 알아보기 전에 프레임 시크를 하면 엉뚱한 곳에 선다: 첫 프레임에서 어긋남을 보고 grab 으로 목표에 다시 간다
+    # (이미 알아본 뒤였어도 결과는 같아야 한다 — 어느 쪽이었는지는 화면으로 못 가린다)
+    Open-VideoFile $root $video3
+    Click $play
+    $null = WaitFor { (NameOf $play) -eq '재생' } 2000
+    $range.SetValue(9200)
+    $seen = @{ Ms = -1 }
+    $ok = WaitFor { $seen.Ms = Get-ShownFrameMs $zone; $seen.Ms -eq 9500 -and [Math]::Abs($range.Current.Value - $seen.Ms) -le 1 } 5000 150
+    Check 'VFR(평균 fps 정상) 열자마자 멈추고 시크' $ok ('보인 프레임 {0:N0} ms (막대 부호, 기대 9,500) · 슬라이더 {1:N0} ms · 길이 {2:N0}' -f $seen.Ms, $range.Current.Value, $range.Current.Maximum)
 }
 catch { Check '예외' $false (Format-Error $_) }
-finally { Stop-DetectView $proc }
+finally { Stop-DetectView $proc; Remove-TestVideos }
 
 Complete-Test

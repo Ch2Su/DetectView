@@ -39,9 +39,9 @@ if (-not $Video) {
     }
 }
 if (-not (Test-Path $Video)) { throw "테스트 영상이 없습니다: $Video" }
+$Video = New-TestVideo $Video   # 임시 폴더의 하드 링크 — 구역 파일·CSV 를 원본 영상 옆이 아니라 거기에 쓰고 지운다 (Common.ps1 New-TestVideo)
 $roiFile = "$Video.roi.json"
 $csvFile = "$Video.events.csv"
-if ((Test-Path $roiFile) -or (Test-Path $csvFile)) { throw "테스트 영상 옆에 구역·이벤트 파일이 이미 있습니다 (지우고 다시): $roiFile / $csvFile" }
 $FrameW = 1280; $FrameH = 720
 
 function Move-Mouse([double]$X, [double]$Y) { $null = $In::SetCursorPos([int][Math]::Round($X), [int][Math]::Round($Y)); Start-Sleep -Milliseconds 40 }
@@ -204,6 +204,6 @@ try {
 catch { Check '예외' $false (Format-Error $_) }   # 다른 테스트처럼 — 없으면 예외 하나로 그때까지의 결과 줄이 하나도 찍히지 않았다
 finally {
     Stop-DetectView $proc
-    Remove-Item $roiFile, "$roiFile.bad", "$roiFile.tmp", $csvFile -ErrorAction SilentlyContinue
+    Remove-TestVideos
 }
 Complete-Test

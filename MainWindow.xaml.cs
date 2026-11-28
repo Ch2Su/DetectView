@@ -155,6 +155,13 @@ namespace DetectView
                     SeekToMs(0);
                     Txt_Status.Text = "처음부터 다시 재생";   // "재생 완료"가 남아 있지 않도록
                 }
+                // 검출이 계속 실패해 멈췄던 것(OnAnalysisStopped)을 다시 재생 — 알림을 거둔다. 또 실패하면 루프가 다시 멈추고 알린다
+                if (_analysisStopped)
+                {
+                    _analysisStopped = false;
+                    Txt_Status.Text = _mode == SourceMode.File ? $"파일: {System.IO.Path.GetFileName(_filePath)}" : _statusBeforeAnalysisStop;
+                    Txt_Status.ToolTip = null;
+                }
                 _playSignal.Set();
                 _isPlaying = true;
                 Btn_PlayPause.Content = "일시정지";

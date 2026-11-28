@@ -65,7 +65,11 @@
   GPU 검출 대비 **96.5% / 98.6%**, 작은 물체 95.8%. 새 짝이라 NPU 첫 전환은 다시 컴파일한다(약 1분 — 캐시 키가 NPU 모델 MD5 로 바뀐다)
 - **짝 모델 `best.npu.onnx`**: `pwsh tools\Make-NpuModel.ps1 [-Model <경로>] [-Bench]` 로 원본 옆에 만든다(약 30~40초, uv 로 `tools/npu_quantize.py` 실행).
   메타데이터 `npu_source_md5`(원본 파일 MD5)·`npu_quant`·`npu_calib`·`npu_resize`(보정 입력의 축소 방식 — 2026-11-05 부터 `linear`, 없으면 Nearest 로 보정한 옛 짝)가 들어간다 — 앱은 앞의 둘로 원본과 짝인지 확인한다(`CheckNpuModel` — `npu_resize` 는 보지 않는다).
-  **루트 `best.npu.onnx` 는 git 으로 추적한다**(루트 `best.onnx` 의 짝). `publish\best.onnx` 를 바꾸면 **그 짝도 다시 만든다**
+  **루트 `best.npu.onnx` 는 git 으로 추적한다**(루트 `best.onnx` 의 짝). `publish\best.onnx` 를 바꾸면 **그 짝도 다시 만든다**.
+  두 짝 도구(이것과 아래 FP16)는 **결과가 원본과 같은 파일이면 시작하지 않는다**(같은 경로 · 대소문자·`..` 만 다른 경로 · 하드 링크 — `os.path.samefile`)
+  그리고 결과를 같은 폴더의 임시 파일에 다 쓴 뒤 바꿔 넣는다(2026-11-28 ChatGPT 리뷰 2번 — 예전 FP16 도구는 `-Out` 이 원본을 가리켜도 덮어썼고, 확인용 세션 둘이
+  방금 쓴 FP16 파일을 함께 읽어 '차이 0'으로 통과했다. NPU 도구는 경로만 견줘 하드 링크를 못 막았다). 복사본으로 확인: 네 경우 모두 원본 MD5 그대로, 정상 경로의 FP16 결과는
+  git 의 `best.fp16.onnx` 와 바이트까지 같다(`D7D760DC…`)
   (`-Model publish\best.onnx`, gitignore 쪽이라 커밋 안 됨). 양자화는 결정적이라 같은 입력이면 바이트 단위로 같은 파일이 나온다
 - **실험 도구도 짝을 확인한다** (이슈 #6, 2026-10-31): `NpuBench.exe [기준] [NPU 모델] [영상당 프레임 수] [--allow-fp32-npu] [--allow-mismatch]` 의 NPU 모델 기본값은
   기준 옆 `<이름>.npu.onnx`(없으면 NPU 단계를 건너뛰고 GPU·CPU 만). 벤치 전에(EP 준비보다도 먼저) 앱의 `CheckNpuModel` 과 같은 규칙으로 본다 —

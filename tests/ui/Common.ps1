@@ -157,6 +157,26 @@ function Wait-AppRoot($Proc, [int]$TimeoutMs = 10000) {
     $got.Root
 }
 
+# 테스트에 쓸 영상을 고유한 임시 폴더에 같은 이름으로 하드 링크한다(같은 드라이브가 아니면 복사) — 앱에는 돌려준 경로를 넘긴다.
+# 앱은 영상 옆에 구역 파일(<영상>.roi.json · .bad · .tmp)과 이벤트 CSV 를 쓰고 읽으며, 테스트는 그 자리에 파일을 쓰고 지운다. 예전엔 원본 영상 옆에서 그래서
+# Test-Roi 가 사용자가 둔 구역 파일·복구본을 시작 전에 지웠고, 다른 테스트도 정리하며 .bad·.tmp 를 지울 수 있었다(2026-11-28 ChatGPT 리뷰 1번).
+# 임시 폴더는 Remove-TestVideos 가 지운다 — 하드 링크를 지우는 것이라 원본은 그대로다. 테스트는 finally 에서 앱을 끈 뒤 부른다
+$TestVideoDirs = [System.Collections.Generic.List[string]]::new()
+function New-TestVideo([string]$Path) {
+    $src = (Resolve-Path -LiteralPath $Path).Path
+    $dir = Join-Path ([IO.Path]::GetTempPath()) ('DetectView-uitest-' + [guid]::NewGuid().ToString('N').Substring(0, 12))
+    $null = New-Item -ItemType Directory -Path $dir
+    $TestVideoDirs.Add($dir)
+    $dst = Join-Path $dir (Split-Path $src -Leaf)
+    try { $null = New-Item -ItemType HardLink -Path $dst -Target $src -ErrorAction Stop }
+    catch { Copy-Item -LiteralPath $src -Destination $dst }
+    $dst
+}
+function Remove-TestVideos {
+    foreach ($d in $TestVideoDirs) { Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue }
+    $TestVideoDirs.Clear()
+}
+
 # 앱을 끄고 실제로 끝날 때까지(최대 10초) 기다린다 — Stop-Process 는 기다리지 않아서, 곧바로 다음 테스트를 띄우거나 exe 폴더를 지우면
 # 내려가는 중인 앱이 GPU·파일을 쥐고 있을 수 있다. 예전엔 호출부마다 WaitForExit 을 붙이거나(Test-NpuSwitch) 빠뜨렸고,
 # Start-DetectView 가 실패하며 죽인 앱은 호출부가 프로세스를 받지 못해 기다릴 수도 없었다

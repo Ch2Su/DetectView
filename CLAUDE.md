@@ -44,7 +44,8 @@ dotnet publish DetectView.csproj -c Release -r win-x64 --self-contained true -p:
 - **`publish\best.onnx` 는 루트의 것과 다를 수 있고, 사용자가 수시로 바꾼다. 건드리지 말 것** (바꾼 경과와 옆에 보관한 옛 모델 이름은 docs/build-deploy.md — 11-08 부터는 루트와 같은 8클래스 YOLO26m 이다).
   **성능을 재거나 비교하기 전엔 그 순간 어떤 모델인지 확인한다** — 앱이 떠 있으면 창 제목에 보이고, 아니면 파일 끝의 Ultralytics 메타데이터를 읽는다(한 줄 명령은 docs/build-deploy.md)
 - 배포 폴더 모델을 바꾸면 짝 둘도 다시 만든다: NPU `pwsh tools\Make-NpuModel.ps1 -Model publish\best.onnx` (→ 그 옆 `best.npu.onnx`) ·
-  TensorRT `pwsh tools\Make-Fp16Model.ps1 -Model publish\best.onnx` (→ 그 옆 `best.fp16.onnx`, 2026-11-08 — 아래 "추론 장치")
+  TensorRT `pwsh tools\Make-Fp16Model.ps1 -Model publish\best.onnx` (→ 그 옆 `best.fp16.onnx`, 2026-11-08 — 아래 "추론 장치").
+  두 도구는 결과가 원본과 같은 파일(같은 경로·하드 링크)이면 멈추고 임시 파일에 다 쓴 뒤 옮긴다(2026-11-28 — 예전 FP16 도구는 `-Out` 이 원본이면 덮어쓰고 '차이 0'으로 통과했다)
 - **앱용 ONNX 를 새로 내보낼 땐 end-to-end(`[1,300,6]`)인지 본다** — Ultralytics 8.4.142(라벨링 도구가 쓰는 판)의 `export(format="onnx")` 기본값은 NMS 전 원출력 `[1,84,8400]` 이다.
   `nms=False`(또는 `end2end=True`)를 줄 것. val 도 `nms=False` 를 줘야 앱과 같은 걸 잰다(안 주면 mAP 가 0.007~0.010 높게 나온다). 내보내기 명령·실측은 docs/build-deploy.md
 - publish 는 `best.onnx` 를 `PreserveNewest` 로 복사한다 → **루트 `best.onnx` 가 배포 폴더의 것보다 새로우면 덮어쓴다**.
@@ -168,6 +169,10 @@ SDK 기본 글롭이 `old/**` 의 소스와 생성 `.g.cs` 까지 끌어와 **72
 - 재생 속도는 **재생 시계**(`WaitUntilDueAsync` — 각 프레임을 그 영상 시각에 보인다)로 맞춘다. 프레임마다 '1/fps − 처리 시간'만큼 기다리기로 되돌리지 말 것(0.82·0.41배속이 났었다)
 - **재생 루프는 EOF·카메라 유실에서 절대 `break` 하지 않는다**(`continue` 로 `_playSignal` 에 파킹). EOF 뒤 재생은 처음부터(`_atEof`)
 - 멈춘 채 시크의 한 장 보기(`_stepRequest`·`_stepping`)·SAHI 의 시크 대기(`WaitForStepFrameAsync`·`SeekPending`)·슬라이더 드래그 깃발(썸의 `DragStarted`/`DragCompleted`)은 경쟁을 고친 자리다 — 순서·조건을 바꾸기 전에 문서를 본다
+- 메타데이터를 믿는(CFR 판정) 파일도 **위치는 프레임의 PTS** 다(앞 프레임보다 늘었을 때만 — 아니면 번호로 센 시각). 고정 간격 파일은 둘이 같고(실측 0 ms),
+  PTS 가 번호로 센 시각과 이어서 어긋나면(평균 fps 는 정상인 VFR) 그 자리에서 VFR 경로(`_vfr` · `_seekByGrab`)로 넘기고 길이를 다시 잰다(`OnVfrDetectedAsync`, 2026-11-28 — 번호 시각으로 되돌리지 말 것)
+- 검출(`ProcessFrame`)이 **10번 이어서 실패하면** 재생을 멈추고 상태바에 위치·사유(`OnAnalysisStopped` — 파일은 실패가 시작된 곳으로 되돌린다). 한 번은 그 프레임만 건너뛴다.
+  예외를 디버그 출력만 남기고 넘기던 옛 길로 되돌리지 말 것(계속 실패해도 '재생 완료'로 끝났다)
 - 디코딩 버퍼는 `_lastFrame` 과 맞바꿔 재사용한다(매 프레임 `Clone()` 금지), `BitmapSource.Create` 는 `IntPtr` 오버로드
 
 ## 도메인 지식 — 화면 HUD
@@ -230,14 +235,15 @@ SDK 기본 글롭이 `old/**` 의 소스와 생성 `.g.cs` 까지 끌어와 **72
 ## 도메인 지식 — 구역 진입·나감 이벤트 (유고 감지 3단계, 2026-11-03)
 
 자세한 설명은 [docs/incident-detection.md](docs/incident-detection.md) '구역 진입·나감 이벤트'. 요점:
-- `ZoneEventDetector`: 추적된 박스의 **발 위치**(아래 가운데)로 진입 0.2초 · 나감 0.5초를 확정하고, 안에서 1.5초 넘게 끊기면 '나감 (추적 끝)'. Reset 직후 이미 안에 있으면 '이미 안에 있음'. 무시 구역은 이벤트가 없다
+- `ZoneEventDetector`: 추적된 박스의 **발 위치**(아래 가운데)로 진입 0.2초 · 나감 0.5초를 확정하고, 안에서 1.5초 넘게 끊기면 '나감 (추적 끝)'. Reset 직후(0.5초 안) **처음 볼 때 이미 안에 있던** 물체만 '이미 안에 있음'(밖에서 보였다 들어오면 '진입' — 2026-11-28). 무시 구역은 이벤트가 없다
 - 루프는 구역의 **불변 스냅샷**(`_zoneShapes`)만 읽고, 구역을 바꾸면 `_zoneEventsReset` 깃발로 감지기를 비운다. 로그는 영상 아래 접이식 패널(최대 2000건), [CSV 저장] → `<영상>.events.csv`
 
 ## 도메인 지식 — 유고 규칙 (유고 감지 4단계, 2026-11-03)
 
 자세한 설명은 [docs/incident-detection.md](docs/incident-detection.md) '유고 규칙'. 요점:
 - `IncidentDetector`: 차량의 발이 **차로 구역** 안이고 `Stationary` 가 5초 이어지면 유고 후보다. 정지선·대기·무시 구역과 정체(같은 차로 구역에 자신 말고 정지 차량 3대 이상)는 빼고,
-  **이미 선언한 것은 정체로 풀지 않는다**. 판정이 1초 안에 돌아오면 이어진 것으로 본다
+  **이미 선언한 것은 정체로 풀지 않는다**. 판정이 1초 안에 돌아오면 이어진 것으로 본다. 멈춘 시간은 '차로 구역 안 정지'가 이어진 동안이라
+  나눠 그린 옆 차로 구역으로 발이 넘어가도 이어 센다(구역 번호는 멈추기 시작한 차로) — 차로마다 따로 세자는 제안(2026-11-28 리뷰 3번)은 경계에 멈춘 차를 놓쳐 받지 않았다(셀프 테스트 ⑪ 8·9)
 - 해소(움직임·차로 이탈 1초 · 추적 끝 · 화면 전환 · 시크 · 구역 변경)에는 꼭 해소 행을 남긴다. 선언된 박스는 `Det.Incident` 로 빨갛게, 로그 헤더에 `⚠ 유고 후보 N`
 - 멈춘 채 구역을 고치면 재개를 기다리지 않고 그 자리에서 끝낸다(2026-11-25 — 루프의 일시정지 대기 두 곳이 `_zoneEventsReset` 을 꺼내 `EndIncidentsOffFrameAsync`. 감지기는 여전히 루프만 만진다).
   끝으로 시크해 프레임이 없을 때도 같은 길 — 대기 루프·EOF 가지를 고칠 땐 이 둘을 빠뜨리지 말 것
@@ -359,19 +365,21 @@ pwsh tests/ui/Run-All.ps1
 - 기본 대상은 `bin\Debug` 아래 **가장 최근에 빌드된** `DetectView.exe`(먼저 `dotnet build`). `-ExeDir publish` 로 배포본도 본다(상대 경로는 저장소 루트 기준).
   필요: GPU(DirectML), `publish\test1~5.mp4`(gitignore — worktree 에선 `publish` 연결을 둔다, '빌드 · 배포'), 있으면 `test6.mp4`(`Test-CameraPose` — 없으면 [INFO] 로 건너뜀). 실행 중 창이 떴다 닫히고 바탕화면을 캡처한다.
   NPU 전환 검사는 AMD NPU 와 exe 옆 짝 모델이 있을 때만 돈다(데스크탑에선 [INFO] 로 건너뛴다)
+- **영상은 `New-TestVideo` 로 연다**(`Common.ps1` — 임시 폴더에 하드 링크, finally 에서 `Remove-TestVideos`). 앱이 영상 옆에 구역 파일·CSV 를 쓰고 테스트도 그 자리에 쓰고 지우므로
+  원본 영상을 곧바로 열면 사용자의 구역 파일·복구본을 지울 수 있었다(2026-11-28 — `Test-Roi` 가 그랬다). 새 테스트도 원본 경로를 앱에 넘기지 말 것
 - 요소는 **`x:Name`(UIA AutomationId)** 으로 찾고 [파일 열기]만 버튼 글자로 찾는다. 버튼 아이콘은 `Ui.Glyph` 로 그린다 — `Content` 를 문자열이 아닌 것으로 바꾸면 UIA 이름이 비어 버튼을 못 찾는다.
   툴팁도 문자열로(UIA HelpText). 상태 문구·버튼 글자·툴팁 문구·창 제목 형식도 검사 대상이다 — **이름·문구를 바꾸면 테스트도 같이 고칠 것**
 - 파일: `Test-FilePlayback`(재생·시크·SAHI·EOF·범례·번호) · `Test-Tracking`(test4 덤프트럭의 번호·정지, 시크 뒤 새 번호) · `Test-Roi`(실제 마우스로 구역 편집·파일) ·
   `Test-SceneChange`(전환 배지·검은 끊김) · `Test-ZoneEvents`(이벤트 로그·CSV) · `Test-Incident`(유고 후보·해소) · `Test-VlmAnnotation`(가짜 VLM 으로 VLM 줄·CSV·끄기·실패) · `Test-ViewIdentity`(합성 재방문 영상의 뷰 식별) · `Test-CameraPose`(test6 의 천천히 한 줌아웃 → 새 뷰) ·
-  `Test-VfrPlayback`(VFR webm 두 개) · `Test-ScreenHud`(HUD·캡처 방식·결함 주입) · `Test-NpuSwitch`(NPU·TensorRT 전환·창 응답·TensorRT 와 GPU 검출 비교·실패 경로)
+  `Test-VfrPlayback`(VFR webm 두 개 + 평균 fps 는 정상인 VFR mp4 — 화면의 시각 막대 부호로 보인 프레임 확인) · `Test-FileDetectFault`(검출 연속 실패 → 멈춤·알림·재개, Debug 만) · `Test-ScreenHud`(HUD·캡처 방식·결함 주입) · `Test-NpuSwitch`(NPU·TensorRT 전환·창 응답·TensorRT 와 GPU 검출 비교·실패 경로)
 - `Measure-Fps.ps1 -ExeDir <폴더>` 는 테스트가 아니라 A/B 계측이다 — 실행 묶음끼리 수 FPS 흔들리니 기준선을 앞뒤로 두 번 잰다
 - 종료 코드 = 실패 건수(`Run-All` 은 0/1). 스크립트는 UTF-8 **BOM** 으로 저장한다(Windows PowerShell 5.1 이 한국어를 깨뜨리지 않게 — `Run-All` 이 첫머리에서 검사하고
   `.editorconfig` 가 편집기에 알린다). 파일 열기 대화상자 자동화 요령은 `Common.ps1` 머리말
 - UIA 루트는 **`Start-DetectView` 가 돌려준 프로세스의 `.Root`** 를 쓴다 — WPF 트리가 붙을 때까지 기다려 확인한 바로 그 루트다(`Wait-AppRoot`). `$AE::FromHandle` 로 다시 잡지 말 것:
   창이 뜬 직후에 잡은 루트는 WPF 요소가 안 보이는 Win32 프록시일 수 있고 그 루트로는 끝까지 못 찾는다(2026-11-17 데스크탑 — docs/testing.md).
   꼭 있어야 하는 요소는 `Need`(없으면 이름을 담아 그 자리에서 던진다 — `ById` 는 조용히 `$null`), 예외 줄은 `Format-Error`(난 곳을 붙인다)
-- 마지막 전체 통과: 2026-11-25 밤, 데스크탑 — Gemini 전체 리뷰를 확인해 고친 판(`6c67588` — 느린 다단계 팬의 글자 짝 · 뷰 사이 애매함 · 멈춘 채 구역 편집의 유고 해소 · 준비 실패가 고른 장치를 덮던 것 등) Debug `Run-All` 307 항목 모두 통과
-  (`Test-ScreenHud` 는 화면에 물체가 없어 8개가 [INFO]), `TrackerCheck selftest` 모두 통과(⑬ 31개). 배포본 `publish` 도 이 판으로 새로 만들었다(11-26 — `Run-All -ExeDir publish` 269 항목 통과, docs/build-deploy.md).
+- 마지막 전체 통과: 2026-11-28 밤, 데스크탑 — ChatGPT 리뷰를 확인해 고친 판(테스트의 영상 격리 · 짝 모델 도구의 원본 보호 · '이미 안에 있음' 판정 · 평균 fps 는 정상인 VFR 의 PTS 위치 · 검출 연속 실패 알림) Debug `Run-All` 327 항목 모두 통과
+  (`Test-ScreenHud` 는 화면에 물체가 없어 몇 개가 [INFO]), `TrackerCheck selftest` 모두 통과(139). 배포본 `publish` 는 11-26 판(`81e6348` — `Run-All -ExeDir publish` 269 항목 통과, docs/build-deploy.md) 그대로다.
   `Test-Roi`·`Test-ViewIdentity` 는 실제 마우스를 써서 실행 중 포인터·포커스가 바뀌면 한 단계가 안 먹을 수 있다(그날 한 번 — 다시 돌리면 통과). 자세한 기록과 그 전 기록(노트북 포함)은 docs/testing.md
 
 - 테스트 영상 내용(유고 감지 기준 사례)은 docs/testing.md 끝 '테스트 영상 내용' — `test4.mp4` 는 방향이 바뀌는 CCTV(0~10.5초 차로에 정차한 덤프트럭 = 양성, 21.2초~ 신호대기 행렬 = 음성),

@@ -116,6 +116,7 @@ namespace DetectView
                 // 이전 파일의 시크 요청, 위의 슬라이더 초기화(Value=0)가 남긴 요청을 버린다
                 _pendingSeekMs = double.NaN;
                 _atEof = false;
+                _analysisStopped = false;
 
                 // 영상 옆 구역 파일(<영상>.roi.json)을 읽는다 (재생 시작 전에 — 시작하면 편집이 꺼진다). 못 읽으면 사유를 상태바에
                 string? roiWarning = LoadRoi(path, cap.Get(VideoCaptureProperties.FrameWidth), cap.Get(VideoCaptureProperties.FrameHeight));
@@ -175,6 +176,28 @@ namespace DetectView
 
             VideoSlider.Maximum = _durationMs;
             ApplyModeToUi();   // 슬라이더를 켠다 (SAHI 분석 중이면 끝날 때까지 꺼 둔다 — 직접 켜면 분석 중에 살아났다)
+            SetStatusAfterAnalysis(shortName, $"파일: {shortName}");
+        }
+
+        // [UI] 메타데이터를 믿고 연 파일이 재생 중 VFR 로 드러났다(재생 루프가 프레임의 PTS 와 번호로 센 시각이 어긋나는 걸 봤다 — 루프는 이미 위치를 PTS 로,
+        // 시크를 grab 으로 바꿨다). 길이만 실측으로 다시 잰다 — frameCount/fps 는 실제 길이가 아닐 수 있다(OpenCV 의 fps 가 평균이 아니면 짧거나 길다).
+        // 재는 동안 슬라이더는 옛 길이로 쓸 수 있고, 그새 다른 소스로 바꾸면 중간에 멈춘다 (2026-11-28 ChatGPT 리뷰 5번)
+        private async Task OnVfrDetectedAsync(int gen)
+        {
+            if (gen != _loadGeneration || _mode != SourceMode.File || _filePath == null) return;
+            string path = _filePath;
+            string shortName = System.IO.Path.GetFileName(path);
+            if (Txt_Status.Text == $"파일: {shortName}") Txt_Status.Text = AnalyzingStatus(shortName);
+            var (f, d) = await Task.Run(() => ScanFrames(path, () => gen != Volatile.Read(ref _loadGeneration)));
+            if (gen != _loadGeneration || _mode != SourceMode.File) return;
+            if (f > 0 && d > 0)
+            {
+                _totalFrames = f;
+                _durationMs = d;
+                _fps = f / (d / 1000.0);
+                VideoSlider.Maximum = _durationMs;
+                ApplyModeToUi();
+            }
             SetStatusAfterAnalysis(shortName, $"파일: {shortName}");
         }
 

@@ -19,6 +19,7 @@ param(
 $ExeDir = Resolve-ExeDir $ExeDir
 if (-not $Video) { $Video = Join-Path $RepoRoot 'publish\test4.mp4' }
 if (-not (Test-Path $Video)) { throw "테스트 영상이 없습니다: $Video" }
+$Video = New-TestVideo $Video   # 임시 폴더의 하드 링크 — 원본 영상 옆의 파일을 읽거나 건드리지 않는다 (Common.ps1)
 
 $proc = $null
 try {
@@ -81,6 +82,6 @@ try {
     Check '정지 → 추적 번호 지움' ($ok -and [string]::IsNullOrEmpty($count.Current.ItemType)) "상태='$(NameOf $status)' 번호='$($count.Current.ItemType)'"
 }
 catch { Check '예외' $false (Format-Error $_) }
-finally { Stop-DetectView $proc }
+finally { Stop-DetectView $proc; Remove-TestVideos }
 
 Complete-Test

@@ -26,9 +26,9 @@ if (-not (Test-Path $Video)) {
     Complete-Test
     return
 }
+$Video = New-TestVideo $Video   # 임시 폴더의 하드 링크 — 구역 파일·CSV 를 원본 영상 옆이 아니라 거기에 쓰고 지운다 (Common.ps1 New-TestVideo) — 2.2 GB 라도 같은 드라이브면 하드 링크라 복사하지 않는다
 $roiFile = "$Video.roi.json"
 $csvFile = "$Video.events.csv"
-if ((Test-Path $roiFile) -or (Test-Path $csvFile)) { throw "테스트 영상 옆에 구역·이벤트 파일이 이미 있습니다 (지우고 다시): $roiFile / $csvFile" }
 
 function Get-Name($Root, [string]$Id) {
     $e = ById $Root $Id
@@ -121,6 +121,6 @@ try {
 catch { Check '예외' $false (Format-Error $_) }
 finally {
     Stop-DetectView $proc
-    Remove-Item $roiFile, "$roiFile.bad", "$roiFile.tmp", $csvFile -ErrorAction SilentlyContinue
+    Remove-TestVideos
 }
 Complete-Test

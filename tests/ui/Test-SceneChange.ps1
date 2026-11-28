@@ -26,6 +26,8 @@ $ExeDir = Resolve-ExeDir $ExeDir
 if (-not $Video4) { $Video4 = Join-Path $RepoRoot 'publish\test4.mp4' }
 if (-not $Video5) { $Video5 = Join-Path $RepoRoot 'publish\test5.mp4' }
 foreach ($v in $Video4, $Video5) { if (-not (Test-Path $v)) { throw "테스트 영상이 없습니다: $v" } }
+$Video4 = New-TestVideo $Video4   # 임시 폴더의 하드 링크 — 원본 영상 옆의 파일을 읽거나 건드리지 않는다 (Common.ps1)
+$Video5 = New-TestVideo $Video5
 
 $MOVING = '● 화면 이동 중'; $BLANK = '● 화면 끊김'; $CHANGED = '● 새 뷰 V2 · 구역 없음'   # 처음 보는 화면이라 새 뷰로 기억 (화면 식별 2b — 옛 글자는 '● 화면 전환 · 번호 새로 매김')
 
@@ -118,6 +120,6 @@ try {
     Check '끊김 뒤 번호가 다시 붙고 배지가 사라짐' (@($s5 | Where-Object { $_.Pos -ge 31000 -and $_.Ids.Count -gt 0 -and $_.Badge -eq '' }).Count -gt 0) ''
 }
 catch { Check '예외' $false (Format-Error $_) }
-finally { Stop-DetectView $proc }
+finally { Stop-DetectView $proc; Remove-TestVideos }
 
 Complete-Test

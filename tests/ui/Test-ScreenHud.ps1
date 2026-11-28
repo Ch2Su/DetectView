@@ -43,6 +43,7 @@ param(
 $ExeDir = Resolve-ExeDir $ExeDir
 if (-not $Video) { $Video = Join-Path $RepoRoot 'publish\test1.mp4' }
 if (-not (Test-Path $Video)) { throw "테스트 영상이 없습니다: $Video" }
+$Video = New-TestVideo $Video   # 임시 폴더의 하드 링크 — 원본 영상 옆의 파일을 읽거나 건드리지 않는다 (Common.ps1)
 
 # 오버레이 창 찾기: 이 프로세스의 보이는 최상위 창 중 클릭 통과(WS_EX_TRANSPARENT)이고 제목이 오버레이(OverlayWindow.xaml 의 Title)인 것.
 # UIA 는 클릭 통과·레이어드 창을 믿을 만하게 보여 주지 않아 Win32 로 직접 센다.
@@ -397,4 +398,5 @@ else {
 }
 
 Set-TestFaults $OrigFaults   # 띄울 때마다 되돌렸지만, 끝에서 한 번 더 (위에서 예외로 빠져나왔어도 셸 값이 처음과 같게)
+Remove-TestVideos   # 앱은 위에서 모두 껐다
 Complete-Test

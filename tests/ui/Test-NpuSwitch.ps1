@@ -26,6 +26,7 @@ param(
 $ExeDir = Resolve-ExeDir $ExeDir
 if (-not $Video) { $Video = Join-Path $RepoRoot 'publish\test1.mp4' }
 if (-not (Test-Path $Video)) { throw "테스트 영상이 없습니다: $Video" }
+$Video = New-TestVideo $Video   # 임시 폴더의 하드 링크 — 원본 영상 옆의 파일을 읽거나 건드리지 않는다 (Common.ps1)
 
 if (-not ('DetectViewTest.Window' -as [type])) {
     Add-Type -Namespace DetectViewTest -Name Window -MemberDefinition @'
@@ -626,6 +627,7 @@ finally {
     if ($lat) { $lat.Stop() }   # 재는 스레드가 Run-All 의 다음 테스트까지 남지 않게
     Stop-DetectView $proc
     if ($mirror -and (Test-Path $mirror)) { Remove-Item $mirror -Recurse -Force -ErrorAction SilentlyContinue }
+    Remove-TestVideos
 }
 
 Complete-Test

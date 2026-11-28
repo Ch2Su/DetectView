@@ -34,6 +34,8 @@ namespace DetectView
         // 이런 파일은 grab 으로만 이동하고, 뒤로 갈 땐 _filePath 로 다시 연다 (ApplyPendingSeek)
         private bool _seekByGrab;
         private string? _filePath;
+        // 마지막으로 꺼낸 시크 목표(ms — 재생 루프 전용). 메타데이터를 믿던 파일이 시크 직후 VFR 로 드러나면 grab 경로로 이 목표에 다시 간다
+        private double _lastSeekTargetMs;
         // 마지막으로 읽은 프레임의 영상 시각 (재생 루프 전용). EOF 뒤엔 캡처의 PosMsec 를 믿을 수 없어
         // (되감을지 판단에 쓰면 "처음부터 다시"가 안 됐다) 루프가 직접 기억한다
         private double _lastPosMs;
@@ -146,6 +148,7 @@ namespace DetectView
             _stepping = true;
             double ms = Interlocked.Exchange(ref _pendingSeekMs, double.NaN);
             if (double.IsNaN(ms)) return false;
+            _lastSeekTargetMs = Math.Max(0, ms);   // 프레임 시크가 VFR 에서 엉뚱한 곳에 섰으면 grab 으로 다시 간다 (재생 루프의 VFR 알아보기)
 
             if (_seekByGrab)
             {
@@ -218,6 +221,11 @@ namespace DetectView
             bool isCamera = _mode == SourceMode.Camera;
             var sw = new Stopwatch();
             int cameraFailures = 0;
+            int inferFails = 0;            // 이어서 실패한 검출(ProcessFrame) 수 — InferFailLimit 에 닿으면 멈추고 알린다
+            // 메타데이터를 믿은 파일(CFR 판정)의 프레임 시각 확인 — 앞 프레임의 PTS(시크·열기 뒤 -1)와, PTS 가 번호로 센 시각과 이어서 어긋난 프레임 수
+            double cfrLastPts = -1;
+            int vfrSuspect = 0;
+            double inferFailFromMs = 0;    // 그 연속 실패가 시작된 프레임의 영상 시각 (파일)
 
             // 재생 시계 (파일 전용): 영상 시각(posMs)이 벽시계와 같은 속도로 흐르도록 "이 프레임이 보일 시각"까지 기다린다.
             // 예전엔 프레임마다 (1/fps − 처리 시간)만큼 기다렸는데, Task.Delay 가 15.6ms 단위로 올림돼 그 오차가
@@ -319,6 +327,8 @@ namespace DetectView
                     bool ended = false;
                     bool captureGone = false;
                     bool seeked = false;   // 이 프레임은 시크로 얻은 것 — 멈췄어도 들고 있지 않고 보인다 (아래)
+                    bool vfrFound = false;   // 메타데이터를 믿은 파일이 이 프레임에서 VFR 로 드러났다
+                    bool reseek = false;     // 그게 시크 직후라 grab 으로 다시 시크한다
 
                     // ★ lock 안에서는 await 금지 → 결과만 플래그로 받음
                     lock (_captureLock)
@@ -377,12 +387,49 @@ namespace DetectView
                                     _lastPosMs = posMs;
                                 }
                                 else
-                                    currentFrameIdx = _currentFrameIdx++;  // CFR: 수동 카운터(신뢰)
+                                {
+                                    // 메타데이터를 믿은 파일(CFR 판정): 위치는 프레임의 실제 표시 시각(PTS — 앞 프레임보다 늘었을 때만 믿는다, 아니면 번호로 센 시각).
+                                    // 고정 간격 파일은 둘이 같다(2026-11-28 실측: test1~6 · 사고 영상 6개 모두 어긋남 0 ms). 평균 fps·프레임 수는 정상인데 간격이
+                                    // 일정하지 않은 파일(VFR — 휴대폰·NVR 녹화, 정지 구간이 드문 화면 녹화)은 번호로 센 시각이 실제와 몇 초씩 어긋나
+                                    // 이벤트·CSV 시각이 틀렸고, 프레임 시크도 엉뚱한 곳에 섰다(OpenCV 는 프레임을 fps 간격으로 센다 — docs/playback.md).
+                                    // 그래서 PTS 가 번호로 센 시각과 이어서(시크 직후는 한 번) 어긋나면 VFR 로 보고 메타데이터를 못 믿는 파일의 경로로 넘긴다:
+                                    // 위치는 PTS(_vfr), 시크는 grab(_seekByGrab), 길이는 실측으로 다시 잰다(OnVfrDetectedAsync) — 2026-11-28 ChatGPT 리뷰 5번
+                                    if (seeked) cfrLastPts = -1;
+                                    currentFrameIdx = _currentFrameIdx++;
+                                    double idxMs = currentFrameIdx / _fps * 1000.0;
+                                    double pts = _capture.Get(VideoCaptureProperties.PosMsec);
+                                    bool ptsOk = pts >= 0 && pts > cfrLastPts;
+                                    posMs = ptsOk ? pts : idxMs;
+                                    if (ptsOk) cfrLastPts = pts;
+                                    vfrSuspect = ptsOk && Math.Abs(pts - idxMs) > Math.Max(100.0, 2500.0 / _fps) ? vfrSuspect + 1 : 0;
+                                    if (vfrSuspect >= (seeked ? 1 : 3))
+                                    {
+                                        vfrSuspect = 0;
+                                        _vfr = true;
+                                        _seekByGrab = true;
+                                        _lastPosMs = posMs;
+                                        vfrFound = true;
+                                        if (seeked)
+                                        {
+                                            // 프레임 시크가 선 곳은 목표가 아니다 — grab 경로로 목표에 다시 간다 (멈춘 채 시크였으면 한 장 보기도 다시)
+                                            Interlocked.Exchange(ref _pendingSeekMs, _lastSeekTargetMs);
+                                            if (step) Interlocked.Exchange(ref _stepRequest, 1);
+                                            reseek = true;
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
 
                     if (captureGone) break;
+                    if (vfrFound)
+                    {
+                        vfrFound = false;
+                        int vfrGen = Volatile.Read(ref _loadGeneration);
+                        _ = Dispatcher.InvokeAsync(() => _ = OnVfrDetectedAsync(vfrGen));
+                    }
+                    if (reseek) continue;   // 이 프레임은 버리고 다음 반복이 grab 으로 시크한다
 
                     if (ended)
                     {
@@ -413,8 +460,6 @@ namespace DetectView
                     }
                     cameraFailures = 0;
 
-                    if (!isCamera && !_vfr) posMs = currentFrameIdx / _fps * 1000.0;
-
                     int width = frame.Width;
                     int height = frame.Height;
 
@@ -422,13 +467,27 @@ namespace DetectView
                     List<Det> dets;
                     try
                     {
+                        if (!isCamera) TestFaults.FileDetect(posMs);   // 시험용 검출 예외 (Debug 빌드 + DETECTVIEW_TEST_FAULTS=file-detect-once · file-detect-fail 일 때만)
                         resultImage = ProcessFrame(frame, out dets);
                     }
                     catch (Exception ex)
                     {
                         Debug.WriteLine($"프레임 처리 오류: {ex.Message}");
+                        if (ct.IsCancellationRequested) break;   // 창을 닫으며 추론 세션을 내린 것 — 실패로 세지 않는다
+                        // 한두 프레임은 건너뛰고 다음 프레임을 보인다. 이어서 실패하면(장치 제거·드라이버 오류 등) 멈추고 상태바에 위치·사유를 띄운다 —
+                        // 예전엔 디버그 출력만 남기고 표시·기다림 없이 다음 프레임으로 넘어가, 마지막으로 그린 화면이 남은 채 파일 끝까지 내달려
+                        // '재생 완료'로 끝났다(2026-11-28 ChatGPT 리뷰 6번). 파일은 실패가 시작된 곳으로 되돌려 둔다 — 다시 재생하면 그 구간부터 분석한다
+                        if (inferFails++ == 0) inferFailFromMs = posMs;
+                        if (inferFails >= InferFailLimit)
+                        {
+                            inferFails = 0;
+                            double at = inferFailFromMs;
+                            string why = ex.Message;
+                            await Dispatcher.InvokeAsync(() => OnAnalysisStopped(at, why));
+                        }
                         continue;
                     }
+                    inferFails = 0;
                     if (ct.IsCancellationRequested) break;
 
                     var procElapsed = sw.Elapsed;
@@ -670,6 +729,38 @@ namespace DetectView
             _isPlaybackUpdatingSlider = false;
             Txt_Status.Text = "재생 완료";
             UpdateRoiUi();   // 끝까지 재생했으면 멈춘 것 — 구역을 편집할 수 있다
+        }
+
+        // 검출이 이만큼 이어서 실패하면 재생을 멈추고 알린다 (30fps 로 0.33초) — 한두 번의 실패는 그 프레임만 건너뛴다
+        private const int InferFailLimit = 10;
+        // 검출이 이어서 실패해 멈춘 상태 (UI 스레드 전용) — 다시 재생할 때 상태바의 알림을 거둔다(카메라는 멈추기 전 문구로 되돌린다)
+        private bool _analysisStopped;
+        private string _statusBeforeAnalysisStop = "";
+
+        // [UI] 재생 루프가 검출이 계속 실패해 멈춰 달라고 했다. 파일은 실패가 시작된 위치로 되돌리고(멈춘 채 시크 — 그 위치 한 장 보기)
+        // 상태바에 그 위치와 사유를 띄운다. 다시 재생하면 그 구간부터 분석한다 — 그사이 장치를 바꾸거나(추론 장치) 일시적인 실패였다면 이어 간다
+        private void OnAnalysisStopped(double atMs, string why)
+        {
+            if (_mode is not (SourceMode.File or SourceMode.Camera)) return;
+            _playSignal.Reset();
+            _isPlaying = false;
+            if (!_analysisStopped) _statusBeforeAnalysisStop = Txt_Status.Text;
+            _analysisStopped = true;
+            Btn_PlayPause.Content = "재생";
+            string shortWhy = why.Length > 160 ? why[..160] + "…" : why;
+            if (_mode == SourceMode.File)
+            {
+                Txt_Status.Text = $"분석 중단 — {TimeSpan.FromMilliseconds(Math.Max(0, atMs)):mm\\:ss\\.f} 부터 검출이 계속 실패했습니다: {shortWhy}";
+                _isPlaybackUpdatingSlider = true;
+                VideoSlider.Value = Math.Min(Math.Max(0, atMs), VideoSlider.Maximum);
+                _isPlaybackUpdatingSlider = false;
+                UpdateTimeText(atMs);
+                SeekToMs(atMs);
+                RequestStepFrame();
+            }
+            else Txt_Status.Text = $"분석 중단 — 검출이 계속 실패했습니다: {shortWhy}";
+            Txt_Status.ToolTip = why;   // 잘린 사유의 전문 (UIA HelpText)
+            UpdateRoiUi();   // 멈췄다 — 파일이면 구역을 편집할 수 있다
         }
 
         private void OnCameraLost()

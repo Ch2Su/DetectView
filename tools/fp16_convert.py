@@ -15,8 +15,12 @@
 # (앱은 best.onnx 를 바꿨는데 옛 FP16 짝이 남은 경우를 이걸로 알아챈다 — MainWindow.Trt.cs 의 CheckTrtModel):
 #   fp16_source_md5 = 원본 모델 파일의 MD5(대문자 16진수) · fp16_converter = 바꾼 도구와 판
 # 끝에 CPU 로 원본과 FP16 판을 같은 입력으로 한 번씩 돌려 꼴과 차이를 보인다 (돌아가는지만 — 검출 일치도는 NpuBench --trt-fp16)
+#
+# 결과는 같은 폴더의 임시 파일에 써서 확인한 뒤에야 목적지로 옮긴다. 결과 경로가 원본과 같은 파일(같은 경로·하드 링크)이면 시작하지 않는다 —
+# 예전엔 --out 이 원본을 가리켜도 그대로 덮어쓰고, 확인용 세션 둘이 방금 쓴 FP16 파일을 함께 읽어 '차이 0'으로 통과했다 (2026-11-28 ChatGPT 리뷰 2번)
 import argparse
 import hashlib
+import os
 import pathlib
 import sys
 
@@ -43,6 +47,9 @@ def main() -> int:
 
     src = pathlib.Path(a.model).resolve()
     out = pathlib.Path(a.out).resolve() if a.out else src.with_suffix(".fp16.onnx")
+    if same_file(src, out):
+        print(f"결과 경로가 원본과 같은 파일이다 — 원본을 덮어쓰지 않는다: {out}")
+        return 2
     model = onnx.load(str(src))
     meta = {p.key: p.value for p in model.metadata_props}
     # 짝 모델을 다시 바꾸지 않게 — 원본은 FP32 여야 한다
@@ -63,22 +70,46 @@ def main() -> int:
     for k, v in {**meta, "fp16_source_md5": src_md5,
                  "fp16_converter": f"onnxruntime.transformers {onnxruntime.__version__} convert_float_to_float16(keep_io_types)"}.items():
         fp16.metadata_props.add(key=k, value=v)
-    onnx.save(fp16, str(out))
+    # 같은 폴더의 임시 파일에 쓰고 확인한 뒤 옮긴다 — 확인이 실패하면 옛 짝(있으면)이 그대로 남는다
+    tmp = out.with_name(f"{out.name}.tmp{os.getpid()}")
+    try:
+        onnx.save(fp16, str(tmp))
+        ok = cpu_check(src, tmp)
+        if not ok:
+            print("CPU 확인 실패 — 결과를 옮기지 않는다")
+            return 1
+        os.replace(tmp, out)
+    finally:
+        tmp.unlink(missing_ok=True)
     print(f"저장: {out} ({out.stat().st_size / 1e6:.1f} MB) · 원본 MD5 {src_md5} · 짝 MD5 {md5(out)}")
+    return 0
 
-    # CPU 로 한 번씩 — 꼴이 같고 값이 FP16 반올림 정도로만 다른지
+
+def same_file(a: pathlib.Path, b: pathlib.Path) -> bool:
+    """같은 파일인가 — 경로가 같거나(대소문자·.. 포함) 하드 링크처럼 다른 경로가 같은 파일을 가리키면 참"""
+    if a == b:
+        return True
+    try:
+        return b.exists() and os.path.samefile(a, b)
+    except OSError:
+        return False
+
+
+def cpu_check(src: pathlib.Path, fp16_path: pathlib.Path) -> bool:
+    """CPU 로 원본과 FP16 판을 같은 입력으로 한 번씩 — 꼴이 같고 값이 FP16 반올림 정도로만 다른지 (돌아가는지만)"""
     so = onnxruntime.SessionOptions()
     so.log_severity_level = 3
     s32 = onnxruntime.InferenceSession(str(src), so, providers=["CPUExecutionProvider"])
-    s16 = onnxruntime.InferenceSession(str(out), so, providers=["CPUExecutionProvider"])
+    s16 = onnxruntime.InferenceSession(str(fp16_path), so, providers=["CPUExecutionProvider"])
     inp = s32.get_inputs()[0]
     x = np.random.default_rng(0).random([d if isinstance(d, int) else 1 for d in inp.shape], dtype=np.float32)
     y32, y16 = s32.run(None, {inp.name: x})[0], s16.run(None, {inp.name: x})[0]
+    del s32, s16   # 세션이 파일을 쥐고 있으면 옮기기(os.replace)가 막힐 수 있다
     # end-to-end [1,300,6] 은 신뢰도 순으로 줄을 세워 값이 조금만 달라도 줄 순서가 바뀐다 — 줄끼리 빼지 않고 신뢰도(5번째 열)를 정렬해 견준다
     conf = lambda y: np.sort(y.reshape(-1, y.shape[-1])[:, 4])[::-1] if y.shape[-1] == 6 else y.ravel()   # noqa: E731
     print(f"CPU 확인: 입력 {list(x.shape)} · 출력 {list(y32.shape)} / {list(y16.shape)} · 정렬한 신뢰도 최대 차 {float(np.abs(conf(y32) - conf(y16)).max()):.4f}"
           f" (임의 입력 — 검출 일치도는 NpuBench --trt-fp16)")
-    return 0 if y32.shape == y16.shape else 1
+    return y32.shape == y16.shape
 
 
 if __name__ == "__main__":

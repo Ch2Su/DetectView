@@ -55,7 +55,8 @@ namespace DetectView
         public double ExitMs { get; init; } = 500;
         /// <summary>추적이 이만큼(ms) 끊기면 안에 있던 구역에서 '나감(추적 끝)' — 이보다 짧은 가림은 추적기가 이어 준다(움직이는 물체의 이음 간격 1초)</summary>
         public double LostMs { get; init; } = 1500;
-        /// <summary>감지를 시작(또는 Reset)한 뒤 이 시간(ms) 안에 처음 본 물체가 이미 구역 안이면 '이미 안에 있음' — 시크·편집 뒤 재개마다 '진입'이 쏟아지지 않게</summary>
+        /// <summary>감지를 시작(또는 Reset)한 뒤 이 시간(ms) 안에 처음 본 물체가 처음 볼 때 이미 구역 안이면 '이미 안에 있음' — 시크·편집 뒤 재개마다 '진입'이 쏟아지지 않게.
+        /// 이 시간 안이라도 밖에서 처음 보였다 들어온 물체는 '진입'이다</summary>
         public double BaselineMs { get; init; } = 500;
     }
 
@@ -87,6 +88,9 @@ namespace DetectView
             public string Label = "";
             public double LastSeenMs;
             public readonly Dictionary<int, InZone> Zones = [];
+            // 감지를 시작(또는 Reset)한 뒤 BaselineMs 안에 처음 봤을 때 발이 들어 있던 구역 — '이미 안에 있음'은 이 구역에만 (그 뒤에 처음 봤으면 null).
+            // 예전엔 진입 후보가 된 시각이 BaselineMs 안인지만 봐서, 밖에서 처음 보였다 0.3초에 들어온 물체도 '이미 안에 있음'이 됐다 (2026-11-28 ChatGPT 리뷰 4번)
+            public HashSet<int>? StartedInside;
         }
 
         private readonly ZoneEventOptions _o;
@@ -138,7 +142,12 @@ namespace DetectView
             {
                 if (d.TrackId <= 0) continue;
                 _seen.Add(d.TrackId);
-                if (!_tracks.TryGetValue(d.TrackId, out var t)) _tracks[d.TrackId] = t = new TrackState();
+                bool firstSight = false;
+                if (!_tracks.TryGetValue(d.TrackId, out var t))
+                {
+                    _tracks[d.TrackId] = t = new TrackState { StartedInside = ms < _baselineUntilMs ? [] : null };
+                    firstSight = true;
+                }
                 t.Label = d.Label;
                 t.LastSeenMs = ms;
 
@@ -156,6 +165,7 @@ namespace DetectView
                 {
                     if (z.Kind == RoiKind.Ignore) continue;
                     bool inside = !ignored && z.Contains(fx, fy);
+                    if (firstSight && inside) t.StartedInside?.Add(z.Id);
                     if (!t.Zones.TryGetValue(z.Id, out var s))
                     {
                         if (!inside) continue;
@@ -171,7 +181,8 @@ namespace DetectView
                         {
                             s.Confirmed = true;
                             s.EnteredMs = s.CandidateSince;
-                            s.Initial = s.CandidateSince < _baselineUntilMs;
+                            // 처음 볼 때 이미 안이었고 그대로(한두 프레임 경계 밖으로 튀어도) 기준 시간 안에 머물기 시작했으면 — 들어오는 걸 본 게 아니다
+                            s.Initial = s.CandidateSince < _baselineUntilMs && t.StartedInside?.Contains(z.Id) == true;
                             events.Add(new ZoneEvent(ZoneEventKind.Enter, s.EnteredMs, d.TrackId, t.Label, z.Id, z.Kind, Initial: s.Initial));
                         }
                     }

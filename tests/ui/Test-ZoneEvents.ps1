@@ -25,11 +25,10 @@ $ExeDir = Resolve-ExeDir $ExeDir
 if (-not $Video) { $Video = Join-Path $RepoRoot 'publish\test4.mp4' }
 if (-not $PlainVideo) { $PlainVideo = Join-Path $RepoRoot 'publish\test1.mp4' }
 foreach ($v in $Video, $PlainVideo) { if (-not (Test-Path $v)) { throw "테스트 영상이 없습니다: $v" } }
+$Video = New-TestVideo $Video   # 임시 폴더의 하드 링크 — 구역 파일·CSV 를 원본 영상 옆이 아니라 거기에 쓰고 지운다 (Common.ps1 New-TestVideo)
+$PlainVideo = New-TestVideo $PlainVideo   # 새 폴더라 구역 파일이 없다 — 이 테스트의 전제
 $roiFile = "$Video.roi.json"
 $csvFile = "$Video.events.csv"
-$plainRoi = "$PlainVideo.roi.json"
-if (Test-Path $plainRoi) { throw "구역 없는 영상 옆에 구역 파일이 있습니다: $plainRoi" }   # 이 테스트의 전제 — 남의 파일을 지우지 않는다
-if ((Test-Path $roiFile) -or (Test-Path $csvFile)) { throw "테스트 영상 옆에 구역·이벤트 파일이 이미 있습니다 (지우고 다시): $roiFile / $csvFile" }
 
 # 멈춘 덤프트럭(발 위치 ≈ 0.42, 0.52)을 품는 차로 구역 하나 — 파일 이름·형식은 Roi.cs
 '{ "version": 1, "nextId": 2, "zones": [ { "id": 1, "kind": "lane", "points": [[0.30, 0.45], [0.55, 0.45], [0.55, 0.62], [0.30, 0.62]] } ] }' |
@@ -129,7 +128,7 @@ try {
 catch { Check '예외' $false (Format-Error $_) }
 finally {
     Stop-DetectView $proc
-    Remove-Item $roiFile, "$roiFile.bad", "$roiFile.tmp", $csvFile -ErrorAction SilentlyContinue   # 영상 옆에 파일을 남기지 않는다
+    Remove-TestVideos
 }
 
 Complete-Test

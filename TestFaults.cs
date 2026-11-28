@@ -20,8 +20,11 @@ namespace DetectView
     ///   vlm-down          VLM 설명이 켜지기는 하지만 부를 때마다 0.1초 뒤 '연결 안 됨'으로 실패한다
     ///   vlm-absent        VLM 설명을 켤 때의 확인이 'Ollama 가 꺼져 있음'으로 실패한다
     ///   trt-prep-fail     TensorRT 준비가 짝 모델 확인 2.5초 뒤 실패한다 — 그사이 다른 장치를 고른 뒤 앞 준비가 실패하는 길(Test-NpuSwitch)
-    /// HUD 훅은 모두 [Conditional("DEBUG")] 라 Release 에선 부르는 코드째 컴파일되지 않는다 (환경 변수도 읽지 않음). HUD 훅은 HUD 캡처 루프 스레드에서만
-    /// 부른다 — 루프는 한 번에 하나라 락을 두지 않는다. 가짜 VLM(<see cref="VlmClient"/>)과 TensorRT 준비 실패(<see cref="TrtPrepAsync"/>)는 값을 돌려줘야 해서
+    ///   file-detect-once  파일 재생의 검출이 영상 3.0초 이상인 첫 프레임에서 한 번 예외 — 한 프레임만 건너뛰고 이어 간다(Test-FileDetectFault)
+    ///   file-detect-fail  파일 재생의 검출이 영상 5.0초 이상인 첫 프레임부터 12번 이어서 예외, 그 뒤 풀린다 — 10번째에 멈추고 상태바에 위치·사유,
+    ///                     다시 재생하면 5.0초부터(Test-FileDetectFault)
+    /// HUD·파일 훅은 모두 [Conditional("DEBUG")] 라 Release 에선 부르는 코드째 컴파일되지 않는다 (환경 변수도 읽지 않음). HUD 훅은 HUD 캡처 루프 스레드에서만,
+    /// 파일 훅은 재생 루프 스레드에서만 부른다 — 루프는 한 번에 하나라 락을 두지 않는다. 가짜 VLM(<see cref="VlmClient"/>)과 TensorRT 준비 실패(<see cref="TrtPrepAsync"/>)는 값을 돌려줘야 해서
     /// #if DEBUG 로 감쌌다(부르는 쪽도 — MainWindow.Vlm.cs · MainWindow.Trt.cs)
     /// </summary>
     internal static class TestFaults
@@ -75,6 +78,24 @@ namespace DetectView
             if (s_detectFirst == 0) s_detectFirst = Stopwatch.GetTimestamp();
             if (Stopwatch.GetElapsedTime(s_detectFirst).TotalMilliseconds < 3000)
                 throw new InvalidOperationException($"시험용 결함: 검출 예외 ({EnvVar}=hud-detect-fail)");
+#endif
+        }
+
+        /// <summary>[재생 루프] 파일 프레임 검출(ProcessFrame) 직전 — file-detect-once · file-detect-fail (위 머리말). posMs = 그 프레임의 영상 시각</summary>
+        [Conditional("DEBUG")]
+        public static void FileDetect(double posMs)
+        {
+#if DEBUG
+            if (Has("file-detect-once") && !s_fileOnceDone && posMs >= 3000)
+            {
+                s_fileOnceDone = true;
+                throw new InvalidOperationException($"시험용 결함: 검출 예외 한 번 ({EnvVar}=file-detect-once)");
+            }
+            if (Has("file-detect-fail") && posMs >= 5000 && s_fileFails < 12)
+            {
+                s_fileFails++;
+                throw new InvalidOperationException($"시험용 결함: 검출 예외 ({EnvVar}=file-detect-fail)");
+            }
 #endif
         }
 
@@ -135,6 +156,8 @@ namespace DetectView
         private static long s_lostFirstCall, s_lostFirstFrame;
         private static bool s_lostDone;        // 프로세스당 한 번
         private static long s_detectFirst;
+        private static bool s_fileOnceDone;    // file-detect-once — 프로세스당 한 번
+        private static int s_fileFails;        // file-detect-fail — 지금까지 던진 수
 #endif
     }
 }
